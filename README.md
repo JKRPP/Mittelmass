@@ -1,4 +1,4 @@
-# OPD Jurierbogen — self-hosted judging app
+# OPD Mittelmass — self-hosted judging app
 
 Rooms with share links, per-judge scoresheets, and a chair view that surfaces
 disagreement. FastAPI + SQLite on the server, one static HTML file on the client.
