@@ -6,6 +6,14 @@ services:
     volumes:
       - opd_data:/data
     restart: unless-stopped
+    networks:
+      - default
+      - proxy
 
 volumes:
   opd_data:
+
+networks:
+  proxy:
+    external: true
+    name: ${PROXY_NETWORK:-proxy}
