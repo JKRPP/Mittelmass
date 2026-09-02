@@ -436,6 +436,11 @@
       td.tot {
         font-weight: 500;
       }
+      td.best,
+      td.l.best {
+        font-weight: 700;
+        color: var(--live);
+      }
 
       .jrow {
         display: flex;
@@ -762,10 +767,7 @@
           </div>
           <div class="card">
             <h2>Diskussion</h2>
-            <div class="sub">
-              Redepunktzahl nach Abweichung sortiert. Antippen für
-              Einzelwertungen.
-            </div>
+            <div class="sub">Redepunktzahl nach Abweichung.</div>
             <div id="totspread"></div>
             <hr class="sep" />
             <div class="sub">Einzelkategorien nach Abweichung.</div>
@@ -1002,6 +1004,7 @@
         { a: "Keine Leistung", b: "", cells: [0], marks: ["6"] },
       ];
       var TOPROWS = 2;
+      var BOTTOMROWS = 1;
 
       function markOf(v) {
         for (var i = 0; i < NOTEN.length; i++) {
@@ -1444,7 +1447,7 @@
         s.textContent = online
           ? pending
             ? pending + " ausstehend"
-            : "synchron"
+            : "Synchronisiert"
           : pending
             ? "offline · " + pending + " gespeichert"
             : "offline";
@@ -1528,7 +1531,10 @@
 
       function buildPad(host, scaleMax, onPick) {
         host.innerHTML = "";
-        (topOpen ? NOTEN : NOTEN.slice(TOPROWS)).forEach(function (n) {
+        (topOpen
+          ? NOTEN
+          : NOTEN.slice(TOPROWS, NOTEN.length - BOTTOMROWS)
+        ).forEach(function (n) {
           var row = el("div", "noterow"),
             lbl = el("div", "notelbl");
           lbl.appendChild(el("div", "a", n.a));
@@ -1552,7 +1558,7 @@
         var t = el(
           "button",
           "wide",
-          topOpen ? "Spitzenleistungen ausblenden" : "Spitzenleistung 16–20 …",
+          topOpen ? "Randwerte ausblenden" : "Weitere Werte",
         );
         t.addEventListener("click", function () {
           topOpen = !topOpen;
@@ -2058,10 +2064,7 @@
         }
 
         // Full result overview
-        var fh = [
-          '<table class="finalTbl"><tr><th class="l">Redner:in</th><th>Ø Punkte</th><th>n</th></tr>',
-        ];
-        SPEAKERS.forEach(function (sp, s) {
+        var speakerRows = SPEAKERS.map(function (sp, s) {
           var vals = [];
           ids.forEach(function (id) {
             if (!includedFor(id, "s" + s)) return;
@@ -2073,22 +2076,34 @@
                 return a + b;
               }, 0) / vals.length
             : null;
+          return { label: sp.label, avg: avg, n: vals.length };
+        });
+        var bestSpeakerAvg = speakerRows.reduce(function (m, r) {
+          return r.avg !== null && r.avg > m ? r.avg : m;
+        }, -Infinity);
+
+        var fh = [
+          '<table class="finalTbl"><tr><th class="l">Redner:in</th><th>Ø Punkte</th><th>n</th></tr>',
+        ];
+        speakerRows.forEach(function (r) {
+          var isBest = r.avg !== null && r.avg === bestSpeakerAvg;
           fh.push(
-            '<tr><td class="l">' +
-              sp.label +
-              '</td><td class="' +
-              (avg === null ? "mt" : "tot") +
+            '<tr><td class="l' +
+              (isBest ? " best" : "") +
               '">' +
-              (avg === null ? "·" : avg.toFixed(1)) +
+              r.label +
+              '</td><td class="' +
+              (r.avg === null ? "mt" : "tot") +
+              (isBest ? " best" : "") +
+              '">' +
+              (r.avg === null ? "·" : r.avg.toFixed(1)) +
               '</td><td class="mt">' +
-              vals.length +
+              r.n +
               "</td></tr>",
           );
         });
-        fh.push(
-          '</table><table class="finalTbl" style="margin-top:14px"><tr><th class="l">Team</th><th>Ø Team</th><th>Gesamt</th></tr>',
-        );
-        TEAMS.forEach(function (tm, t) {
+
+        var teamRows = TEAMS.map(function (tm, t) {
           var vals = [];
           ids.forEach(function (id) {
             if (!includedFor(id, "t" + t)) return;
@@ -2122,17 +2137,43 @@
           var grand =
             teamAvg !== null && scoredCount > 0 ? teamAvg + speakerSum : null;
           var partial = grand !== null && scoredCount < teamSpeakers.length;
+          return {
+            label: tm,
+            teamAvg: teamAvg,
+            grand: grand,
+            partial: partial,
+          };
+        });
+        var bestGrand = teamRows.reduce(function (m, r) {
+          return r.grand !== null && r.grand > m ? r.grand : m;
+        }, -Infinity);
+        // Only bold a leader once both teams actually have a total to compare.
+        var teamsComparable = teamRows.every(function (r) {
+          return r.grand !== null;
+        });
+
+        fh.push(
+          '</table><table class="finalTbl" style="margin-top:14px"><tr><th class="l">Team</th><th>Ø Team</th><th>Gesamt</th></tr>',
+        );
+        teamRows.forEach(function (r) {
+          var isBest =
+            teamsComparable && r.grand !== null && r.grand === bestGrand;
           var grandLabel =
-            grand === null ? "·" : grand.toFixed(1) + (partial ? " *" : "");
+            r.grand === null
+              ? "·"
+              : r.grand.toFixed(1) + (r.partial ? " *" : "");
           fh.push(
-            '<tr><td class="l">' +
-              tm +
-              '</td><td class="' +
-              (teamAvg === null ? "mt" : "") +
+            '<tr><td class="l' +
+              (isBest ? " best" : "") +
               '">' +
-              (teamAvg === null ? "·" : teamAvg.toFixed(1)) +
+              r.label +
               '</td><td class="' +
-              (grand === null ? "mt" : "tot") +
+              (r.teamAvg === null ? "mt" : "") +
+              '">' +
+              (r.teamAvg === null ? "·" : r.teamAvg.toFixed(1)) +
+              '</td><td class="' +
+              (r.grand === null ? "mt" : "tot") +
+              (isBest ? " best" : "") +
               '">' +
               grandLabel +
               "</td></tr>",
