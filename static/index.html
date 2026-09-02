@@ -1376,17 +1376,17 @@
         showLobby();
       }
 
-      // Default to light theme, then move onto dark
-      var THEME_CYCLE = ["light", "dark", ""];
-      var THEME_LABEL = { light: "Light", dark: "Dark", "": "Auto" };
+      // Always defaults to light, regardless of the device's system setting.
+      // Only an explicit tap on the theme button ever switches to dark.
+      var THEME_CYCLE = ["light", "dark"];
+      var THEME_LABEL = { light: "Light", dark: "Dark" };
       function applyTheme(t) {
-        if (t) document.documentElement.setAttribute("data-theme", t);
-        else document.documentElement.removeAttribute("data-theme");
+        document.documentElement.setAttribute("data-theme", t || "light");
         var b = document.getElementById("themeBtn");
-        if (b) b.textContent = THEME_LABEL[t] || "Auto";
+        if (b) b.textContent = THEME_LABEL[t] || "Light";
       }
       function cycleTheme() {
-        var cur = LS.get("opd.theme", "");
+        var cur = LS.get("opd.theme", "light");
         var next =
           THEME_CYCLE[(THEME_CYCLE.indexOf(cur) + 1) % THEME_CYCLE.length];
         LS.set("opd.theme", next);
@@ -2422,7 +2422,7 @@
 
       // boot function
       (function () {
-        applyTheme(LS.get("opd.theme", ""));
+        applyTheme(LS.get("opd.theme", "light"));
         var code = urlCode() || LS.get("opd.lastroom", null);
         var sess = code ? LS.get("opd.session." + code, null) : null;
         if (sess && sess.token && (!urlCode() || urlCode() === sess.code)) {
