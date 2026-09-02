@@ -132,6 +132,10 @@ class Hub:
     def present(self, code: str) -> set[str]:
         return set(self.rooms.get(code, {}).values())
 
+    def sockets_for(self, code: str, judge_id: str) -> list[WebSocket]:
+        room = self.rooms.get(code, {})
+        return [ws for ws, jid in room.items() if jid == judge_id]
+
     async def broadcast(
         self, code: str, msg: dict, skip: Optional[WebSocket] = None
     ) -> None:
@@ -423,6 +427,9 @@ async def apply_patches(code: str, body: PatchBatch, token: str = Query(...)):
     con = db()
     try:
         me = auth(con, code, token)
+        # A hidden judge can still score — their points just stay excluded
+        # from /snapshot (see the WHERE j.hidden=0 there) until the chair
+        # reverses the removal, at which point their existing scores reappear.
         now = time.time()
         applied, stale = [], 0
         for p in body.patches:
@@ -476,6 +483,16 @@ async def set_hidden(
         )
         con.commit()
         await hub.broadcast(code, {"type": "judges", "judges": judge_list(con, code)})
+        # Tell them directly, either way, but never disconnect them — removal
+        # only excludes their points from the room's aggregate views (see the
+        # WHERE j.hidden=0 in /snapshot); it's reversible and they can keep
+        # using the app the whole time.
+        notice = {"type": "removed" if hidden else "restored"}
+        for ws in hub.sockets_for(code, judge_id):
+            try:
+                await ws.send_text(json.dumps(notice))
+            except Exception:
+                pass
         return {"ok": True}
     finally:
         con.close()

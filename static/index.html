@@ -612,12 +612,14 @@
         border-radius: 6px;
         margin-left: 6px;
       }
+      .totgrp {
+        border-bottom: 1px solid var(--line);
+      }
       .totrow {
         display: flex;
         align-items: baseline;
         gap: 8px;
         padding: 9px 0;
-        border-bottom: 1px solid var(--line);
         cursor: pointer;
       }
       .totrow .lb {
@@ -637,6 +639,41 @@
       }
       .finalTbl {
         margin-top: 8px;
+      }
+
+      .bkwrap {
+        padding: 2px 0 8px;
+      }
+      .bkjudges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+      .chip {
+        font-size: 12px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: var(--paper);
+        border: 1px solid var(--line-2);
+        color: var(--ink-2);
+        white-space: nowrap;
+      }
+      .chip b {
+        color: var(--ink);
+        font-weight: 500;
+      }
+      .bkcat {
+        margin-top: 8px;
+      }
+      .bkcat .bklbl {
+        font-size: 12px;
+        color: var(--ink-3);
+        margin-bottom: 4px;
+      }
+      .bkcat .bklbl b {
+        color: var(--ink-2);
+        font-weight: 500;
       }
     </style>
   </head>
@@ -766,11 +803,11 @@
             <div id="judges" style="margin-top: 14px"></div>
           </div>
           <div class="card">
-            <h2>Diskussion</h2>
-            <div class="sub">Redepunktzahl nach Abweichung.</div>
+            <h2>Abweichungen - Reden</h2>
             <div id="totspread"></div>
-            <hr class="sep" />
-            <div class="sub">Einzelkategorien nach Abweichung.</div>
+          </div>
+          <div class="card">
+            <h2>Abweichungen - Teampunkte</h2>
             <div id="spread"></div>
           </div>
           <div class="card">
@@ -1239,6 +1276,10 @@
             if (m.excluded) remoteExclusions[m.judge_id][m.target] = true;
             else delete remoteExclusions[m.judge_id][m.target];
             render();
+          } else if (m.type === "removed") {
+            handleRemoved();
+          } else if (m.type === "restored") {
+            handleRestored();
           }
         };
         ws.onclose = function () {
@@ -1346,6 +1387,18 @@
             body: JSON.stringify({ target: target, excluded: excluded }),
           },
         ).catch(function () {});
+      }
+
+      function handleRemoved() {
+        if (!ME) return;
+        alert(
+          "Du wurdest aus der Wertung genommen. Du kannst weiter " +
+            "bewerten, deine Punkte zählen aber vorerst nicht mit.",
+        );
+      }
+      function handleRestored() {
+        if (!ME) return;
+        alert("Du wurdest wieder in die Wertung aufgenommen.");
       }
 
       function leaveRoom() {
@@ -1527,6 +1580,16 @@
         if (cls) e.className = cls;
         if (txt !== undefined) e.textContent = txt;
         return e;
+      }
+      function judgeChips(judges) {
+        var host = el("div", "bkjudges");
+        judges.forEach(function (j) {
+          var chip = el("span", "chip");
+          chip.appendChild(document.createTextNode(j.name + " "));
+          chip.appendChild(el("b", null, String(j.v)));
+          host.appendChild(chip);
+        });
+        return host;
       }
 
       function buildPad(host, scaleMax, onPick) {
@@ -1851,24 +1914,42 @@
 
         var jh = document.getElementById("judges");
         jh.innerHTML = "";
-        activeJudges().forEach(function (id) {
+        Object.keys(peers).forEach(function (id) {
           var j = peers[id];
           var row = el("div", "jrow");
           var dot = el("span", "dot " + (j.online ? "on" : "off"));
           row.appendChild(dot);
           row.appendChild(
-            el("span", "n", j.name + (j.is_chair ? " · Chair" : "")),
+            el(
+              "span",
+              "n",
+              j.name +
+                (j.is_chair ? " · Chair" : "") +
+                (j.hidden ? " · entfernt" : ""),
+            ),
           );
           row.appendChild(el("span", "p", j.filled + " / 59"));
           if (!j.is_chair) {
-            var x = el("button", "x", "entfernen");
+            var x = el(
+              "button",
+              "x",
+              j.hidden ? "wiederherstellen" : "entfernen",
+            );
             x.addEventListener("click", function () {
+              var goingHidden = !j.hidden;
+              if (
+                goingHidden &&
+                !confirm(j.name + " wirklich aus der Wertung nehmen?")
+              )
+                return;
               fetch(
                 "/api/rooms/" +
                   ME.code +
                   "/judges/" +
                   id +
-                  "/hidden?hidden=true&token=" +
+                  "/hidden?hidden=" +
+                  goingHidden +
+                  "&token=" +
                   encodeURIComponent(ME.token),
                 { method: "POST" },
               );
@@ -1903,13 +1984,15 @@
         var cells = [];
         function scan(target, criterion, label) {
           var vals = [],
-            names = [];
+            names = [],
+            judges = [];
           ids.forEach(function (id) {
             if (!includedFor(id, target)) return;
             var v = (remote[id] || {})[kk(target, criterion)];
             if (v !== undefined) {
               vals.push(v);
               names.push(peers[id].name + " " + v);
+              judges.push({ name: peers[id].name, v: v });
             }
           });
           if (vals.length < 2) return;
@@ -1925,6 +2008,7 @@
             avg: avg,
             n: vals.length,
             detail: names.join(" · "),
+            judges: judges,
             key: target + "/" + criterion,
           });
         }
@@ -1938,7 +2022,70 @@
             scan("t" + t, c.key, labelOf("t" + t, c.key));
           });
         });
+
         cells.sort(function (a, b) {
+          return b.spread - a.spread;
+        });
+
+        // Grouped spread across a team's three point categories (Strategie,
+        // Interaktion, Überzeugungskraft). `catKeys` records which of the
+        // per-category `cells` entries above belong to this group, so tapping
+        // one can reveal exactly those — same pattern as a speech's total
+        // revealing its per-criterion breakdown.
+        function scanGroup(target, keys, label) {
+          var vals = [],
+            judges = [];
+          ids.forEach(function (id) {
+            if (!includedFor(id, target)) return;
+            var sum = 0,
+              complete = true;
+            keys.forEach(function (k) {
+              var v = (remote[id] || {})[kk(target, k)];
+              if (v === undefined) {
+                complete = false;
+                return;
+              }
+              sum += v;
+            });
+            if (!complete) return;
+            vals.push(sum);
+            judges.push({ name: peers[id].name, v: sum });
+          });
+          if (vals.length < 2) return null;
+          var avg =
+            vals.reduce(function (a, b) {
+              return a + b;
+            }, 0) / vals.length;
+          var spread = Math.max.apply(null, vals) - Math.min.apply(null, vals);
+          return {
+            label: label,
+            spread: spread,
+            avg: avg,
+            n: vals.length,
+            judges: judges,
+            key: target + "/grp-" + label,
+            catKeys: keys.map(function (k) {
+              return target + "/" + k;
+            }),
+          };
+        }
+        var TEAMGROUPS = [];
+        TEAMCATS.forEach(function (c) {
+          if (TEAMGROUPS.indexOf(c.grp) === -1) TEAMGROUPS.push(c.grp);
+        });
+        var groupCells = [];
+        TEAMS.forEach(function (tm, t) {
+          TEAMGROUPS.forEach(function (g) {
+            var keys = TEAMCATS.filter(function (c) {
+              return c.grp === g;
+            }).map(function (c) {
+              return c.key;
+            });
+            var gc = scanGroup("t" + t, keys, tm + " · " + g);
+            if (gc) groupCells.push(gc);
+          });
+        });
+        groupCells.sort(function (a, b) {
           return b.spread - a.spread;
         });
 
@@ -1946,13 +2093,15 @@
         var totals = [];
         SPEAKERS.forEach(function (sp, s) {
           var vals = [],
-            names = [];
+            names = [],
+            judges = [];
           ids.forEach(function (id) {
             if (!includedFor(id, "s" + s)) return;
             var v = remoteTotal(id, s);
             if (v !== null) {
               vals.push(v);
               names.push(peers[id].name + " " + v);
+              judges.push({ name: peers[id].name, v: v });
             }
           });
           if (vals.length < 2) return;
@@ -1968,6 +2117,7 @@
             avg: avg,
             n: vals.length,
             detail: names.join(" · "),
+            judges: judges,
             key: "s" + s,
           });
         });
@@ -1987,41 +2137,40 @@
           );
         } else {
           totals.forEach(function (c) {
+            var grp = el("div", "totgrp");
             var row = el("div", "totrow" + (c.spread >= 5 ? " hot" : ""));
             row.appendChild(el("span", "lb", c.label));
             row.appendChild(
               el("span", "sv", "ø " + c.avg.toFixed(1) + " · n " + c.n),
             );
             row.appendChild(el("span", "big", "±" + c.spread));
-            th.appendChild(row);
-            var det = el("div", "det", c.detail);
-            det.style.display = openSpread[c.key] ? "block" : "none";
-            det.style.padding = "4px 0 6px";
-            th.appendChild(det);
-            var breakdown = el("div", "det");
-            breakdown.style.display = openSpread[c.key] ? "block" : "none";
-            var lines = [];
+            grp.appendChild(row);
+            var wrap = el("div", "bkwrap");
+            wrap.style.display = openSpread[c.key] ? "block" : "none";
+            wrap.appendChild(judgeChips(c.judges));
             cells
               .filter(function (x) {
                 return x.key.indexOf(c.key + "/") === 0;
               })
               .forEach(function (x) {
-                lines.push(
-                  x.label.split(" · ").pop() +
-                    ": ø " +
-                    x.avg.toFixed(1) +
-                    " (±" +
-                    x.spread +
-                    ") — " +
-                    x.detail,
+                var cat = el("div", "bkcat");
+                cat.appendChild(
+                  el(
+                    "div",
+                    "bklbl",
+                    x.label.split(" · ").pop() +
+                      ": ø " +
+                      x.avg.toFixed(1) +
+                      " (±" +
+                      x.spread +
+                      ")",
+                  ),
                 );
+                cat.appendChild(judgeChips(x.judges));
+                wrap.appendChild(cat);
               });
-            breakdown.innerHTML = lines
-              .map(function (l) {
-                return '<div style="margin-top:2px">' + l + "</div>";
-              })
-              .join("");
-            th.appendChild(breakdown);
+            grp.appendChild(wrap);
+            th.appendChild(grp);
             row.addEventListener("click", function () {
               openSpread[c.key] = !openSpread[c.key];
               renderChair();
@@ -2029,37 +2178,64 @@
           });
         }
 
+        // Speaker criteria already have their own drill-down under each
+        // speech above (totspread); this list is just the team side — one
+        // row per team per point-category group (Strategie, Interaktion,
+        // Überzeugungskraft). Tapping one reveals the spread of its
+        // individual categories, same pattern as a speech revealing its
+        // per-criterion breakdown.
         var sh = document.getElementById("spread");
         sh.innerHTML = "";
-        if (!cells.length) {
+        if (!groupCells.length) {
           sh.appendChild(
             el(
               "p",
               "note",
-              "Sobald zwei Juroren dieselbe Kategorie bewertet haben, erscheinen hier die Abweichungen.",
+              "Sobald zwei Juroren dieselbe Team-Kategorie vollständig bewertet haben, erscheint hier die Abweichung.",
             ),
           );
         } else {
-          cells.slice(0, 40).forEach(function (c) {
-            var row = el(
-              "div",
-              "sprow" +
-                (openSpread[c.key] ? " open" : "") +
-                (c.spread >= 3 ? " hot" : ""),
-            );
-            var top = el("div", "top");
-            top.appendChild(el("span", "lb", c.label));
-            top.appendChild(
+          groupCells.forEach(function (c) {
+            var grp = el("div", "totgrp");
+            var row = el("div", "totrow" + (c.spread >= 5 ? " hot" : ""));
+            row.appendChild(el("span", "lb", c.label));
+            row.appendChild(
               el("span", "sv", "ø " + c.avg.toFixed(1) + " · n " + c.n),
             );
-            top.appendChild(el("span", "big", "±" + c.spread));
-            row.appendChild(top);
-            row.appendChild(el("div", "det", c.detail));
+            row.appendChild(el("span", "big", "±" + c.spread));
+            grp.appendChild(row);
+
+            var wrap = el("div", "bkwrap");
+            wrap.style.display = openSpread[c.key] ? "block" : "none";
+            wrap.appendChild(judgeChips(c.judges));
+            c.catKeys.forEach(function (ck) {
+              var x = cells.filter(function (x) {
+                return x.key === ck;
+              })[0];
+              if (!x) return; // that category doesn't have 2+ judges yet
+              var cat = el("div", "bkcat");
+              cat.appendChild(
+                el(
+                  "div",
+                  "bklbl",
+                  x.label.split(" · ").pop() +
+                    ": ø " +
+                    x.avg.toFixed(1) +
+                    " (±" +
+                    x.spread +
+                    ")",
+                ),
+              );
+              cat.appendChild(judgeChips(x.judges));
+              wrap.appendChild(cat);
+            });
+            grp.appendChild(wrap);
+            sh.appendChild(grp);
+
             row.addEventListener("click", function () {
               openSpread[c.key] = !openSpread[c.key];
               renderChair();
             });
-            sh.appendChild(row);
           });
         }
 
@@ -2180,9 +2356,13 @@
           );
         });
         fh.push("</table>");
-        fh.push(
-          '<p class="note">* vorläufig — noch nicht alle Reden dieses Teams bewertet.</p>',
-        );
+        var anyTeamPartial = teamRows.some(function (r) {
+          return r.partial;
+        });
+        if (anyTeamPartial)
+          fh.push(
+            '<p class="note">* vorläufig — noch nicht alle Reden dieses Teams bewertet.</p>',
+          );
         document.getElementById("finalResult").innerHTML = fh.join("");
       }
 
