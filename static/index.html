@@ -816,6 +816,8 @@
               Durchschnitt über alle einbezogenen Juror:innen.
             </div>
             <div id="finalResult"></div>
+            <button class="btn ghost" id="btnBallot">Ballot anzeigen</button>
+            <div id="ballotWrap" class="hide" style="margin-top: 12px"></div>
           </div>
         </section>
       </div>
@@ -1902,6 +1904,7 @@
 
       // Chair
       var openSpread = {};
+      var ballotOpen = false;
       function activeJudges() {
         return Object.keys(peers).filter(function (id) {
           return !peers[id].hidden;
@@ -2364,6 +2367,53 @@
             '<p class="note">* vorläufig — noch nicht alle Reden dieses Teams bewertet.</p>',
           );
         document.getElementById("finalResult").innerHTML = fh.join("");
+
+        // Ballot: one column per adjudicator (chair first), in speaking order.
+        var btnBallot = document.getElementById("btnBallot");
+        btnBallot.textContent = ballotOpen
+          ? "Ballot ausblenden"
+          : "Ballot anzeigen";
+        var ballotWrap = document.getElementById("ballotWrap");
+        ballotWrap.classList.toggle("hide", !ballotOpen);
+        if (ballotOpen) {
+          var chairFirst = ids.slice().sort(function (a, b) {
+            return (peers[b].is_chair ? 1 : 0) - (peers[a].is_chair ? 1 : 0);
+          });
+          var bTable = el("table");
+          var head = el("tr");
+          head.appendChild(el("th", "l", "Redner:in"));
+          chairFirst.forEach(function (id) {
+            head.appendChild(el("th", null, peers[id].name));
+          });
+          head.appendChild(el("th", null, "Ø"));
+          bTable.appendChild(head);
+          SPEAKERS.forEach(function (sp, s) {
+            var tr = el("tr");
+            tr.appendChild(el("td", "l", sp.label));
+            var vals = [];
+            chairFirst.forEach(function (id) {
+              var v = remoteTotal(id, s);
+              tr.appendChild(el("td", null, v === null ? "·" : String(v)));
+              if (includedFor(id, "s" + s) && v !== null) vals.push(v);
+            });
+            var avg = vals.length
+              ? Math.round(
+                  (vals.reduce(function (a, b) {
+                    return a + b;
+                  }, 0) /
+                    vals.length) *
+                    100,
+                ) / 100
+              : null;
+            tr.appendChild(el("td", "tot", avg === null ? "·" : String(avg)));
+            bTable.appendChild(tr);
+          });
+          var scrollHost = el("div");
+          scrollHost.style.overflowX = "auto";
+          scrollHost.appendChild(bTable);
+          ballotWrap.innerHTML = "";
+          ballotWrap.appendChild(scrollHost);
+        }
       }
 
       function render() {
@@ -2625,6 +2675,12 @@
           setExclusion("t" + ct, !myExclusions["t" + ct]);
         });
       document.getElementById("leaveBtn").addEventListener("click", leaveRoom);
+      document
+        .getElementById("btnBallot")
+        .addEventListener("click", function () {
+          ballotOpen = !ballotOpen;
+          render();
+        });
       document.getElementById("themeBtn").addEventListener("click", cycleTheme);
       document.getElementById("undoBtn").addEventListener("click", function () {
         var h = hist.pop();
