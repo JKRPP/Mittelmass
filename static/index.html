@@ -1429,7 +1429,7 @@
         cc = 0;
         ct = 0;
         ctc = 0;
-        view = "sheet";
+        showView("sheet");
         if (history.replaceState) history.replaceState({}, "", "/");
         showLobby();
       }
@@ -2408,6 +2408,28 @@
             tr.appendChild(el("td", "tot", avg === null ? "·" : String(avg)));
             bTable.appendChild(tr);
           });
+          TEAMS.forEach(function (tm, t) {
+            var tr = el("tr");
+            var teamAbbr = tm.replace("Regierung", "Reg").replace("Opposition", "Opp");
+            tr.appendChild(el("td", "l tot", "Teampunkte " + teamAbbr));
+            var vals = [];
+            chairFirst.forEach(function (id) {
+              var v = remoteTeamTotal(id, t);
+              tr.appendChild(el("td", "tot", String(v)));
+              if (includedFor(id, "t" + t)) vals.push(v);
+            });
+            var avg = vals.length
+              ? Math.round(
+                  (vals.reduce(function (a, b) {
+                    return a + b;
+                  }, 0) /
+                    vals.length) *
+                    100,
+                ) / 100
+              : null;
+            tr.appendChild(el("td", "tot", avg === null ? "·" : String(avg)));
+            bTable.appendChild(tr);
+          });
           var scrollHost = el("div");
           scrollHost.style.overflowX = "auto";
           scrollHost.appendChild(bTable);
@@ -2567,18 +2589,24 @@
         }
       });
 
+      function showView(v) {
+        view = v;
+        [].forEach.call(
+          document.querySelectorAll("#tabs button[data-t]"),
+          function (x) {
+            x.setAttribute("aria-pressed", String(x.dataset.t === view));
+          },
+        );
+        ["sheet", "team", "matrix", "chair"].forEach(function (vv) {
+          document
+            .getElementById("v-" + vv)
+            .classList.toggle("hide", vv !== view);
+        });
+      }
       document.getElementById("tabs").addEventListener("click", function (e) {
         var b = e.target.closest("button[data-t]");
         if (!b) return;
-        view = b.dataset.t;
-        [].forEach.call(this.querySelectorAll("button"), function (x) {
-          x.setAttribute("aria-pressed", String(x.dataset.t === view));
-        });
-        ["sheet", "team", "matrix", "chair"].forEach(function (v) {
-          document
-            .getElementById("v-" + v)
-            .classList.toggle("hide", v !== view);
-        });
+        showView(b.dataset.t);
         render();
       });
       document.getElementById("prev").addEventListener("click", function () {
