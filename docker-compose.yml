@@ -1,0 +1,11 @@
+services:
+  opd:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - opd_data:/data
+    restart: unless-stopped
+
+volumes:
+  opd_data:
