@@ -527,7 +527,7 @@
         font-weight: 500;
       }
       .hide {
-        display: none;
+        display: none !important;
       }
       button:focus-visible,
       .crit:focus-visible,
