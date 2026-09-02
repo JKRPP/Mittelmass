@@ -1,0 +1,12 @@
+# Temp / local folders
+
+.venv/
+__pycache__/
+
+# Local sandbox file
+
+theme-picker.html
+
+# Database
+
+*.sqlite3
