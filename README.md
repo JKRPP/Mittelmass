@@ -114,12 +114,5 @@ full range, with the grade label recomputed from the number.
 
 - **Round setup is manual.** No draw, no speaker assignment, no cross-room tab.
   Importing from tab software is the obvious later step.
-- **Notes are not implemented.** The paper sheet has Notizen fields next to both
-  Abzüge blocks. Typing notes on a phone during a speech is impractical, so this
-  needs a deliberate decision rather than a text box.
-- **Undo writes 0 rather than deleting.** There is no delete in the patch API, so
-  clearing a cell sets it to 0 on the server while removing it locally. Add a
-  tombstone if this matters.
-- **SQLite calls run inline in async handlers.** Fine for tens of concurrent
-  users; move to a threadpool or Postgres before it is hundreds.
-- **No rate limiting.** Add some before exposing it to the open internet.
+- **SQLite calls run inline in async handlers.** Could become an issue if the
+  app is too widely used.
