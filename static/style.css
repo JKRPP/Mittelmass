@@ -123,6 +123,31 @@ body {
   font-weight: 500;
   letter-spacing: -0.01em;
 }
+#v-sheet .card,
+#v-team .card {
+  border-top: 3px solid transparent;
+}
+#v-sheet .card.team-gov,
+#v-team .card.team-gov {
+  border-top-color: #2f8f3c;
+}
+#v-sheet .card.team-opp,
+#v-team .card.team-opp {
+  border-top-color: #c23b3b;
+}
+#v-sheet .card.team-free,
+#v-team .card.team-free {
+  border-top-color: #c99a1e;
+}
+.team-gov .hd h1 {
+  color: #2f8f3c;
+}
+.team-opp .hd h1 {
+  color: #c23b3b;
+}
+.team-free .hd h1 {
+  color: #c99a1e;
+}
 .navbtn {
   border: 1px solid var(--line-2);
   background: transparent;
