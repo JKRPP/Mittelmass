@@ -19,11 +19,19 @@ import os
 import secrets
 import sqlite3
 import time
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -141,6 +149,54 @@ class Hub:
 
 
 hub = Hub()
+
+
+# Rate limiting
+
+
+class SlidingWindowLimiter:
+    def __init__(self, max_hits: int, window_seconds: float) -> None:
+        self.max_hits = max_hits
+        self.window = window_seconds
+        self.hits: dict[str, deque[float]] = defaultdict(deque)
+
+    def allow(self, key: str) -> bool:
+        now = time.time()
+        q = self.hits[key]
+        while q and now - q[0] > self.window:
+            q.popleft()
+        if len(q) >= self.max_hits:
+            return False
+        q.append(now)
+        return True
+
+
+# Limit users that send more than 300 requests a minute
+api_limiter = SlidingWindowLimiter(max_hits=300, window_seconds=60)
+# Limit users that try to create more than 10 rooms a minute
+room_create_limiter = SlidingWindowLimiter(max_hits=10, window_seconds=600)
+
+
+def client_key(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+@app.middleware("http")
+async def rate_limit(request: Request, call_next):
+    path = request.url.path
+    if path.startswith("/api/"):
+        key = client_key(request)
+        if path == "/api/rooms" and request.method == "POST":
+            if not room_create_limiter.allow(key):
+                return JSONResponse(
+                    {"detail": "too many rooms created, slow down"}, status_code=429
+                )
+        if not api_limiter.allow(key):
+            return JSONResponse({"detail": "too many requests"}, status_code=429)
+    return await call_next(request)
 
 
 # Helper functions
