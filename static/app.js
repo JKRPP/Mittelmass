@@ -560,8 +560,7 @@ function handleRestored() {
   alert("Du wurdest wieder in die Wertung aufgenommen.");
 }
 
-function leaveRoom() {
-  if (!ME) return;
+function resetRoomState() {
   if (ws) {
     try {
       ws.close();
@@ -587,7 +586,13 @@ function leaveRoom() {
   ct = 0;
   ctc = 0;
   showView("sheet");
-  if (history.replaceState) history.replaceState({}, "", "/");
+}
+function leaveRoom() {
+  if (!ME) return;
+  resetRoomState();
+  // Pushed (not replaced): a stray tap on "Verlassen" is recoverable with
+  // the browser's back button, since opd.session.<code> is kept around.
+  if (history.pushState) history.pushState({ left: true }, "", "/");
   showLobby();
 }
 
@@ -1630,7 +1635,8 @@ function startSession(s) {
   document.getElementById("main").classList.remove("hide");
   document.getElementById("tabs").classList.remove("hide");
   document.getElementById("tabChair").classList.toggle("hide", !ME.is_chair);
-  if (history.replaceState) history.replaceState({}, "", "/r/" + ME.code);
+  if (history.replaceState)
+    history.replaceState({ room: ME.code }, "", "/r/" + ME.code);
   connect();
   acquireWakeLock();
   render();
@@ -1832,6 +1838,25 @@ document.getElementById("texclBtn").addEventListener("click", function () {
   setExclusion("t" + ct, !myExclusions["t" + ct]);
 });
 document.getElementById("leaveBtn").addEventListener("click", leaveRoom);
+window.addEventListener("popstate", function () {
+  var code = urlCode();
+  if (code && !ME) {
+    // Back-navigated from the post-leave "/" entry to the room's URL:
+    // rejoin using the session kept in localStorage.
+    var sess = LS.get("opd.session." + code, null);
+    if (sess && sess.token) {
+      startSession(sess);
+      resync();
+      return;
+    }
+  }
+  if (!code && ME) {
+    // Forward-navigated back to the post-leave "/" entry: mirror leaveRoom
+    // without touching history again (the URL already matches).
+    resetRoomState();
+    showLobby();
+  }
+});
 document.getElementById("btnBallot").addEventListener("click", function () {
   ballotOpen = !ballotOpen;
   render();
