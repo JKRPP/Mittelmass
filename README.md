@@ -102,10 +102,10 @@ rubric key (`spr`, `zfrag`, …) or `abz` for deductions. The chair view is a
 
 ## Rubric
 
-Everything format-specific is in `RUBRIC`-style constants at the top of the
-`<script>` in `static/index.html`: speakers, criteria, team categories, the
-Notenskala, and the Umrechnungstabelle from Jurierbogen V15.1. A rubric revision
-is an edit to those constants.
+Everything format-specific is in `RUBRIC`-style constants at the top of
+`static/app.js`: speakers, criteria, team categories, the Notenskala, and the
+Umrechnungstabelle from Jurierbogen V15.1. A rubric revision is an edit to
+those constants.
 
 Points are stored; grades are derived. Team categories accept any value in their
 full range, with the grade label recomputed from the number.
