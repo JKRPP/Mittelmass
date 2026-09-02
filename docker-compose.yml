@@ -2,7 +2,7 @@ services:
   opd:
     build: .
     ports:
-      - "8000:8000"
+      - "${OPD_PORT:-8000}:8000"
     volumes:
       - opd_data:/data
     restart: unless-stopped
