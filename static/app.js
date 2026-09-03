@@ -2495,7 +2495,7 @@ function schnellSpeakerTable() {
   var head = el("tr");
   head.appendChild(el("th", "l", "Rede"));
   CRITERIA.forEach(function (c) {
-    head.appendChild(el("th", null, c.short));
+    head.appendChild(el("th", null, c.label));
   });
   head.appendChild(el("th", null, "Σ"));
   head.appendChild(el("th", null, "Ab"));
