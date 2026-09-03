@@ -12,36 +12,56 @@
   --warn: #8a4a1a;
   --warn-bg: #f6ebe1;
   --radius: 0px;
+  --team-gov: #2f8f3c;
+  --team-opp: #c23b3b;
+  --team-free: #c99a1e;
+  /* Raw dark-palette values, defined once — both the "system preference"
+     block below (@media, only when data-theme isn't explicitly "light")
+     and the "explicit dark toggle" block reference these instead of
+     repeating the hex values, so the two can't drift out of sync. */
+  --dark-ink: #eceae6;
+  --dark-ink-2: #a4a8b0;
+  --dark-ink-3: #71757d;
+  --dark-paper: #141518;
+  --dark-card: #1c1e22;
+  --dark-line: #2e3138;
+  --dark-line-2: #41454d;
+  --dark-live: #96cb7e;
+  --dark-live-bg: #1a3216;
+  --dark-live-line: #2f6a60;
+  --dark-warn: #d8a273;
+  --dark-warn-bg: #33251a;
 }
+
 :root:not([data-theme="light"]) {
   @media (prefers-color-scheme: dark) {
-    --ink: #eceae6;
-    --ink-2: #a4a8b0;
-    --ink-3: #71757d;
-    --paper: #141518;
-    --card: #1c1e22;
-    --line: #2e3138;
-    --line-2: #41454d;
-    --live: #96cb7e;
-    --live-bg: #1a3216;
-    --live-line: #2f6a60;
-    --warn: #d8a273;
-    --warn-bg: #33251a;
+    --ink: var(--dark-ink);
+    --ink-2: var(--dark-ink-2);
+    --ink-3: var(--dark-ink-3);
+    --paper: var(--dark-paper);
+    --card: var(--dark-card);
+    --line: var(--dark-line);
+    --line-2: var(--dark-line-2);
+    --live: var(--dark-live);
+    --live-bg: var(--dark-live-bg);
+    --live-line: var(--dark-live-line);
+    --warn: var(--dark-warn);
+    --warn-bg: var(--dark-warn-bg);
   }
 }
 :root[data-theme="dark"] {
-  --ink: #eceae6;
-  --ink-2: #a4a8b0;
-  --ink-3: #71757d;
-  --paper: #141518;
-  --card: #1c1e22;
-  --line: #2e3138;
-  --line-2: #41454d;
-  --live: #96cb7e;
-  --live-bg: #1a3216;
-  --live-line: #2f6a60;
-  --warn: #d8a273;
-  --warn-bg: #33251a;
+  --ink: var(--dark-ink);
+  --ink-2: var(--dark-ink-2);
+  --ink-3: var(--dark-ink-3);
+  --paper: var(--dark-paper);
+  --card: var(--dark-card);
+  --line: var(--dark-line);
+  --line-2: var(--dark-line-2);
+  --live: var(--dark-live);
+  --live-bg: var(--dark-live-bg);
+  --live-line: var(--dark-live-line);
+  --warn: var(--dark-warn);
+  --warn-bg: var(--dark-warn-bg);
 }
 * {
   box-sizing: border-box;
@@ -207,24 +227,24 @@ body {
 }
 #v-sheet .card.team-gov,
 #v-team .card.team-gov {
-  border-top-color: #2f8f3c;
+  border-top-color: var(--team-gov);
 }
 #v-sheet .card.team-opp,
 #v-team .card.team-opp {
-  border-top-color: #c23b3b;
+  border-top-color: var(--team-opp);
 }
 #v-sheet .card.team-free,
 #v-team .card.team-free {
-  border-top-color: #c99a1e;
+  border-top-color: var(--team-free);
 }
 .team-gov .hd h1 {
-  color: #2f8f3c;
+  color: var(--team-gov);
 }
 .team-opp .hd h1 {
-  color: #c23b3b;
+  color: var(--team-opp);
 }
 .team-free .hd h1 {
-  color: #c99a1e;
+  color: var(--team-free);
 }
 .navbtn {
   border: 1px solid var(--line-2);
@@ -926,13 +946,13 @@ body {
   flex: 3;
 }
 .dashpanel.team-gov {
-  border-top: 3px solid #2f8f3c;
+  border-top: 3px solid var(--team-gov);
 }
 .dashpanel.team-opp {
-  border-top: 3px solid #c23b3b;
+  border-top: 3px solid var(--team-opp);
 }
 .dashpanel.team-free {
-  border-top: 3px solid #c99a1e;
+  border-top: 3px solid var(--team-free);
 }
 .dashpanelhead {
   flex: 0 0 auto;
@@ -977,13 +997,13 @@ body {
   cursor: pointer;
 }
 .dashspk.team-gov {
-  border-left-color: #2f8f3c;
+  border-left-color: var(--team-gov);
 }
 .dashspk.team-opp {
-  border-left-color: #c23b3b;
+  border-left-color: var(--team-opp);
 }
 .dashspk.team-free {
-  border-left-color: #c99a1e;
+  border-left-color: var(--team-free);
 }
 .dashspk .lb {
   flex: 1;
@@ -1184,15 +1204,15 @@ body {
 }
 #v-schnell td.team-gov,
 #v-schnell th.team-gov {
-  border-left: 3px solid #2f8f3c;
+  border-left: 3px solid var(--team-gov);
 }
 #v-schnell td.team-opp,
 #v-schnell th.team-opp {
-  border-left: 3px solid #c23b3b;
+  border-left: 3px solid var(--team-opp);
 }
 #v-schnell td.team-free,
 #v-schnell th.team-free {
-  border-left: 3px solid #c99a1e;
+  border-left: 3px solid var(--team-free);
 }
 
 /* Adjudikationsblatt (Blatt) */
@@ -1217,13 +1237,13 @@ body {
   background: var(--card);
 }
 .blatthead.team-gov {
-  border-bottom-color: #2f8f3c;
+  border-bottom-color: var(--team-gov);
 }
 .blatthead.team-opp {
-  border-bottom-color: #c23b3b;
+  border-bottom-color: var(--team-opp);
 }
 .blatthead.team-free {
-  border-bottom-color: #c99a1e;
+  border-bottom-color: var(--team-free);
 }
 .blattheadmid {
   flex: 1;
@@ -1235,13 +1255,13 @@ body {
   font-weight: 500;
 }
 .blatthead.team-gov .blatttitle {
-  color: #2f8f3c;
+  color: var(--team-gov);
 }
 .blatthead.team-opp .blatttitle {
-  color: #c23b3b;
+  color: var(--team-opp);
 }
 .blatthead.team-free .blatttitle {
-  color: #c99a1e;
+  color: var(--team-free);
 }
 .blattstat {
   display: flex;
@@ -1398,10 +1418,10 @@ body {
   border-bottom: 3px solid var(--line-2);
 }
 .teampointssec.team-gov .teampointssechead {
-  border-bottom-color: #2f8f3c;
+  border-bottom-color: var(--team-gov);
 }
 .teampointssec.team-opp .teampointssechead {
-  border-bottom-color: #c23b3b;
+  border-bottom-color: var(--team-opp);
 }
 .teampointssecname {
   font-size: 14px;
@@ -1426,10 +1446,10 @@ body {
   font-weight: 500;
 }
 .teampointssec.team-gov .teampointssecname {
-  color: #2f8f3c;
+  color: var(--team-gov);
 }
 .teampointssec.team-opp .teampointssecname {
-  color: #c23b3b;
+  color: var(--team-opp);
 }
 .teampointsbody {
   flex: 1;

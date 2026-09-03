@@ -899,8 +899,8 @@ function renderSheet() {
   document.getElementById("spkName").textContent = SPEAKERS[cs].label;
   setTeamAccent(document.querySelector("#v-sheet .card"), teamOf(cs));
   var z = zwischensumme(cs);
-  //document.getElementById("spkSub").textContent =
-  //  "Rede "+(cs+1)+" von "+NS+(z!==null ? "  ·  Zwischensumme "+z : "");
+  document.getElementById("spkSub").textContent =
+    "Rede " + (cs + 1) + " von " + NS + (z !== null ? " · Zwischensumme " + z : "");
   document.getElementById("prev").disabled = cs === 0;
   document.getElementById("next").disabled = cs === NS - 1;
 

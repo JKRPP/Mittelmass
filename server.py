@@ -1,17 +1,5 @@
 """
-OPD Jurierbogen — sync backend.
-
-Design notes that matter:
-
-* Scores are written over plain HTTP POST, not over the websocket. A POST with
-  retry survives a dead socket; a socket send does not. The websocket is used
-  only to *receive* other people's changes.
-* /snapshot is the recovery primitive. A client that has been away — backgrounded,
-  offline, asleep — never tries to replay missed messages. It refetches the whole
-  room. At this data size that is a few kilobytes and it cannot drift.
-* Every judge owns their own cells, so last-write-wins per (judge, target,
-  criterion) is correct. `seq` is a per-judge counter that lets the server drop
-  patches that arrive out of order after a reconnect.
+Mittelmaß sync backend
 """
 
 import json
@@ -116,7 +104,9 @@ async def lifespan(app: FastAPI):
     con = db()
     con.executescript(SCHEMA)
     try:
-        con.execute("ALTER TABLE rooms ADD COLUMN spread_open INTEGER NOT NULL DEFAULT 0")
+        con.execute(
+            "ALTER TABLE rooms ADD COLUMN spread_open INTEGER NOT NULL DEFAULT 0"
+        )
     except sqlite3.OperationalError:
         pass  # already there
     con.commit()
@@ -582,9 +572,7 @@ async def set_exclusion(code: str, body: ExclusionSet, token: str = Query(...)):
 
 
 @app.post("/api/rooms/{code}/spread_open")
-async def set_spread_open(
-    code: str, open: bool = Query(...), token: str = Query(...)
-):
+async def set_spread_open(code: str, open: bool = Query(...), token: str = Query(...)):
     code = code.upper()
     con = db()
     try:
