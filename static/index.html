@@ -175,12 +175,45 @@
           <div class="bar">
             <span class="dot" id="cdot"></span>
             <span id="cstate">verbinde …</span>
+            <div class="dashnav hide" id="dashNav">
+              <button
+                data-dv="sheet"
+                aria-pressed="false"
+                class="hide"
+                tabindex="-1"
+              >
+                Reden
+              </button>
+              <button
+                data-dv="team"
+                aria-pressed="false"
+                class="hide"
+                tabindex="-1"
+              >
+                Team
+              </button>
+
+              <button data-dv="blatt" aria-pressed="false" tabindex="-1">
+                Einzelreden
+              </button>
+              <button data-dv="teampoints" aria-pressed="false" tabindex="-1">
+                Teampunkte
+              </button>
+              <button data-dv="schnell" aria-pressed="false" tabindex="-1">
+                Komplette Wertung
+              </button>
+              <button data-dv="dashboard" aria-pressed="true" tabindex="-1">
+                Dashboard
+              </button>
+            </div>
             <span class="sp"></span>
+            <div class="dashjury hide" id="dashJury"></div>
             <button
               class="menubtn"
               id="menuBtn"
               aria-label="Menü"
               aria-expanded="false"
+              tabindex="-1"
             >
               &#8942;
             </button>
@@ -300,6 +333,11 @@
             </button>
           </nav>
         </div>
+
+        <div id="v-dashboard" class="hide"></div>
+        <div id="v-schnell" class="hide"></div>
+        <div id="v-blatt" class="hide"></div>
+        <div id="v-teampoints" class="hide"></div>
       </div>
     </div>
 

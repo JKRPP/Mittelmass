@@ -764,3 +764,704 @@ input:focus-visible {
   color: var(--ink-2);
   font-weight: 500;
 }
+
+/* Desktop chair dashboard */
+html,
+body {
+  height: 100%;
+}
+#app.dashboard-mode {
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+#app.dashboard-mode #main:not(.hide) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+/* The mobile top bar (connection dot/state + ⋮ menu) stays visible and
+   carries the desktop nav + room/judges info too — one bar, not two. */
+#app.dashboard-mode .bar {
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--line);
+}
+/* A subview (Reden/Team/Übersicht) re-centers the existing mobile page —
+   reused as-is — instead of stretching it full width. */
+#app.dashboard-mode.dashboard-subview #v-sheet,
+#app.dashboard-mode.dashboard-subview #v-team,
+#app.dashboard-mode.dashboard-subview #v-matrix,
+#app.dashboard-mode.dashboard-subview .dock {
+  max-width: 440px;
+  margin: 0 auto;
+}
+#v-dashboard.hide {
+  display: none;
+}
+#v-dashboard {
+  background: var(--paper);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.dashnav {
+  display: flex;
+  gap: 4px;
+  margin-left: 10px;
+}
+.dashnav button {
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.dashnav button[aria-pressed="true"] {
+  color: var(--live);
+  background: var(--live-bg);
+  border-color: var(--live-line);
+  font-weight: 500;
+}
+.dashroom {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink-3);
+  margin-right: 2px;
+  flex: 0 0 auto;
+}
+.dashjury {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 40vw;
+  gap: 8px;
+}
+.dashjurychips {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  min-width: 0;
+  gap: 8px;
+}
+.dashjchip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.dashjchip.off {
+  opacity: 0.6;
+}
+.dashjbtn {
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  margin-left: 4px;
+}
+.dashjbtn.on {
+  color: var(--live);
+  font-weight: 500;
+}
+
+.dashbody {
+  flex: 1;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 20px;
+  padding: 20px 24px;
+  min-height: 0;
+  overflow: hidden;
+}
+.dashcol {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+.dashcol-a {
+  flex: 0 1 280px;
+  min-width: 220px;
+}
+.dashcol-b {
+  flex: 0 1 420px;
+  min-width: 340px;
+}
+.dashcol-c {
+  flex: 1 1 420px;
+  min-width: 320px;
+}
+.dashpanel {
+  background: var(--card);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.dashpanel-grow {
+  flex: 1;
+}
+.dashpanel-grow2 {
+  flex: 2;
+}
+.dashpanel-grow3 {
+  flex: 3;
+}
+.dashpanel.team-gov {
+  border-top: 3px solid #2f8f3c;
+}
+.dashpanel.team-opp {
+  border-top: 3px solid #c23b3b;
+}
+.dashpanel.team-free {
+  border-top: 3px solid #c99a1e;
+}
+.dashpanelhead {
+  flex: 0 0 auto;
+  padding: 8px 14px 6px;
+  border-bottom: 1px solid var(--line);
+}
+.dashpanelhead h2 {
+  margin: 0;
+}
+.dashpanelbody {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 8px;
+}
+.dashpanelbody-table {
+  padding: 4px 14px 12px;
+}
+.dashpanelbody-table table {
+  width: 100%;
+}
+.schnelltable-speaker th:not(.l):not(.schnellspacer) {
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+.schnelltable-speaker .schnellspacer {
+  width: 20%;
+}
+
+.dashgrp {
+  font-size: 10px;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 8px 8px 3px;
+}
+.dashspk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+}
+.dashspk.team-gov {
+  border-left-color: #2f8f3c;
+}
+.dashspk.team-opp {
+  border-left-color: #c23b3b;
+}
+.dashspk.team-free {
+  border-left-color: #c99a1e;
+}
+.dashspk .lb {
+  flex: 1;
+  font-size: 13px;
+}
+.dashspk .vl {
+  font-size: 13px;
+  font-weight: 500;
+}
+.dashspk.sel {
+  background: var(--live-bg);
+}
+.dashspk.sel .lb,
+.dashspk.sel .vl {
+  color: var(--live);
+  font-weight: 500;
+}
+
+.dashbadge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--live-bg);
+  color: var(--live);
+}
+.dashbadge.hot {
+  background: var(--warn);
+  color: #fff;
+}
+.dashrow .dashbadge {
+  background: none;
+  padding: 0;
+  width: 26px;
+  text-align: right;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+.dashrow .dashbadge.hot {
+  color: var(--warn);
+}
+
+.dashrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--line);
+  border-left: 3px solid transparent;
+  cursor: pointer;
+}
+.dashrow.hot {
+  background: var(--warn-bg);
+}
+.dashrow.sel {
+  border-left-color: var(--live);
+}
+.dashrowlbl {
+  flex: 1;
+  min-width: 0;
+}
+.dashrowmain {
+  font-size: 13px;
+  color: var(--ink);
+}
+.dashrowsub {
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-top: 1px;
+}
+.dashchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 0 0 auto;
+  max-width: 50%;
+  justify-content: flex-end;
+}
+
+#v-dashboard tr.hot td {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+#v-dashboard tr.hot td.l {
+  font-weight: 500;
+}
+
+#v-dashboard .ballottable tr:hover td {
+  background: color-mix(in srgb, var(--ink) 8%, var(--card));
+}
+#v-dashboard .ballottable tr.hot:hover td {
+  background: color-mix(in srgb, var(--ink) 10%, var(--warn-bg));
+}
+.ballottable td.spreadhot {
+  color: var(--warn);
+  font-weight: 500;
+}
+.ballottable tr.tsep td {
+  padding: 0;
+  border: 0;
+  border-top: 2px solid var(--line-2);
+}
+.ballottable tr.tsep:hover td {
+  background: none;
+}
+.ballottable tr.grandtot td {
+  font-weight: 700;
+}
+.ballottable tr.rowbest td {
+  background: var(--live-bg);
+}
+#v-dashboard .ballottable tr.rowbest:hover td {
+  background: color-mix(in srgb, var(--ink) 10%, var(--live-bg));
+}
+
+/* Schnelleingabe */
+#v-schnell {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: auto;
+  padding: 14px 28px;
+  background: var(--paper);
+}
+#v-schnell.hide {
+  display: none;
+}
+#v-schnell > .dashcol {
+  max-width: 1100px;
+  margin: 0 auto;
+  gap: 14px;
+}
+.schnelltable th {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-3);
+  padding: 8px 4px;
+}
+.schnelltable td {
+  padding: 4px 2px;
+}
+.schnelltable td.l {
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+.schnellinput {
+  width: 100%;
+  text-align: center;
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 6px;
+  border: 1px solid var(--line-2);
+  background: var(--card);
+  color: var(--ink);
+}
+.schnellinput::-webkit-inner-spin-button,
+.schnellinput::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.schnellinput {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.schnellgrp {
+  padding: 8px 10px 4px;
+  font-size: 10px;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: left;
+  border-top: 1px solid var(--line);
+}
+.schnellsub {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--ink-3);
+  padding: 2px 4px 8px;
+}
+.schnellgstart {
+  border-left: 1px solid var(--line-2);
+}
+.schnellab {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: inherit;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.schnellab:hover {
+  color: var(--live);
+}
+.schnellab.on {
+  color: var(--warn);
+  font-weight: 500;
+}
+#v-schnell td.team-gov,
+#v-schnell th.team-gov {
+  border-left: 3px solid #2f8f3c;
+}
+#v-schnell td.team-opp,
+#v-schnell th.team-opp {
+  border-left: 3px solid #c23b3b;
+}
+#v-schnell td.team-free,
+#v-schnell th.team-free {
+  border-left: 3px solid #c99a1e;
+}
+
+/* Adjudikationsblatt (Blatt) */
+#v-blatt {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+}
+#v-blatt.hide {
+  display: none;
+}
+.blatthead {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 28px 12px;
+  border-bottom: 3px solid var(--line-2);
+  background: var(--card);
+}
+.blatthead.team-gov {
+  border-bottom-color: #2f8f3c;
+}
+.blatthead.team-opp {
+  border-bottom-color: #c23b3b;
+}
+.blatthead.team-free {
+  border-bottom-color: #c99a1e;
+}
+.blattheadmid {
+  flex: 1;
+  min-width: 0;
+}
+.blatttitle {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 500;
+}
+.blatthead.team-gov .blatttitle {
+  color: #2f8f3c;
+}
+.blatthead.team-opp .blatttitle {
+  color: #c23b3b;
+}
+.blatthead.team-free .blatttitle {
+  color: #c99a1e;
+}
+.blattstat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.blatttotwrap {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.blatttotlbl {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.blatttotval {
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.blattbody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+.blattcol {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--line);
+  background: var(--card);
+}
+.blattcol:last-child {
+  border-right: 0;
+}
+.blattcol-wide {
+  flex: 2;
+}
+.blattscores {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 14px;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.blattscore {
+  flex: 1;
+  min-width: 0;
+}
+.blattlbl {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-bottom: 8px;
+}
+.blattinput {
+  width: 100%;
+  font-size: 26px;
+  font-weight: 500;
+  padding: 8px 4px;
+}
+.blatthintrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.blatthint {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--ink-3);
+  text-align: center;
+}
+.blattnudge {
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  text-decoration: underline;
+}
+.blattnudge:hover {
+  color: var(--live);
+}
+.blattnudge:disabled {
+  opacity: 0.35;
+  cursor: default;
+  text-decoration: none;
+}
+.blattnotes {
+  flex: 1;
+  min-height: 0;
+  border: 0;
+  resize: none;
+  padding: 14px 18px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  background: transparent;
+  outline: none;
+}
+#v-blatt .dedu {
+  flex: 0 0 auto;
+  padding: 10px 28px;
+  border-top: 1px solid var(--line);
+  background: var(--card);
+}
+#v-blatt.excluded .blattbody {
+  opacity: 0.55;
+}
+
+/* Teampunkte-Blatt (team-first team points entry) */
+#v-teampoints {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+}
+#v-teampoints.hide {
+  display: none;
+}
+.teampointswrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--line);
+  padding: 2px;
+}
+.teampointssec {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--card);
+}
+.teampointssechead {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 6px 24px 5px;
+  border-bottom: 3px solid var(--line-2);
+}
+.teampointssec.team-gov .teampointssechead {
+  border-bottom-color: #2f8f3c;
+}
+.teampointssec.team-opp .teampointssechead {
+  border-bottom-color: #c23b3b;
+}
+.teampointssecname {
+  font-size: 14px;
+  font-weight: 500;
+}
+.teampointssecright {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+.teampointstotwrap {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.teampointstotlbl {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.teampointstotval {
+  font-size: 16px;
+  font-weight: 500;
+}
+.teampointssec.team-gov .teampointssecname {
+  color: #2f8f3c;
+}
+.teampointssec.team-opp .teampointssecname {
+  color: #c23b3b;
+}
+.teampointsbody {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.teampointsbody .teampointscol-1 {
+  flex: 1;
+}
+.teampointsbody .teampointscol-3 {
+  flex: 3;
+}
+.teampointssec.excluded .teampointsbody {
+  opacity: 0.55;
+}
+.teampointscatrow {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.teampointscatblock {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+}
+.teampointscatblock:last-child {
+  border-right: 0;
+}
+.teampointscatscore {
+  flex: 0 0 auto;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid var(--line);
+}
