@@ -63,7 +63,30 @@ body {
 .wrap {
   max-width: 440px;
   margin: 0 auto;
+}
+#v-lobby {
   padding: 10px 12px 14px;
+  box-sizing: border-box;
+}
+#main.hide {
+  display: none;
+}
+.viewport {
+  padding: 10px 12px 14px;
+  box-sizing: border-box;
+}
+.dock {
+  background: var(--paper);
+  box-sizing: border-box;
+}
+.dock.hide {
+  display: none;
+}
+.dockpad {
+  padding: 0 12px;
+}
+.dockpad.hide {
+  display: none;
 }
 .card {
   background: var(--card);
@@ -535,13 +558,9 @@ p.note {
   margin: 12px 0 0;
 }
 .tabs {
-  position: sticky;
-  bottom: 0;
   background: var(--paper);
   border-top: 1px solid var(--line);
   display: flex;
-  max-width: 440px;
-  margin: 0 auto;
   padding: 4px 8px calc(4px + env(safe-area-inset-bottom));
 }
 .tabs button {

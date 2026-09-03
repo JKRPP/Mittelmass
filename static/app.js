@@ -1622,7 +1622,7 @@ function showLobby() {
   var code = urlCode();
   document.getElementById("v-lobby").classList.remove("hide");
   document.getElementById("main").classList.add("hide");
-  document.getElementById("tabs").classList.add("hide");
+  document.getElementById("dock").classList.add("hide");
   if (code) {
     document.getElementById("lobbyCode").textContent = code;
     document.getElementById("lobbyJoin").classList.remove("hide");
@@ -1651,7 +1651,7 @@ function startSession(s) {
   Object.assign(remote[ME.judge_id], mine);
   document.getElementById("v-lobby").classList.add("hide");
   document.getElementById("main").classList.remove("hide");
-  document.getElementById("tabs").classList.remove("hide");
+  document.getElementById("dock").classList.remove("hide");
   updateChairTab();
   if (history.replaceState)
     history.replaceState({ room: ME.code }, "", "/r/" + ME.code);
@@ -1774,6 +1774,12 @@ function showView(v) {
   ["sheet", "team", "matrix", "chair"].forEach(function (vv) {
     document.getElementById("v-" + vv).classList.toggle("hide", vv !== view);
   });
+  document
+    .getElementById("dockSheet")
+    .classList.toggle("hide", view !== "sheet");
+  document
+    .getElementById("dockTeam")
+    .classList.toggle("hide", view !== "team");
 }
 document.getElementById("tabs").addEventListener("click", function (e) {
   var b = e.target.closest("button[data-t]");
