@@ -192,6 +192,7 @@
             </div>
             <div class="exclrow">
               <button class="exclbtn" id="exclBtn"></button>
+              <button class="undo hide" id="undoBtn">Rückgängig</button>
             </div>
           </div>
         </section>
@@ -210,6 +211,7 @@
             </div>
             <div class="exclrow">
               <button class="exclbtn" id="texclBtn"></button>
+              <button class="undo hide" id="tundoBtn">Rückgängig</button>
             </div>
           </div>
         </section>
@@ -256,15 +258,10 @@
         <div class="dockpad" id="dockSheet">
           <hr class="sep" />
           <div id="padHost"></div>
-          <div class="foot">
-            <span id="lastEntry">Noch keine Eingabe</span>
-            <button class="undo hide" id="undoBtn">Rückgängig</button>
-          </div>
         </div>
         <div class="dockpad hide" id="dockTeam">
           <hr class="sep" />
           <div id="tpadHost"></div>
-          <div class="foot"><span id="tlastEntry"></span></div>
         </div>
         <nav class="tabs" id="tabs">
           <button data-t="sheet" aria-pressed="true">Reden</button>

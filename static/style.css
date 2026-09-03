@@ -387,31 +387,17 @@ hr.sep {
   cursor: pointer;
   margin-top: 2px;
 }
-.foot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--ink-3);
-  min-height: 18px;
-  gap: 8px;
-}
-.foot .undo {
+.undo {
   border: 0;
   background: transparent;
   color: var(--live);
   font: inherit;
   font-size: 12px;
   cursor: pointer;
+  text-decoration: underline;
+  padding: 2px 0;
+  margin-left: auto;
 }
-.foot .flag {
-  color: var(--warn);
-  background: var(--warn-bg);
-  padding: 2px 7px;
-  border-radius: 6px;
-}
-
 input[type="text"] {
   width: 100%;
   font: inherit;
@@ -628,6 +614,10 @@ input:focus-visible {
   font-weight: 500;
 }
 .exclrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 2px 11px 4px;
 }
 .exclbtn {

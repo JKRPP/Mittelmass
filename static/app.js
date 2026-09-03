@@ -587,6 +587,7 @@ function resetRoomState() {
   myExclusions = {};
   remoteExclusions = {};
   hist = [];
+  thist = [];
   cs = 0;
   cc = 0;
   ct = 0;
@@ -689,6 +690,7 @@ var view = "sheet",
   ctc = 0,
   topOpen = false;
 var hist = [];
+var thist = [];
 
 // Deductions
 var deductions = {};
@@ -864,32 +866,15 @@ function renderSheet() {
 
   buildPad(document.getElementById("padHost"), 20, pickSpeaker);
 
-  var f = document.getElementById("lastEntry"),
-    u = document.getElementById("undoBtn");
-  var h = hist[hist.length - 1];
-  if (!h) {
-    f.textContent = "Noch keine Eingabe";
-    f.className = "";
-    u.classList.add("hide");
-  } else {
-    var v2 = sget(h.s, h.c),
-      mm = v2 === null ? null : markOf(v2);
-    f.textContent =
-      v2 === null
-        ? "—"
-        : CRITERIA[h.c].label +
-          " · " +
-          v2 +
-          " · " +
-          mm.name +
-          (mm.mark ? " (" + mm.mark + ")" : "");
-    f.className = v2 !== null && v2 >= 16 ? "flag" : "";
-    u.classList.remove("hide");
-  }
+  document
+    .getElementById("undoBtn")
+    .classList.toggle("hide", hist.length === 0);
 }
 
 function pickTeam(v) {
-  var wasEmpty = tget(ct, ctc) === null;
+  var prev = tget(ct, ctc);
+  var wasEmpty = prev === null;
+  thist.push({ t: ct, c: ctc, prev: prev });
   write("t" + ct, TEAMCATS[ctc].key, mid(convert(v, TEAMCATS[ctc].max)));
   if (wasEmpty) {
     var nx = firstEmptyT(ct);
@@ -900,6 +885,7 @@ function pickTeam(v) {
 function nudgeTeam(i, d) {
   var v = tget(ct, i);
   if (v === null) return;
+  thist.push({ t: ct, c: i, prev: v });
   write(
     "t" + ct,
     TEAMCATS[i].key,
@@ -970,15 +956,10 @@ function renderTeam() {
     .classList.toggle("excluded", texcluded);
 
   buildPad(document.getElementById("tpadHost"), TEAMCATS[ctc].max, pickTeam);
-  var v3 = tget(ct, ctc);
-  document.getElementById("tlastEntry").textContent =
-    v3 === null
-      ? TEAMCATS[ctc].label + " — offen"
-      : TEAMCATS[ctc].label +
-        " · " +
-        v3 +
-        " · " +
-        markOf(katOf(v3, TEAMCATS[ctc].max)).name;
+
+  document
+    .getElementById("tundoBtn")
+    .classList.toggle("hide", thist.length === 0);
 }
 
 function renderMatrix() {
@@ -1913,6 +1894,20 @@ document.getElementById("undoBtn").addEventListener("click", function () {
   }
   cs = h.s;
   cc = h.c;
+  render();
+});
+document.getElementById("tundoBtn").addEventListener("click", function () {
+  var h = thist.pop();
+  if (!h) return;
+  if (h.prev === null) {
+    delete mine[kk("t" + h.t, TEAMCATS[h.c].key)];
+    write("t" + h.t, TEAMCATS[h.c].key, 0); // server has no delete; 0 is the eraser
+    delete mine[kk("t" + h.t, TEAMCATS[h.c].key)];
+  } else {
+    write("t" + h.t, TEAMCATS[h.c].key, h.prev);
+  }
+  ct = h.t;
+  ctc = h.c;
   render();
 });
 
