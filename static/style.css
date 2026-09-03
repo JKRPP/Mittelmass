@@ -544,6 +544,9 @@ p.note {
   margin: 12px 0 0;
 }
 .tabs {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
   background: var(--paper);
   border-top: 1px solid var(--line);
   display: flex;
