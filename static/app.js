@@ -40,6 +40,23 @@ var TEAMCATS = [
     grp: "Überzeugungskraft",
   },
 ];
+// TEAMCATS grouped by .grp, in first-seen order — {label, cats: [indices
+// into TEAMCATS]}. Used wherever a group header needs to span its member
+// categories (Schnelleingabe's Teampunkte table).
+var TEAMGROUPS_INFO = (function () {
+  var groups = [];
+  TEAMCATS.forEach(function (c, i) {
+    var g = groups.filter(function (g) {
+      return g.label === c.grp;
+    })[0];
+    if (!g) {
+      g = { label: c.grp, cats: [] };
+      groups.push(g);
+    }
+    g.cats.push(i);
+  });
+  return groups;
+})();
 
 var UMR = {
   20: [
@@ -747,6 +764,29 @@ function firstEmptyS(s) {
   for (var c = 0; c < NC; c++) if (sget(s, c) === null) return c;
   return -1;
 }
+// This judge's own team points plus their own speaker totals for that
+// team — Übersicht's "Gesamt" column and Schnelleingabe's Teampunkte row
+// both show this, so it lives here once instead of twice.
+function myTeamGrand(t) {
+  var teamSpeakers = SPEAKERS.filter(function (sp) {
+    return sp.team === t;
+  });
+  var speakerSum = 0,
+    scoredCount = 0;
+  teamSpeakers.forEach(function (sp) {
+    var s = SPEAKERS.indexOf(sp);
+    if (firstEmptyS(s) !== -1) return; // not fully scored yet
+    speakerSum += personPunkte(s);
+    scoredCount++;
+  });
+  return {
+    speakerSum: speakerSum,
+    scoredCount: scoredCount,
+    total: teamSpeakers.length,
+    partial: scoredCount < teamSpeakers.length,
+    grand: teamPunkte(t) + speakerSum,
+  };
+}
 function firstEmptyT(t) {
   for (var c = 0; c < NT; c++) if (tget(t, c) === null) return c;
   return -1;
@@ -1012,26 +1052,16 @@ function renderMatrix() {
   );
   var anyPartial = false;
   TEAMS.forEach(function (t, i) {
-    var teamSpeakers = SPEAKERS.filter(function (sp) {
-      return sp.team === i;
-    });
-    var speakerSum = 0,
-      scoredCount = 0;
-    teamSpeakers.forEach(function (sp) {
-      var s = SPEAKERS.indexOf(sp);
-      if (firstEmptyS(s) !== -1) return; // not fully scored yet
-      speakerSum += personPunkte(s);
-      scoredCount++;
-    });
-    var grand = teamPunkte(i) + speakerSum;
-    var partial = scoredCount < teamSpeakers.length;
+    var g = myTeamGrand(i);
+    var grand = g.grand;
+    var partial = g.partial;
     if (partial) anyPartial = true;
     h.push(
       '<tr><td class="l">' +
         t +
         '</td><td class="tot">' +
         teamPunkte(i) +
-        " / 200</td>" +
+        "/ 200 </td>" +
         '<td class="tot">' +
         grand +
         (partial ? " *" : "") +
@@ -1175,9 +1205,8 @@ function computeChairSummary() {
       }),
     };
   }
-  var TEAMGROUPS = [];
-  TEAMCATS.forEach(function (c) {
-    if (TEAMGROUPS.indexOf(c.grp) === -1) TEAMGROUPS.push(c.grp);
+  var TEAMGROUPS = TEAMGROUPS_INFO.map(function (g) {
+    return g.label;
   });
   var groupCells = [];
   TEAMS.forEach(function (tm, t) {
@@ -1344,7 +1373,9 @@ function finalResultHTML(summary) {
   );
   summary.teamRows.forEach(function (r) {
     var isBest =
-      summary.teamsComparable && r.grand !== null && r.grand === summary.bestGrand;
+      summary.teamsComparable &&
+      r.grand !== null &&
+      r.grand === summary.bestGrand;
     var grandLabel =
       r.grand === null ? "·" : r.grand.toFixed(1) + (r.partial ? " *" : "");
     fh.push(
@@ -1745,55 +1776,77 @@ function renderChair() {
   }
 }
 
-// Desktop chair dashboard — same data as renderChair() (via
-// computeChairSummary()), laid out for laptop width instead of a stack of
-// scrolling mobile cards. Chair-only, shown automatically above the
-// isDesktopChair() width threshold. The connection dot/state and the ⋮ menu
-// (link copy, theme, Impressum, leave room) are the existing mobile `.bar` —
-// it's left visible (and extended with room/judges/nav) instead of
-// duplicated. dashboardView lets the desktop chair switch to their own
-// Reden/Team/Übersicht pages — the existing mobile pages, just re-centered
-// instead of hidden, not new desktop-specific ones.
+// Desktop layout — a wide-screen chrome (top nav + room/judges bar) shown
+// to any judge, chair or wing, above the isDesktopWidth() threshold. Only
+// the "Dashboard" view (chair spread/ballot overview, computeChairSummary())
+// is chair-only; Reden/Team/Schnelleingabe are every desktop judge's own
+// entry pages, same as on mobile. Übersicht has no desktop nav entry —
+// Schnelleingabe is a superset of what it shows (same totals, editable) —
+// but "matrix"/renderMatrix() itself stays, since mobile still uses it. The
+// connection dot/state and the ⋮ menu (link copy, theme, Impressum, leave
+// room) are the existing mobile `.bar` — it's left visible (and extended
+// with room/judges/nav) instead of duplicated. dashboardView tracks which
+// of these pages shows; "sheet"/"team" reuse the existing mobile pages
+// re-centered instead of rebuilt; "dashboard" and "schnell" are wide,
+// desktop-only views with no mobile equivalent.
 var dashboardSelected = { kind: "speaker", s: 0 };
 var dashboardView = "dashboard";
+var DASH_WIDE_VIEWS = ["dashboard", "schnell"];
 
+function isDesktopWidth() {
+  return !!(ME && window.matchMedia("(min-width: 1024px)").matches);
+}
 function isDesktopChair() {
-  return !!(ME && ME.is_chair && window.matchMedia("(min-width: 1024px)").matches);
+  return isDesktopWidth() && ME.is_chair;
+}
+// The view the desktop chrome should actually show right now — falls back
+// to "sheet" if a wing's dashboardView is somehow left on the chair-only
+// "dashboard" (e.g. after losing chair status) or on "matrix" (no longer
+// reachable from the desktop nav, replaced by Schnelleingabe), so neither
+// can end up showing on desktop just because the state var was left there
+// from before.
+function effectiveDashboardView() {
+  if (dashboardView === "dashboard" && !ME.is_chair) return "sheet";
+  if (dashboardView === "matrix") return "sheet";
+  return dashboardView;
 }
 
 function applyLayoutMode() {
-  var dash = isDesktopChair();
+  var dash = isDesktopWidth();
   var app = document.getElementById("app");
   var changed = app.classList.contains("dashboard-mode") !== dash;
   app.classList.toggle("dashboard-mode", dash);
   document.getElementById("dashNav").classList.toggle("hide", !dash);
   document.getElementById("dashJury").classList.toggle("hide", !dash);
 
-  var subview = dash && dashboardView !== "dashboard";
-  app.classList.toggle("dashboard-subview", subview);
-  document.getElementById("v-dashboard").classList.toggle("hide", !dash || subview);
+  var ev = effectiveDashboardView();
+  var wide = dash && DASH_WIDE_VIEWS.indexOf(ev) !== -1;
+  var subview = dash && !wide;
 
-  if (dash && !subview) {
+  app.classList.toggle("dashboard-subview", subview);
+  document
+    .getElementById("v-dashboard")
+    .classList.toggle("hide", !dash || ev !== "dashboard");
+  document
+    .getElementById("v-schnell")
+    .classList.toggle("hide", !dash || ev !== "schnell");
+
+  if (wide) {
     ["v-sheet", "v-team", "v-matrix", "v-chair"].forEach(function (id) {
       document.getElementById(id).classList.add("hide");
     });
     document.getElementById("dock").classList.add("hide");
   } else if (subview) {
     document.getElementById("v-chair").classList.add("hide");
-    ["sheet", "team", "matrix"].forEach(function (vv) {
-      document
-        .getElementById("v-" + vv)
-        .classList.toggle("hide", vv !== dashboardView);
+    document.getElementById("v-matrix").classList.add("hide");
+    ["sheet", "team"].forEach(function (vv) {
+      document.getElementById("v-" + vv).classList.toggle("hide", vv !== ev);
     });
-    document
-      .getElementById("dock")
-      .classList.toggle("hide", dashboardView === "matrix");
+    document.getElementById("dock").classList.remove("hide");
     document
       .getElementById("dockSheet")
-      .classList.toggle("hide", dashboardView !== "sheet");
-    document
-      .getElementById("dockTeam")
-      .classList.toggle("hide", dashboardView !== "team");
+      .classList.toggle("hide", ev !== "sheet");
+    document.getElementById("dockTeam").classList.toggle("hide", ev !== "team");
     document.getElementById("tabs").classList.add("hide");
   } else {
     document.getElementById("tabs").classList.remove("hide");
@@ -1803,9 +1856,17 @@ function applyLayoutMode() {
 }
 
 function renderDashChrome() {
+  [].forEach.call(
+    document.querySelectorAll('#dashNav button[data-dv="dashboard"]'),
+    function (b) {
+      b.classList.toggle("hide", !ME.is_chair);
+    },
+  );
+
   var jury = document.getElementById("dashJury");
   jury.innerHTML = "";
   jury.appendChild(el("span", "dashroom", "Raum " + ME.code));
+  if (!ME.is_chair) return;
   Object.keys(peers).forEach(function (id) {
     var j = peers[id];
     var chip = el("span", "dashjchip" + (j.hidden ? " off" : ""));
@@ -1844,22 +1905,25 @@ function renderDashChrome() {
     jury.appendChild(chip);
   });
 
+  var ev = effectiveDashboardView();
   [].forEach.call(
     document.querySelectorAll("#dashNav button[data-dv]"),
     function (b) {
-      b.setAttribute("aria-pressed", String(b.dataset.dv === dashboardView));
+      b.setAttribute("aria-pressed", String(b.dataset.dv === ev));
     },
   );
 }
 document.getElementById("dashNav").addEventListener("click", function (e) {
   var b = e.target.closest("button[data-dv]");
   if (!b) return;
+  if (b.dataset.dv === "dashboard" && !ME.is_chair) return;
   dashboardView = b.dataset.dv;
   render();
 });
 
 function dashSpreadBadge(spread) {
-  if (spread === null || spread === undefined) return el("span", "dashbadge", "·");
+  if (spread === null || spread === undefined)
+    return el("span", "dashbadge", "·");
   return el("span", "dashbadge" + (spread >= 5 ? " hot" : ""), "±" + spread);
 }
 
@@ -1984,7 +2048,9 @@ function dashSpreadPanel(title, list) {
   panel.appendChild(head);
   var body = el("div", "dashpanelbody");
   if (!list.length) {
-    body.appendChild(el("p", "note", "Noch keine zwei vollständigen Wertungen."));
+    body.appendChild(
+      el("p", "note", "Noch keine zwei vollständigen Wertungen."),
+    );
   } else {
     list.forEach(function (c) {
       var target = dashRowTarget(c.key);
@@ -2247,7 +2313,8 @@ function renderDashboard() {
     dashboardSelected.kind === "team" &&
     TEAMS[dashboardSelected.t] !== undefined &&
     dashboardSelected.grp;
-  if (!validSpeaker && !validTeam) dashboardSelected = { kind: "speaker", s: 0 };
+  if (!validSpeaker && !validTeam)
+    dashboardSelected = { kind: "speaker", s: 0 };
   var summary = computeChairSummary();
   root.innerHTML = "";
   var body = el("div", "dashbody");
@@ -2257,14 +2324,304 @@ function renderDashboard() {
   root.appendChild(body);
 }
 
+// Schnelleingabe — an editable grid over the judge's own scores (`mine`,
+// via the same write()/sget()/tget() primitives as the mobile Reden/Team
+// pages), for entering everything fast with a keyboard instead of tapping
+// through one criterion at a time. Any desktop judge gets this, not just
+// the chair — it's personal score entry, same as mobile Reden/Team.
+// Enter moves to the next cell just like Tab, instead of just committing
+// the current one and leaving focus behind.
+function schnellFocusNext(inp) {
+  var root = document.getElementById("v-schnell");
+  if (!root) return;
+  var inputs = [].slice.call(root.querySelectorAll("input.schnellinput"));
+  var next = inputs[inputs.indexOf(inp) + 1];
+  if (next) next.focus();
+}
+
+function schnellNumberInput(width) {
+  var inp = el("input", "schnellinput");
+  inp.type = "number";
+  inp.inputMode = "numeric";
+  inp.min = "0";
+  inp.step = "1";
+  inp.style.width = width || "56px";
+  // type="number" still lets a user type e/+/-/. (they're valid in a
+  // float, just not a score) — strip anything but digits as they type,
+  // rather than only catching it once the field loses focus.
+  inp.addEventListener("input", function () {
+    var digits = inp.value.replace(/[^0-9]/g, "");
+    if (digits !== inp.value) inp.value = digits;
+  });
+  inp.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      inp.blur(); // commits the value (fires "change") before moving on
+      schnellFocusNext(inp);
+    }
+  });
+  return inp;
+}
+
+// Speaker criteria (Spr/Auf/Kon/Sac/Urt) sit on the raw 0-20 Notenskala —
+// typed value is written as-is, just clamped.
+function schnellSpeakerInput(s, c) {
+  var v = sget(s, c);
+  var inp = schnellNumberInput();
+  inp.max = "20";
+  if (v !== null) inp.value = String(v);
+  inp.addEventListener("change", function () {
+    var raw = inp.value.trim();
+    if (raw === "") return;
+    var n = Math.round(Number(raw));
+    if (!isFinite(n)) {
+      inp.value = v === null ? "" : String(v);
+      return;
+    }
+    n = Math.max(0, Math.min(20, n));
+    inp.value = String(n);
+    v = n;
+    write("s" + s, CRITERIA[c].key, n);
+    updateSchnellSpeakerRow(s);
+  });
+  return inp;
+}
+
+// Team categories are stored in their own point scale (e.g. 0-25), but
+// only the discrete bands the Jurierbogen's Umrechnungstabelle defines are
+// valid — the mobile keypad only ever writes a band's midpoint (pickTeam(),
+// via katOf()/convert()/mid()). A typed number here gets snapped to that
+// same midpoint on commit, exactly as if the matching pad button had been
+// tapped, so free typing can never produce an invalid team score.
+function schnellTeamInput(t, catIdx) {
+  var cat = TEAMCATS[catIdx];
+  var v = tget(t, catIdx);
+  var inp = schnellNumberInput();
+  inp.max = String(cat.max);
+  if (v !== null) inp.value = String(v);
+  inp.addEventListener("change", function () {
+    var raw = inp.value.trim();
+    if (raw === "") return;
+    var n = Math.round(Number(raw));
+    if (!isFinite(n)) {
+      inp.value = v === null ? "" : String(v);
+      return;
+    }
+    n = Math.max(0, Math.min(cat.max, n));
+    var grade = katOf(n, cat.max);
+    var snapped = grade === null ? n : mid(convert(grade, cat.max));
+    inp.value = String(snapped);
+    v = snapped;
+    write("t" + t, cat.key, snapped);
+    updateSchnellTeamRow(t);
+  });
+  return inp;
+}
+
+function updateSchnellSpeakerRow(s) {
+  var z = zwischensumme(s);
+  var sumCell = document.getElementById("schnell-sum-" + s);
+  var abCell = document.getElementById("schnell-ab-" + s);
+  var pCell = document.getElementById("schnell-p-" + s);
+  if (sumCell) sumCell.textContent = z === null ? "·" : String(z);
+  if (abCell) abCell.textContent = deductionPoints(s) || "·";
+  if (pCell) pCell.textContent = z === null ? "·" : String(personPunkte(s));
+  // The speaker's own total feeds that team's Reden/Gesamt columns too.
+  var team = SPEAKERS[s].team;
+  if (team !== null) updateSchnellTeamRow(team);
+}
+
+function updateSchnellTeamRow(t) {
+  var sumCell = document.getElementById("schnell-tsum-" + t);
+  if (sumCell) sumCell.textContent = String(teamPunkte(t));
+  var g = myTeamGrand(t);
+  var spkCell = document.getElementById("schnell-tspk-" + t);
+  if (spkCell) spkCell.textContent = g.speakerSum + (g.partial ? " *" : "");
+  var grandCell = document.getElementById("schnell-tgrand-" + t);
+  if (grandCell) grandCell.textContent = g.grand + (g.partial ? " *" : "");
+}
+
+function schnellSpeakerRow(s, teamCls) {
+  var tr = el("tr");
+  var lbl = el("td", "l", SPEAKERS[s].label);
+  if (teamCls) lbl.classList.add(teamCls);
+  tr.appendChild(lbl);
+  for (var c = 0; c < NC; c++) {
+    var td = el("td");
+    td.appendChild(schnellSpeakerInput(s, c));
+    tr.appendChild(td);
+  }
+  var z = zwischensumme(s);
+  var sumTd = el("td", "tot", z === null ? "·" : String(z));
+  sumTd.id = "schnell-sum-" + s;
+  tr.appendChild(sumTd);
+  var abTd = el("td", "mt", deductionPoints(s) || "·");
+  abTd.id = "schnell-ab-" + s;
+  tr.appendChild(abTd);
+  var pTd = el("td", "tot", z === null ? "·" : String(personPunkte(s)));
+  pTd.id = "schnell-p-" + s;
+  tr.appendChild(pTd);
+  return tr;
+}
+
+// Grouped by speaking order (Eröffnungsreden, Ergänzungsreden,
+// Fraktionsfreie Reden, Schlussreden) rather than by team — matches how the
+// round is actually run, and `SPEAKERS` is already declared in that exact
+// order, so a single pass finding where the phase changes is enough.
+function schnellSpeakerPhase(label) {
+  if (label.indexOf("Eröffnungsrede") !== -1) return "Eröffnungsreden";
+  if (label.indexOf("Ergänzungsrede") !== -1) return "Ergänzungsreden";
+  if (label.indexOf("Fraktionsfreie Rede") !== -1)
+    return "Fraktionsfreie Reden";
+  if (label.indexOf("Schlussrede") !== -1) return "Schlussreden";
+  return label;
+}
+
+function schnellSpeakerGroupRows(label, speakers, teamCls) {
+  var rows = [];
+  var grpTr = el("tr");
+  var grpTd = el("td", "schnellgrp", label);
+  grpTd.setAttribute("colspan", String(NC + 4));
+  grpTr.appendChild(grpTd);
+  rows.push(grpTr);
+  speakers.forEach(function (s) {
+    rows.push(schnellSpeakerRow(s, teamCls(s)));
+  });
+  return rows;
+}
+
+function schnellSpeakerTable() {
+  var table = el("table", "schnelltable");
+  var head = el("tr");
+  head.appendChild(el("th", "l", "Rede"));
+  CRITERIA.forEach(function (c) {
+    head.appendChild(el("th", null, c.short));
+  });
+  head.appendChild(el("th", null, "Σ"));
+  head.appendChild(el("th", null, "Ab"));
+  head.appendChild(el("th", null, "P"));
+  table.appendChild(head);
+
+  function teamClsOf(s) {
+    var t = SPEAKERS[s].team;
+    return t === 0 ? "team-gov" : t === 1 ? "team-opp" : "team-free";
+  }
+
+  var i = 0;
+  while (i < SPEAKERS.length) {
+    var phase = schnellSpeakerPhase(SPEAKERS[i].label);
+    var speakers = [];
+    while (
+      i < SPEAKERS.length &&
+      schnellSpeakerPhase(SPEAKERS[i].label) === phase
+    ) {
+      speakers.push(i);
+      i++;
+    }
+    schnellSpeakerGroupRows(phase, speakers, teamClsOf).forEach(function (row) {
+      table.appendChild(row);
+    });
+  }
+
+  return table;
+}
+
+function schnellTeamTable() {
+  var table = el("table", "schnelltable");
+  var head1 = el("tr");
+  var teamTh = el("th", "l", "Team");
+  teamTh.setAttribute("rowspan", "2");
+  head1.appendChild(teamTh);
+  TEAMGROUPS_INFO.forEach(function (g) {
+    var th = el("th", "schnellgstart", g.label);
+    th.setAttribute("colspan", String(g.cats.length));
+    head1.appendChild(th);
+  });
+  var summeTh = el("th", "schnellgstart", "Summe");
+  summeTh.setAttribute("colspan", "3");
+  head1.appendChild(summeTh);
+  table.appendChild(head1);
+
+  var head2 = el("tr");
+  TEAMGROUPS_INFO.forEach(function (g) {
+    g.cats.forEach(function (catIdx, i) {
+      var cat = TEAMCATS[catIdx];
+      var th = el("th", "schnellsub" + (i === 0 ? " schnellgstart" : ""));
+      th.appendChild(document.createTextNode(cat.label));
+      th.appendChild(el("br"));
+      th.appendChild(document.createTextNode("(max " + cat.max + ")"));
+      head2.appendChild(th);
+    });
+  });
+  head2.appendChild(el("th", "schnellsub schnellgstart", "Team"));
+  head2.appendChild(el("th", "schnellsub", "Reden"));
+  head2.appendChild(el("th", "schnellsub", "Gesamt"));
+  table.appendChild(head2);
+
+  TEAMS.forEach(function (tm, t) {
+    var tr = el("tr");
+    var lbl = el("td", "l " + (t === 0 ? "team-gov" : "team-opp"), tm);
+    tr.appendChild(lbl);
+    TEAMGROUPS_INFO.forEach(function (g) {
+      g.cats.forEach(function (catIdx, i) {
+        var td = el("td", i === 0 ? "schnellgstart" : null);
+        td.appendChild(schnellTeamInput(t, catIdx));
+        tr.appendChild(td);
+      });
+    });
+    var sumTd = el("td", "tot schnellgstart", String(teamPunkte(t)));
+    sumTd.id = "schnell-tsum-" + t;
+    tr.appendChild(sumTd);
+    var g = myTeamGrand(t);
+    var speakersTd = el("td", "tot", g.speakerSum + (g.partial ? " *" : ""));
+    speakersTd.id = "schnell-tspk-" + t;
+    tr.appendChild(speakersTd);
+    var grandTd = el("td", "tot", g.grand + (g.partial ? " *" : ""));
+    grandTd.id = "schnell-tgrand-" + t;
+    tr.appendChild(grandTd);
+    table.appendChild(tr);
+  });
+
+  return table;
+}
+
+function schnellPanel(title, table) {
+  var panel = el("div", "dashpanel");
+  var head = el("div", "dashpanelhead");
+  head.appendChild(el("h2", null, title));
+  panel.appendChild(head);
+  var body = el("div", "dashpanelbody-table");
+  body.appendChild(table);
+  panel.appendChild(body);
+  return panel;
+}
+
+function renderSchnell() {
+  var root = document.getElementById("v-schnell");
+  if (!root) return;
+  // A remote websocket event (someone else's score, judges list, ...) can
+  // trigger render() while this judge is mid-edit here; don't tear down
+  // the grid under their cursor. Each input already patches its own row's
+  // totals directly (updateSchnellSpeakerRow/updateSchnellTeamRow), so
+  // skipping the rebuild costs nothing but a moment's staleness elsewhere
+  // on the page, which the next render() (e.g. on blur) clears up anyway.
+  if (root.firstChild && root.contains(document.activeElement)) return;
+  root.innerHTML = "";
+  var wrap = el("div", "dashcol");
+  wrap.appendChild(schnellPanel("Reden", schnellSpeakerTable()));
+  wrap.appendChild(schnellPanel("Teampunkte", schnellTeamTable()));
+  root.appendChild(wrap);
+}
+
 function render() {
   if (!ME) return;
   applyLayoutMode();
-  if (isDesktopChair()) {
+  if (isDesktopWidth()) {
     renderDashChrome();
-    if (dashboardView === "sheet") renderSheet();
-    else if (dashboardView === "team") renderTeam();
-    else if (dashboardView === "matrix") renderMatrix();
+    var ev = effectiveDashboardView();
+    if (ev === "sheet") renderSheet();
+    else if (ev === "team") renderTeam();
+    else if (ev === "schnell") renderSchnell();
     else renderDashboard();
   } else {
     if (view === "sheet") renderSheet();
