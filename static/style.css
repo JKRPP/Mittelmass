@@ -876,6 +876,10 @@ body {
   padding: 0;
   margin-left: 4px;
 }
+.dashjbtn.on {
+  color: var(--live);
+  font-weight: 500;
+}
 
 .dashbody {
   flex: 1;

@@ -500,7 +500,7 @@ function connect() {
     } else if (m.type === "spread_open") {
       spreadOpen = m.open;
       updateChairTab();
-      if (view === "chair" || isDesktopChair()) render();
+      if (view === "chair" || isDesktopWidth()) render();
     }
   };
   ws.onclose = function () {
@@ -1834,13 +1834,16 @@ function isDesktopChair() {
   return isDesktopWidth() && ME.is_chair;
 }
 // The view the desktop chrome should actually show right now — falls back
-// to "schnell" if a wing's dashboardView is somehow left on the chair-only
-// "dashboard" (e.g. after losing chair status) or on "matrix"/"sheet"/"team"
-// (no longer reachable from the desktop nav, replaced by Schnelleingabe and
-// the Notizen views), so none of those can end up showing on desktop just
-// because the state var was left there from before.
+// to "schnell" if a wing's dashboardView is left on "dashboard" while the
+// chair hasn't opened it (spreadOpen, the same flag mobile's "Spreads"
+// tab uses) — e.g. after losing chair status, or after the chair locks it
+// again mid-view — or on "matrix"/"sheet"/"team" (no longer reachable from
+// the desktop nav, replaced by Schnelleingabe and the Notizen views), so
+// none of those can end up showing on desktop just because the state var
+// was left there from before.
 function effectiveDashboardView() {
-  if (dashboardView === "dashboard" && !ME.is_chair) return "schnell";
+  if (dashboardView === "dashboard" && !ME.is_chair && !spreadOpen)
+    return "schnell";
   if (
     dashboardView === "matrix" ||
     dashboardView === "sheet" ||
@@ -1904,7 +1907,7 @@ function renderDashChrome() {
   [].forEach.call(
     document.querySelectorAll('#dashNav button[data-dv="dashboard"]'),
     function (b) {
-      b.classList.toggle("hide", !ME.is_chair);
+      b.classList.toggle("hide", !ME.is_chair && !spreadOpen);
     },
   );
 
@@ -1914,6 +1917,33 @@ function renderDashChrome() {
   var chips = el("div", "dashjurychips");
   jury.appendChild(chips);
   if (!ME.is_chair) return;
+
+  // Same spreadOpen flag mobile's "Spreads freigeben/sperren" button uses —
+  // opening it also gives wings the stripped-down Dashboard (see
+  // effectiveDashboardView()/renderDashboard()'s chair-only right column).
+  var dob = el(
+    "button",
+    "dashjbtn" + (spreadOpen ? " on" : ""),
+    spreadOpen ? "Dashboard sperren" : "Dashboard freigeben",
+  );
+  dob.tabIndex = -1;
+  dob.addEventListener("click", function () {
+    var next = !spreadOpen;
+    fetch(
+      "/api/rooms/" +
+        ME.code +
+        "/spread_open?open=" +
+        next +
+        "&token=" +
+        encodeURIComponent(ME.token),
+      { method: "POST" },
+    ).then(function () {
+      spreadOpen = next;
+      updateChairTab();
+      render();
+    });
+  });
+  jury.appendChild(dob);
   Object.keys(peers).forEach(function (id) {
     var j = peers[id];
     var chip = el("span", "dashjchip" + (j.hidden ? " off" : ""));
@@ -1931,6 +1961,7 @@ function renderDashChrome() {
     );
     if (!j.is_chair) {
       var x = el("button", "dashjbtn", j.hidden ? "Zu Wing" : "Zu Trainee");
+      x.tabIndex = -1;
       x.addEventListener("click", function (e) {
         e.stopPropagation();
         var goingHidden = !j.hidden;
@@ -1963,8 +1994,33 @@ function renderDashChrome() {
 document.getElementById("dashNav").addEventListener("click", function (e) {
   var b = e.target.closest("button[data-dv]");
   if (!b) return;
-  if (b.dataset.dv === "dashboard" && !ME.is_chair) return;
+  if (b.dataset.dv === "dashboard" && !ME.is_chair && !spreadOpen) return;
   dashboardView = b.dataset.dv;
+  render();
+});
+// PageUp/PageDown cycle through the desktop chrome's nav buttons — the tab
+// order deliberately skips them (they'd otherwise clutter scoring flow), so
+// this is the keyboard-only way to switch views without reaching for the
+// mouse.
+document.addEventListener("keydown", function (e) {
+  if (!ME || !isDesktopWidth()) return;
+  if (e.key !== "PageUp" && e.key !== "PageDown") return;
+  var btns = [].slice.call(
+    document.querySelectorAll("#dashNav button[data-dv]:not(.hide)"),
+  );
+  if (btns.length < 2) return;
+  var ev = effectiveDashboardView();
+  var idx = 0;
+  for (var i = 0; i < btns.length; i++) {
+    if (btns[i].dataset.dv === ev) {
+      idx = i;
+      break;
+    }
+  }
+  var dir = e.key === "PageDown" ? 1 : -1;
+  var nextIdx = (idx + dir + btns.length) % btns.length;
+  e.preventDefault();
+  dashboardView = btns[nextIdx].dataset.dv;
   render();
 });
 
@@ -2367,7 +2423,10 @@ function renderDashboard() {
   var body = el("div", "dashbody");
   body.appendChild(dashColA(summary));
   body.appendChild(dashColC(summary));
-  body.appendChild(dashColB(summary));
+  // The right column (Abweichungen) stays chair-only even when the chair
+  // opens the dashboard to wings via spreadOpen — wings only ever get the
+  // stripped-down view (everything but that column).
+  if (ME.is_chair) body.appendChild(dashColB(summary));
   root.appendChild(body);
 }
 
@@ -2460,12 +2519,13 @@ function schnellTeamInput(t, catIdx) {
       inp.value = v === null ? "" : String(v);
       return;
     }
+    // Only out-of-range values get corrected here — unlike the mobile
+    // keypad (which only ever offers grade midpoints), typed entry accepts
+    // any raw integer within the category's total range.
     n = Math.max(0, Math.min(cat.max, n));
-    var grade = katOf(n, cat.max);
-    var snapped = grade === null ? n : mid(convert(grade, cat.max));
-    inp.value = String(snapped);
-    v = snapped;
-    write("t" + t, cat.key, snapped);
+    inp.value = String(n);
+    v = n;
+    write("t" + t, cat.key, n);
     updateSchnellTeamRow(t);
   });
   return inp;
@@ -2527,6 +2587,7 @@ function schnellSpeakerRow(s, teamCls) {
       deductionPoints(s) || "·",
     );
     abBtn.type = "button";
+    abBtn.tabIndex = -1;
     abBtn.title = "Abzüge ändern";
     abBtn.addEventListener("click", function () {
       var lvl = deductionLevel(s);
@@ -2856,6 +2917,7 @@ function renderBlatt() {
 
   var head = el("div", "blatthead " + teamCls);
   var prev = el("button", "navbtn", "‹");
+  prev.tabIndex = -1;
   prev.disabled = cs === 0;
   prev.addEventListener("click", function () {
     if (cs > 0) {
@@ -2871,6 +2933,7 @@ function renderBlatt() {
   head.appendChild(mid);
 
   var next = el("button", "navbtn", "›");
+  next.tabIndex = -1;
   next.disabled = cs === NS - 1;
   next.addEventListener("click", function () {
     if (cs < NS - 1) {
@@ -2994,10 +3057,11 @@ function teamPointsScoreField(t, catIdx, tabIdx) {
       updateTeamPointsScore(t, catIdx);
       return;
     }
+    // Only out-of-range values get corrected here — same as Schnelleingabe's
+    // team inputs, typed entry accepts any raw integer within the
+    // category's total range instead of snapping to a grade midpoint.
     n = Math.max(0, Math.min(cat.max, n));
-    var grade = katOf(n, cat.max);
-    var snapped = grade === null ? n : mid(convert(grade, cat.max));
-    write("t" + t, cat.key, snapped);
+    write("t" + t, cat.key, n);
     updateTeamPointsScore(t, catIdx);
   });
   inp.addEventListener("keydown", function (e) {
