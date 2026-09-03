@@ -1815,7 +1815,7 @@ function renderChair() {
 // re-centered instead of rebuilt; "dashboard", "schnell" and "blatt" are
 // wide, desktop-only views with no mobile equivalent.
 var dashboardSelected = { kind: "speaker", s: 0 };
-var dashboardView = "dashboard";
+var dashboardView = "blatt";
 var DASH_WIDE_VIEWS = ["dashboard", "schnell", "blatt", "teampoints"];
 
 function isDesktopWidth() {
