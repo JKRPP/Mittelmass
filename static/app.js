@@ -638,6 +638,11 @@ document.addEventListener("visibilitychange", function () {
 window.addEventListener("online", resume);
 window.addEventListener("pageshow", resume);
 window.addEventListener("focus", resume);
+var resizeTimer = null;
+window.addEventListener("resize", function () {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(render, 150);
+});
 setInterval(function () {
   if (!ME) return;
   if (ws && ws.readyState === 1) {
@@ -1057,67 +1062,10 @@ function activeJudges() {
     return !peers[id].hidden;
   });
 }
-function renderChair() {
-  document
-    .getElementById("chairRoomCard")
-    .classList.toggle("hide", !ME.is_chair);
-  document
-    .getElementById("chairFinalCard")
-    .classList.toggle("hide", !ME.is_chair);
-
-  if (ME.is_chair) {
-    document.getElementById("chCode").textContent = ME.code;
-    var url = location.origin + "/r/" + ME.code;
-    document.getElementById("shareUrl").value = url;
-
-    var spb = document.getElementById("btnSpreadOpen");
-    spb.textContent = spreadOpen ? "Spreads sperren" : "Spreads freigeben";
-    spb.classList.toggle("on", spreadOpen);
-
-    var jh = document.getElementById("judges");
-    jh.innerHTML = "";
-    Object.keys(peers).forEach(function (id) {
-      var j = peers[id];
-      var row = el("div", "jrow");
-      var dot = el("span", "dot " + (j.online ? "on" : "off"));
-      row.appendChild(dot);
-      row.appendChild(
-        el(
-          "span",
-          "n",
-          j.name +
-            (j.is_chair ? " · Chair" : "") +
-            (j.hidden ? " · (Trainee)" : ""),
-        ),
-      );
-      row.appendChild(el("span", "p", j.filled + " / 59"));
-      if (!j.is_chair) {
-        var x = el("button", "x", j.hidden ? "Zu Wing" : "Zu Trainee");
-        x.addEventListener("click", function () {
-          var goingHidden = !j.hidden;
-          if (
-            goingHidden &&
-            !confirm(j.name + " wirklich aus der Wertung nehmen?")
-          )
-            return;
-          fetch(
-            "/api/rooms/" +
-              ME.code +
-              "/judges/" +
-              id +
-              "/hidden?hidden=" +
-              goingHidden +
-              "&token=" +
-              encodeURIComponent(ME.token),
-            { method: "POST" },
-          );
-        });
-        row.appendChild(x);
-      }
-      jh.appendChild(row);
-    });
-  }
-
+// Shared chair math: every spread/average computation used by both the
+// mobile chair view and the desktop dashboard lives here, so the two never
+// disagree.
+function computeChairSummary() {
   var ids = activeJudges();
   function includedFor(id, target) {
     return !(remoteExclusions[id] && remoteExclusions[id][target]);
@@ -1181,16 +1129,10 @@ function renderChair() {
       scan("t" + t, c.key, labelOf("t" + t, c.key));
     });
   });
-
   cells.sort(function (a, b) {
     return b.spread - a.spread;
   });
 
-  // Grouped spread across a team's three point categories (Strategie,
-  // Interaktion, Überzeugungskraft). `catKeys` records which of the
-  // per-category `cells` entries above belong to this group, so tapping
-  // one can reveal exactly those — same pattern as a speech's total
-  // revealing its per-criterion breakdown.
   function scanGroup(target, keys, label) {
     var vals = [],
       judges = [];
@@ -1283,6 +1225,220 @@ function renderChair() {
   totals.sort(function (a, b) {
     return b.spread - a.spread;
   });
+
+  // Full result overview, in speaking order
+  var speakerRows = SPEAKERS.map(function (sp, s) {
+    var vals = [];
+    ids.forEach(function (id) {
+      if (!includedFor(id, "s" + s)) return;
+      var v = remoteTotal(id, s);
+      if (v !== null) vals.push(v);
+    });
+    var avg = vals.length
+      ? vals.reduce(function (a, b) {
+          return a + b;
+        }, 0) / vals.length
+      : null;
+    return { label: sp.label, avg: avg, n: vals.length };
+  });
+  var bestSpeakerAvg = speakerRows.reduce(function (m, r) {
+    return r.avg !== null && r.avg > m ? r.avg : m;
+  }, -Infinity);
+
+  var teamRows = TEAMS.map(function (tm, t) {
+    var vals = [];
+    ids.forEach(function (id) {
+      if (!includedFor(id, "t" + t)) return;
+      vals.push(remoteTeamTotal(id, t));
+    });
+    var teamAvg = vals.length
+      ? vals.reduce(function (a, b) {
+          return a + b;
+        }, 0) / vals.length
+      : null;
+    var teamSpeakers = SPEAKERS.filter(function (sp) {
+      return sp.team === t;
+    });
+    var speakerSum = 0,
+      scoredCount = 0;
+    teamSpeakers.forEach(function (sp) {
+      var s = SPEAKERS.indexOf(sp);
+      var svals = [];
+      ids.forEach(function (id) {
+        if (!includedFor(id, "s" + s)) return;
+        var v = remoteTotal(id, s);
+        if (v !== null) svals.push(v);
+      });
+      if (!svals.length) return;
+      speakerSum +=
+        svals.reduce(function (a, b) {
+          return a + b;
+        }, 0) / svals.length;
+      scoredCount++;
+    });
+    var grand =
+      teamAvg !== null && scoredCount > 0 ? teamAvg + speakerSum : null;
+    var partial = grand !== null && scoredCount < teamSpeakers.length;
+    return {
+      label: tm,
+      teamAvg: teamAvg,
+      grand: grand,
+      partial: partial,
+    };
+  });
+  var bestGrand = teamRows.reduce(function (m, r) {
+    return r.grand !== null && r.grand > m ? r.grand : m;
+  }, -Infinity);
+  var teamsComparable = teamRows.every(function (r) {
+    return r.grand !== null;
+  });
+
+  return {
+    ids: ids,
+    includedFor: includedFor,
+    remoteTotal: remoteTotal,
+    remoteTeamTotal: remoteTeamTotal,
+    cells: cells,
+    groupCells: groupCells,
+    teamGroups: TEAMGROUPS,
+    totals: totals,
+    speakerRows: speakerRows,
+    bestSpeakerAvg: bestSpeakerAvg,
+    teamRows: teamRows,
+    bestGrand: bestGrand,
+    teamsComparable: teamsComparable,
+  };
+}
+
+// Speaker/team result tables — shared markup for the mobile "Endergebnis"
+// card and the desktop dashboard's final-result panel.
+function finalResultHTML(summary) {
+  var fh = [
+    '<table class="finalTbl"><tr><th class="l">Redner:in</th><th>Ø Punkte</th><th>n</th></tr>',
+  ];
+  summary.speakerRows.forEach(function (r) {
+    var isBest = r.avg !== null && r.avg === summary.bestSpeakerAvg;
+    fh.push(
+      '<tr><td class="l' +
+        (isBest ? " best" : "") +
+        '">' +
+        r.label +
+        '</td><td class="' +
+        (r.avg === null ? "mt" : "tot") +
+        (isBest ? " best" : "") +
+        '">' +
+        (r.avg === null ? "·" : r.avg.toFixed(1)) +
+        '</td><td class="mt">' +
+        r.n +
+        "</td></tr>",
+    );
+  });
+
+  fh.push(
+    '</table><table class="finalTbl" style="margin-top:14px"><tr><th class="l">Team</th><th>Ø Team</th><th>Gesamt</th></tr>',
+  );
+  summary.teamRows.forEach(function (r) {
+    var isBest =
+      summary.teamsComparable && r.grand !== null && r.grand === summary.bestGrand;
+    var grandLabel =
+      r.grand === null ? "·" : r.grand.toFixed(1) + (r.partial ? " *" : "");
+    fh.push(
+      '<tr><td class="l' +
+        (isBest ? " best" : "") +
+        '">' +
+        r.label +
+        '</td><td class="' +
+        (r.teamAvg === null ? "mt" : "") +
+        '">' +
+        (r.teamAvg === null ? "·" : r.teamAvg.toFixed(1)) +
+        '</td><td class="' +
+        (r.grand === null ? "mt" : "tot") +
+        (isBest ? " best" : "") +
+        '">' +
+        grandLabel +
+        "</td></tr>",
+    );
+  });
+  fh.push("</table>");
+  var anyTeamPartial = summary.teamRows.some(function (r) {
+    return r.partial;
+  });
+  if (anyTeamPartial)
+    fh.push(
+      '<p class="note">* vorläufig — noch nicht alle Reden dieses Teams bewertet.</p>',
+    );
+  return fh.join("");
+}
+
+function renderChair() {
+  document
+    .getElementById("chairRoomCard")
+    .classList.toggle("hide", !ME.is_chair);
+  document
+    .getElementById("chairFinalCard")
+    .classList.toggle("hide", !ME.is_chair);
+
+  if (ME.is_chair) {
+    document.getElementById("chCode").textContent = ME.code;
+    var url = location.origin + "/r/" + ME.code;
+    document.getElementById("shareUrl").value = url;
+
+    var spb = document.getElementById("btnSpreadOpen");
+    spb.textContent = spreadOpen ? "Spreads sperren" : "Spreads freigeben";
+    spb.classList.toggle("on", spreadOpen);
+
+    var jh = document.getElementById("judges");
+    jh.innerHTML = "";
+    Object.keys(peers).forEach(function (id) {
+      var j = peers[id];
+      var row = el("div", "jrow");
+      var dot = el("span", "dot " + (j.online ? "on" : "off"));
+      row.appendChild(dot);
+      row.appendChild(
+        el(
+          "span",
+          "n",
+          j.name +
+            (j.is_chair ? " · Chair" : "") +
+            (j.hidden ? " · (Trainee)" : ""),
+        ),
+      );
+      row.appendChild(el("span", "p", j.filled + " / 59"));
+      if (!j.is_chair) {
+        var x = el("button", "x", j.hidden ? "Zu Wing" : "Zu Trainee");
+        x.addEventListener("click", function () {
+          var goingHidden = !j.hidden;
+          if (
+            goingHidden &&
+            !confirm(j.name + " wirklich aus der Wertung nehmen?")
+          )
+            return;
+          fetch(
+            "/api/rooms/" +
+              ME.code +
+              "/judges/" +
+              id +
+              "/hidden?hidden=" +
+              goingHidden +
+              "&token=" +
+              encodeURIComponent(ME.token),
+            { method: "POST" },
+          );
+        });
+        row.appendChild(x);
+      }
+      jh.appendChild(row);
+    });
+  }
+
+  var summary = computeChairSummary();
+  var ids = summary.ids,
+    includedFor = summary.includedFor,
+    remoteTotal = summary.remoteTotal,
+    remoteTeamTotal = summary.remoteTeamTotal,
+    cells = summary.cells,
+    groupCells = summary.groupCells,
+    totals = summary.totals;
 
   var th = document.getElementById("totspread");
   th.innerHTML = "";
@@ -1391,127 +1547,7 @@ function renderChair() {
   }
 
   // Full result overview
-  var speakerRows = SPEAKERS.map(function (sp, s) {
-    var vals = [];
-    ids.forEach(function (id) {
-      if (!includedFor(id, "s" + s)) return;
-      var v = remoteTotal(id, s);
-      if (v !== null) vals.push(v);
-    });
-    var avg = vals.length
-      ? vals.reduce(function (a, b) {
-          return a + b;
-        }, 0) / vals.length
-      : null;
-    return { label: sp.label, avg: avg, n: vals.length };
-  });
-  var bestSpeakerAvg = speakerRows.reduce(function (m, r) {
-    return r.avg !== null && r.avg > m ? r.avg : m;
-  }, -Infinity);
-
-  var fh = [
-    '<table class="finalTbl"><tr><th class="l">Redner:in</th><th>Ø Punkte</th><th>n</th></tr>',
-  ];
-  speakerRows.forEach(function (r) {
-    var isBest = r.avg !== null && r.avg === bestSpeakerAvg;
-    fh.push(
-      '<tr><td class="l' +
-        (isBest ? " best" : "") +
-        '">' +
-        r.label +
-        '</td><td class="' +
-        (r.avg === null ? "mt" : "tot") +
-        (isBest ? " best" : "") +
-        '">' +
-        (r.avg === null ? "·" : r.avg.toFixed(1)) +
-        '</td><td class="mt">' +
-        r.n +
-        "</td></tr>",
-    );
-  });
-
-  var teamRows = TEAMS.map(function (tm, t) {
-    var vals = [];
-    ids.forEach(function (id) {
-      if (!includedFor(id, "t" + t)) return;
-      vals.push(remoteTeamTotal(id, t));
-    });
-    var teamAvg = vals.length
-      ? vals.reduce(function (a, b) {
-          return a + b;
-        }, 0) / vals.length
-      : null;
-    var teamSpeakers = SPEAKERS.filter(function (sp) {
-      return sp.team === t;
-    });
-    var speakerSum = 0,
-      scoredCount = 0;
-    teamSpeakers.forEach(function (sp) {
-      var s = SPEAKERS.indexOf(sp);
-      var svals = [];
-      ids.forEach(function (id) {
-        if (!includedFor(id, "s" + s)) return;
-        var v = remoteTotal(id, s);
-        if (v !== null) svals.push(v);
-      });
-      if (!svals.length) return;
-      speakerSum +=
-        svals.reduce(function (a, b) {
-          return a + b;
-        }, 0) / svals.length;
-      scoredCount++;
-    });
-    var grand =
-      teamAvg !== null && scoredCount > 0 ? teamAvg + speakerSum : null;
-    var partial = grand !== null && scoredCount < teamSpeakers.length;
-    return {
-      label: tm,
-      teamAvg: teamAvg,
-      grand: grand,
-      partial: partial,
-    };
-  });
-  var bestGrand = teamRows.reduce(function (m, r) {
-    return r.grand !== null && r.grand > m ? r.grand : m;
-  }, -Infinity);
-  // Only bold a leader once both teams actually have a total to compare.
-  var teamsComparable = teamRows.every(function (r) {
-    return r.grand !== null;
-  });
-
-  fh.push(
-    '</table><table class="finalTbl" style="margin-top:14px"><tr><th class="l">Team</th><th>Ø Team</th><th>Gesamt</th></tr>',
-  );
-  teamRows.forEach(function (r) {
-    var isBest = teamsComparable && r.grand !== null && r.grand === bestGrand;
-    var grandLabel =
-      r.grand === null ? "·" : r.grand.toFixed(1) + (r.partial ? " *" : "");
-    fh.push(
-      '<tr><td class="l' +
-        (isBest ? " best" : "") +
-        '">' +
-        r.label +
-        '</td><td class="' +
-        (r.teamAvg === null ? "mt" : "") +
-        '">' +
-        (r.teamAvg === null ? "·" : r.teamAvg.toFixed(1)) +
-        '</td><td class="' +
-        (r.grand === null ? "mt" : "tot") +
-        (isBest ? " best" : "") +
-        '">' +
-        grandLabel +
-        "</td></tr>",
-    );
-  });
-  fh.push("</table>");
-  var anyTeamPartial = teamRows.some(function (r) {
-    return r.partial;
-  });
-  if (anyTeamPartial)
-    fh.push(
-      '<p class="note">* vorläufig — noch nicht alle Reden dieses Teams bewertet.</p>',
-    );
-  document.getElementById("finalResult").innerHTML = fh.join("");
+  document.getElementById("finalResult").innerHTML = finalResultHTML(summary);
 
   // Ballot: one column per adjudicator (chair first), in speaking order.
   var btnBallot = document.getElementById("btnBallot");
@@ -1583,12 +1619,440 @@ function renderChair() {
   }
 }
 
+// Desktop chair dashboard — same data as renderChair() (via
+// computeChairSummary()), laid out for laptop width instead of a stack of
+// scrolling mobile cards. Chair-only, shown automatically above the
+// isDesktopChair() width threshold. The connection dot/state and the ⋮ menu
+// (link copy, theme, Impressum, leave room) are the existing mobile `.bar` —
+// it's left visible in dashboard mode instead of duplicated.
+var dashboardSelected = { kind: "speaker", s: 0 };
+
+function isDesktopChair() {
+  return !!(ME && ME.is_chair && window.matchMedia("(min-width: 900px)").matches);
+}
+
+function applyLayoutMode() {
+  var dash = isDesktopChair();
+  var app = document.getElementById("app");
+  var changed = app.classList.contains("dashboard-mode") !== dash;
+  app.classList.toggle("dashboard-mode", dash);
+  document.getElementById("v-dashboard").classList.toggle("hide", !dash);
+  if (dash) {
+    ["v-sheet", "v-team", "v-matrix", "v-chair"].forEach(function (id) {
+      document.getElementById(id).classList.add("hide");
+    });
+    document.getElementById("dock").classList.add("hide");
+  } else {
+    showView(view);
+  }
+  return changed;
+}
+
+function dashSpreadBadge(spread) {
+  if (spread === null || spread === undefined) return el("span", "dashbadge", "·");
+  return el("span", "dashbadge" + (spread >= 5 ? " hot" : ""), "±" + spread);
+}
+
+function dashJudgeChips(judges) {
+  var wrap = el("div", "dashchips");
+  judges.forEach(function (j) {
+    wrap.appendChild(el("span", "chip", j.name + " " + j.v));
+  });
+  return wrap;
+}
+
+function dashJuryBar() {
+  var bar = el("div", "dashbar");
+  bar.appendChild(el("span", "dashroom", "Raum " + ME.code));
+
+  var jury = el("div", "dashjury");
+  Object.keys(peers).forEach(function (id) {
+    var j = peers[id];
+    var chip = el("span", "dashjchip" + (j.hidden ? " off" : ""));
+    chip.appendChild(el("span", "dot " + (j.online ? "on" : "off")));
+    chip.appendChild(
+      document.createTextNode(
+        " " +
+          j.name +
+          (j.is_chair ? " · Chair" : "") +
+          (j.hidden ? " · Trainee" : "") +
+          " · " +
+          j.filled +
+          "/59",
+      ),
+    );
+    if (!j.is_chair) {
+      var x = el("button", "dashjbtn", j.hidden ? "Zu Wing" : "Zu Trainee");
+      x.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var goingHidden = !j.hidden;
+        if (goingHidden && !confirm(j.name + " wirklich aus der Wertung nehmen?"))
+          return;
+        fetch(
+          "/api/rooms/" +
+            ME.code +
+            "/judges/" +
+            id +
+            "/hidden?hidden=" +
+            goingHidden +
+            "&token=" +
+            encodeURIComponent(ME.token),
+          { method: "POST" },
+        );
+      });
+      chip.appendChild(x);
+    }
+    jury.appendChild(chip);
+  });
+  bar.appendChild(jury);
+  return bar;
+}
+
+function dashSpeakerGroup(label, teamVal, summary) {
+  var wrap = el("div");
+  var rows = SPEAKERS.filter(function (sp) {
+    return sp.team === teamVal;
+  });
+  if (!rows.length) return wrap;
+  wrap.appendChild(el("div", "dashgrp", label));
+  SPEAKERS.forEach(function (sp, s) {
+    if (sp.team !== teamVal) return;
+    var teamCls =
+      teamVal === 0 ? "team-gov" : teamVal === 1 ? "team-opp" : "team-free";
+    var sel = dashboardSelected.kind === "speaker" && dashboardSelected.s === s;
+    var row = el("div", "dashspk " + teamCls + (sel ? " sel" : ""));
+    row.appendChild(el("span", "lb", sp.label));
+    var avg = summary.speakerRows[s].avg;
+    row.appendChild(el("span", "vl", avg === null ? "·" : avg.toFixed(1)));
+    var tot = summary.totals.filter(function (t) {
+      return t.key === "s" + s;
+    })[0];
+    row.appendChild(dashSpreadBadge(tot ? tot.spread : null));
+    row.addEventListener("click", function () {
+      dashboardSelected = { kind: "speaker", s: s };
+      renderDashboard();
+    });
+    wrap.appendChild(row);
+  });
+  return wrap;
+}
+
+function dashSpeakerPanel(summary) {
+  var panel = el("div", "dashpanel dashpanel-grow3");
+  var head = el("div", "dashpanelhead");
+  head.appendChild(el("h2", null, "Redner:innen"));
+  panel.appendChild(head);
+  var body = el("div", "dashpanelbody");
+  body.appendChild(dashSpeakerGroup("Regierung", 0, summary));
+  body.appendChild(dashSpeakerGroup("Opposition", 1, summary));
+  body.appendChild(dashSpeakerGroup("Fraktionsfrei", null, summary));
+  panel.appendChild(body);
+  return panel;
+}
+
+function dashTeamGroupRows(summary) {
+  var wrap = el("div");
+  TEAMS.forEach(function (tm, t) {
+    wrap.appendChild(el("div", "dashgrp", tm));
+    summary.teamGroups.forEach(function (g) {
+      var teamCls = t === 0 ? "team-gov" : "team-opp";
+      var gc = summary.groupCells.filter(function (x) {
+        return x.key === "t" + t + "/grp-" + tm + " · " + g;
+      })[0];
+      var sel =
+        dashboardSelected.kind === "team" &&
+        dashboardSelected.t === t &&
+        dashboardSelected.grp === g;
+      var row = el("div", "dashspk " + teamCls + (sel ? " sel" : ""));
+      row.appendChild(el("span", "lb", g));
+      row.appendChild(el("span", "vl", gc ? gc.avg.toFixed(1) : "·"));
+      row.appendChild(dashSpreadBadge(gc ? gc.spread : null));
+      row.addEventListener("click", function () {
+        dashboardSelected = { kind: "team", t: t, grp: g };
+        renderDashboard();
+      });
+      wrap.appendChild(row);
+    });
+  });
+  return wrap;
+}
+
+function dashTeamPanel(summary) {
+  var panel = el("div", "dashpanel dashpanel-grow2");
+  var head = el("div", "dashpanelhead");
+  head.appendChild(el("h2", null, "Teampunkte"));
+  panel.appendChild(head);
+  var body = el("div", "dashpanelbody");
+  body.appendChild(dashTeamGroupRows(summary));
+  panel.appendChild(body);
+  return panel;
+}
+
+function dashColA(summary) {
+  var col = el("div", "dashcol dashcol-a");
+  col.appendChild(dashSpeakerPanel(summary));
+  col.appendChild(dashTeamPanel(summary));
+  return col;
+}
+
+function dashSpreadPanel(title, list) {
+  var panel = el("div", "dashpanel dashpanel-grow");
+  var head = el("div", "dashpanelhead");
+  head.appendChild(el("h2", null, title));
+  panel.appendChild(head);
+  var body = el("div", "dashpanelbody");
+  if (!list.length) {
+    body.appendChild(el("p", "note", "Noch keine zwei vollständigen Wertungen."));
+  } else {
+    list.forEach(function (c) {
+      var row = el("div", "dashrow" + (c.spread >= 5 ? " hot" : ""));
+      row.appendChild(dashSpreadBadge(c.spread));
+      var parts = c.label.split(" · ");
+      var mid = el("div", "dashrowlbl");
+      mid.appendChild(el("div", "dashrowmain", parts[0]));
+      mid.appendChild(el("div", "dashrowsub", parts.slice(1).join(" · ")));
+      row.appendChild(mid);
+      row.appendChild(dashJudgeChips(c.judges));
+      body.appendChild(row);
+    });
+  }
+  panel.appendChild(body);
+  return panel;
+}
+
+function dashColB(summary) {
+  var col = el("div", "dashcol dashcol-b");
+  col.appendChild(
+    dashSpreadPanel(
+      "Abweichungen · Reden",
+      summary.cells.filter(function (c) {
+        return c.key.charAt(0) === "s";
+      }),
+    ),
+  );
+  col.appendChild(
+    dashSpreadPanel(
+      "Abweichungen · Teampunkte",
+      summary.cells.filter(function (c) {
+        return c.key.charAt(0) === "t";
+      }),
+    ),
+  );
+  return col;
+}
+
+function dashBallotTable(summary, s) {
+  var chairFirst = summary.ids.slice().sort(function (a, b) {
+    return (peers[b].is_chair ? 1 : 0) - (peers[a].is_chair ? 1 : 0);
+  });
+  var table = el("table");
+  var head = el("tr");
+  head.appendChild(el("th", "l", "Kriterium"));
+  chairFirst.forEach(function (id) {
+    head.appendChild(el("th", null, peers[id].name));
+  });
+  head.appendChild(el("th", null, "Ø"));
+  table.appendChild(head);
+  CRITERIA.forEach(function (c) {
+    var cell = summary.cells.filter(function (x) {
+      return x.key === "s" + s + "/" + c.key;
+    })[0];
+    var tr = el("tr", cell && cell.spread >= 5 ? "hot" : null);
+    tr.appendChild(el("td", "l", c.label));
+    var vals = [];
+    chairFirst.forEach(function (id) {
+      var v = (remote[id] || {})[kk("s" + s, c.key)];
+      tr.appendChild(el("td", null, v === undefined ? "·" : String(v)));
+      if (summary.includedFor(id, "s" + s) && v !== undefined) vals.push(v);
+    });
+    var avg = vals.length
+      ? Math.round(
+          (vals.reduce(function (a, b) {
+            return a + b;
+          }, 0) /
+            vals.length) *
+            100,
+        ) / 100
+      : null;
+    tr.appendChild(el("td", "tot", avg === null ? "·" : String(avg)));
+    table.appendChild(tr);
+  });
+  var totTr = el("tr");
+  totTr.appendChild(el("td", "l tot", "Gesamt"));
+  var totVals = [];
+  chairFirst.forEach(function (id) {
+    var v = summary.remoteTotal(id, s);
+    totTr.appendChild(el("td", "tot", v === null ? "·" : String(v)));
+    if (summary.includedFor(id, "s" + s) && v !== null) totVals.push(v);
+  });
+  var totAvg = totVals.length
+    ? Math.round(
+        (totVals.reduce(function (a, b) {
+          return a + b;
+        }, 0) /
+          totVals.length) *
+          100,
+      ) / 100
+    : null;
+  totTr.appendChild(el("td", "tot", totAvg === null ? "·" : String(totAvg)));
+  table.appendChild(totTr);
+  return table;
+}
+
+function dashTeamBallotTable(summary, t, grp) {
+  var chairFirst = summary.ids.slice().sort(function (a, b) {
+    return (peers[b].is_chair ? 1 : 0) - (peers[a].is_chair ? 1 : 0);
+  });
+  var cats = TEAMCATS.filter(function (c) {
+    return c.grp === grp;
+  });
+  var table = el("table");
+  var head = el("tr");
+  head.appendChild(el("th", "l", "Kategorie"));
+  chairFirst.forEach(function (id) {
+    head.appendChild(el("th", null, peers[id].name));
+  });
+  head.appendChild(el("th", null, "Ø"));
+  table.appendChild(head);
+  cats.forEach(function (c) {
+    var cell = summary.cells.filter(function (x) {
+      return x.key === "t" + t + "/" + c.key;
+    })[0];
+    var tr = el("tr", cell && cell.spread >= 5 ? "hot" : null);
+    tr.appendChild(el("td", "l", c.label));
+    var vals = [];
+    chairFirst.forEach(function (id) {
+      var v = (remote[id] || {})[kk("t" + t, c.key)];
+      tr.appendChild(el("td", null, v === undefined ? "·" : String(v)));
+      if (summary.includedFor(id, "t" + t) && v !== undefined) vals.push(v);
+    });
+    var avg = vals.length
+      ? Math.round(
+          (vals.reduce(function (a, b) {
+            return a + b;
+          }, 0) /
+            vals.length) *
+            100,
+        ) / 100
+      : null;
+    tr.appendChild(el("td", "tot", avg === null ? "·" : String(avg)));
+    table.appendChild(tr);
+  });
+  var totTr = el("tr");
+  totTr.appendChild(el("td", "l tot", "Summe " + grp));
+  var totVals = [];
+  chairFirst.forEach(function (id) {
+    var sum = 0,
+      complete = true;
+    cats.forEach(function (c) {
+      var v = (remote[id] || {})[kk("t" + t, c.key)];
+      if (v === undefined) {
+        complete = false;
+        return;
+      }
+      sum += v;
+    });
+    totTr.appendChild(el("td", "tot", complete ? String(sum) : "·"));
+    if (summary.includedFor(id, "t" + t) && complete) totVals.push(sum);
+  });
+  var totAvg = totVals.length
+    ? Math.round(
+        (totVals.reduce(function (a, b) {
+          return a + b;
+        }, 0) /
+          totVals.length) *
+          100,
+      ) / 100
+    : null;
+  totTr.appendChild(el("td", "tot", totAvg === null ? "·" : String(totAvg)));
+  table.appendChild(totTr);
+  return table;
+}
+
+function dashSpeakerBallotPanel(summary, s) {
+  var sp = SPEAKERS[s];
+  var panel = el("div", "dashpanel");
+  panel.classList.add(
+    sp.team === 0 ? "team-gov" : sp.team === 1 ? "team-opp" : "team-free",
+  );
+  var head = el("div", "dashpanelhead");
+  head.appendChild(el("h2", null, sp.label));
+  head.appendChild(el("div", "sub", "Ballotvergleich"));
+  panel.appendChild(head);
+  var body = el("div", "dashpanelbody dashpanelbody-table");
+  body.appendChild(dashBallotTable(summary, s));
+  panel.appendChild(body);
+  return panel;
+}
+
+function dashTeamBallotPanel(summary, t, grp) {
+  var panel = el("div", "dashpanel");
+  panel.classList.add(t === 0 ? "team-gov" : "team-opp");
+  var head = el("div", "dashpanelhead");
+  head.appendChild(el("h2", null, TEAMS[t] + " · " + grp));
+  head.appendChild(el("div", "sub", "Ballotvergleich"));
+  panel.appendChild(head);
+  var body = el("div", "dashpanelbody dashpanelbody-table");
+  body.appendChild(dashTeamBallotTable(summary, t, grp));
+  panel.appendChild(body);
+  return panel;
+}
+
+function dashFinalPanel(summary) {
+  var panel = el("div", "dashpanel dashpanel-grow");
+  var head = el("div", "dashpanelhead");
+  head.appendChild(el("h2", null, "Endergebnis"));
+  panel.appendChild(head);
+  var body = el("div", "dashpanelbody dashpanelbody-table");
+  body.innerHTML = finalResultHTML(summary);
+  panel.appendChild(body);
+  return panel;
+}
+
+function dashColC(summary) {
+  var col = el("div", "dashcol dashcol-c");
+  if (dashboardSelected.kind === "team") {
+    col.appendChild(
+      dashTeamBallotPanel(summary, dashboardSelected.t, dashboardSelected.grp),
+    );
+  } else {
+    col.appendChild(dashSpeakerBallotPanel(summary, dashboardSelected.s));
+  }
+  col.appendChild(dashFinalPanel(summary));
+  return col;
+}
+
+function renderDashboard() {
+  var root = document.getElementById("v-dashboard");
+  if (!root) return;
+  var validSpeaker =
+    dashboardSelected.kind === "speaker" && SPEAKERS[dashboardSelected.s];
+  var validTeam =
+    dashboardSelected.kind === "team" &&
+    TEAMS[dashboardSelected.t] !== undefined &&
+    dashboardSelected.grp;
+  if (!validSpeaker && !validTeam) dashboardSelected = { kind: "speaker", s: 0 };
+  var summary = computeChairSummary();
+  root.innerHTML = "";
+  root.appendChild(dashJuryBar());
+  var body = el("div", "dashbody");
+  body.appendChild(dashColA(summary));
+  body.appendChild(dashColB(summary));
+  body.appendChild(dashColC(summary));
+  root.appendChild(body);
+}
+
 function render() {
   if (!ME) return;
-  if (view === "sheet") renderSheet();
-  if (view === "team") renderTeam();
-  if (view === "matrix") renderMatrix();
-  if (view === "chair") renderChair();
+  applyLayoutMode();
+  if (isDesktopChair()) {
+    renderDashboard();
+  } else {
+    if (view === "sheet") renderSheet();
+    if (view === "team") renderTeam();
+    if (view === "matrix") renderMatrix();
+    if (view === "chair") renderChair();
+  }
   paintBar();
 }
 

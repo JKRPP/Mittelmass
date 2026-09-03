@@ -764,3 +764,241 @@ input:focus-visible {
   color: var(--ink-2);
   font-weight: 500;
 }
+
+/* Desktop chair dashboard */
+#app.dashboard-mode {
+  max-width: none;
+}
+/* The mobile top bar (connection dot/state + ⋮ menu) stays visible and
+   does the same job here — just give it dashboard-scale padding. */
+#app.dashboard-mode .bar {
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--line);
+}
+#v-dashboard.hide {
+  display: none;
+}
+#v-dashboard {
+  background: var(--paper);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.dashbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--line);
+}
+.dashroom {
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  margin-right: 4px;
+}
+.dashjury {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.dashjchip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.dashjchip.off {
+  opacity: 0.6;
+}
+.dashjbtn {
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  margin-left: 4px;
+}
+
+.dashbody {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 20px;
+  padding: 20px 24px;
+  min-height: 0;
+}
+.dashcol {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+.dashcol-a {
+  flex: 0 0 280px;
+}
+.dashcol-b {
+  flex: 1 1 460px;
+}
+.dashcol-c {
+  flex: 0 0 440px;
+}
+.dashpanel {
+  background: var(--card);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.dashpanel-grow {
+  flex: 1;
+}
+.dashpanel-grow2 {
+  flex: 2;
+}
+.dashpanel-grow3 {
+  flex: 3;
+}
+.dashpanel.team-gov {
+  border-top: 3px solid #2f8f3c;
+}
+.dashpanel.team-opp {
+  border-top: 3px solid #c23b3b;
+}
+.dashpanel.team-free {
+  border-top: 3px solid #c99a1e;
+}
+.dashpanelhead {
+  flex: 0 0 auto;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.dashpanelhead h2 {
+  margin: 0;
+}
+.dashpanelbody {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 8px;
+}
+.dashpanelbody-table {
+  padding: 4px 14px 12px;
+}
+.dashpanelbody-table table {
+  width: 100%;
+}
+
+.dashgrp {
+  font-size: 10px;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 8px 8px 3px;
+}
+.dashspk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+}
+.dashspk.team-gov {
+  border-left-color: #2f8f3c;
+}
+.dashspk.team-opp {
+  border-left-color: #c23b3b;
+}
+.dashspk.team-free {
+  border-left-color: #c99a1e;
+}
+.dashspk .lb {
+  flex: 1;
+  font-size: 13px;
+}
+.dashspk .vl {
+  font-size: 13px;
+  font-weight: 500;
+}
+.dashspk.sel {
+  background: var(--live-bg);
+}
+.dashspk.sel .lb,
+.dashspk.sel .vl {
+  color: var(--live);
+  font-weight: 500;
+}
+
+.dashbadge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--live-bg);
+  color: var(--live);
+}
+.dashbadge.hot {
+  background: var(--warn);
+  color: #fff;
+}
+.dashrow .dashbadge {
+  background: none;
+  padding: 0;
+  width: 26px;
+  text-align: right;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+.dashrow .dashbadge.hot {
+  color: var(--warn);
+}
+
+.dashrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.dashrow.hot {
+  background: var(--warn-bg);
+}
+.dashrowlbl {
+  flex: 1;
+  min-width: 0;
+}
+.dashrowmain {
+  font-size: 13px;
+  color: var(--ink);
+}
+.dashrowsub {
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-top: 1px;
+}
+.dashchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+#v-dashboard tr.hot td {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+#v-dashboard tr.hot td.l {
+  font-weight: 500;
+}
