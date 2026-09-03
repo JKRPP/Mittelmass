@@ -1,22 +1,3 @@
-// The dock (score pad + tabs) is position:fixed to the bottom of the
-// viewport rather than sized into a fixed-height flex shell, because mobile
-// browsers (Firefox Android in particular) resize their address bar in and
-// out of the layout in ways that fixed-height shells (100dvh etc.) don't
-// track reliably. Fixed-position elements are anchored to the true visual
-// viewport by the browser itself, so this just works. The scrolling content
-// behind it needs bottom padding reserved to match, since the dock's height
-// itself varies (grade pad open/closed, view switching).
-function syncDockSpace() {
-  var dock = document.getElementById("dock");
-  var vp = document.getElementById("viewport");
-  if (!dock || !vp) return;
-  vp.style.paddingBottom = dock.classList.contains("hide")
-    ? ""
-    : dock.offsetHeight + 14 + "px";
-}
-window.addEventListener("resize", syncDockSpace);
-window.addEventListener("orientationchange", syncDockSpace);
-
 var SPEAKERS = [
   { label: "Eröffnungsrede Regierung", team: 0 },
   { label: "Eröffnungsrede Opposition", team: 1 },
@@ -1630,7 +1611,6 @@ function render() {
   if (view === "matrix") renderMatrix();
   if (view === "chair") renderChair();
   paintBar();
-  syncDockSpace();
 }
 
 // Lobby session
