@@ -3,6 +3,12 @@ services:
     build: .
     ports:
       - "${OPD_PORT:-8000}:8000"
+    environment:
+      IMPRESSUM_NAME: ${IMPRESSUM_NAME:-}
+      IMPRESSUM_STREET: ${IMPRESSUM_STREET:-}
+      IMPRESSUM_CITY: ${IMPRESSUM_CITY:-}
+      IMPRESSUM_COUNTRY: ${IMPRESSUM_COUNTRY:-}
+      IMPRESSUM_EMAIL: ${IMPRESSUM_EMAIL:-}
     volumes:
       - opd_data:/data
     restart: unless-stopped

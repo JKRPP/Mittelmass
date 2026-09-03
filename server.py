@@ -31,13 +31,25 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 DB_PATH = os.environ.get("OPD_DB", "opd.sqlite3")
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(ROOT, "static")
+
+# Impressum fields are operator-specific (whoever runs this deployment is the
+# legally responsible "Anbieter"), so they're filled in from the environment
+# at request time rather than hardcoded into the page. See docker-compose.yml.
+IMPRESSUM_DEFAULTS = {
+    "IMPRESSUM_NAME": "[Vor- und Nachname bzw. Firmenname]",
+    "IMPRESSUM_STREET": "[Straße und Hausnummer]",
+    "IMPRESSUM_CITY": "[PLZ und Ort]",
+    "IMPRESSUM_COUNTRY": "[Land]",
+    "IMPRESSUM_PHONE": "[Telefonnummer]",
+    "IMPRESSUM_EMAIL": "[E-Mail-Adresse]",
+}
 
 # No O/0, no I/1/L. Room codes get read aloud across a lecture hall.
 ALPHABET = "ACDEFGHJKMNPQRTUVWXY34679"
@@ -655,6 +667,15 @@ async def healthz():
 
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+
+
+@app.get("/impressum")
+async def impressum():
+    with open(os.path.join(STATIC, "impressum.html"), encoding="utf-8") as f:
+        html = f.read()
+    for key, default in IMPRESSUM_DEFAULTS.items():
+        html = html.replace("{{" + key + "}}", os.environ.get(key) or default)
+    return HTMLResponse(html)
 
 
 @app.get("/")
