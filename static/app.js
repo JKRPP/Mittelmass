@@ -856,9 +856,7 @@ function renderSheet() {
 
   var excluded = !!myExclusions["s" + cs];
   var eb = document.getElementById("exclBtn");
-  eb.textContent = excluded
-    ? "In die Wertung eingehen"
-    : "Aus der Wertung herausnehmen";
+  eb.textContent = excluded ? "In Wertung eingehen" : "Aus Wertung nehmen";
   eb.classList.toggle("on", excluded);
   document
     .querySelector("#v-sheet .card")
@@ -1758,9 +1756,7 @@ function showView(v) {
   document
     .getElementById("dockSheet")
     .classList.toggle("hide", view !== "sheet");
-  document
-    .getElementById("dockTeam")
-    .classList.toggle("hide", view !== "team");
+  document.getElementById("dockTeam").classList.toggle("hide", view !== "team");
 }
 document.getElementById("tabs").addEventListener("click", function (e) {
   var b = e.target.closest("button[data-t]");

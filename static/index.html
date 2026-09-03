@@ -15,7 +15,7 @@
       <!-- LOBBY -->
       <section id="v-lobby">
         <div class="card">
-          <h1 id="lobbyTitle">Willkommen bei Mittelmaß 2.0</h1>
+          <h1 id="lobbyTitle">Mittelmaß 2.0</h1>
           <svg class="signguy" viewBox="20 10 180 260" aria-hidden="true">
             <g id="layer1">
               <path
@@ -162,116 +162,117 @@
 
       <!-- MAIN -->
       <div id="main" class="hide">
-      <div class="viewport" id="viewport">
-        <div class="bar">
-          <span class="dot" id="cdot"></span>
-          <span id="cstate">verbinde …</span>
-          <span class="sp"></span>
-          <button class="themebtn" id="themeBtn"></button>
-          <span id="whoami"></span>
-          <button class="leavebtn" id="leaveBtn">Verlassen</button>
+        <div class="viewport" id="viewport">
+          <div class="bar">
+            <span class="dot" id="cdot"></span>
+            <span id="cstate">verbinde …</span>
+            <span class="sp"></span>
+            <button class="themebtn" id="themeBtn"></button>
+            <span id="whoami"></span>
+            <button class="leavebtn" id="leaveBtn">Verlassen</button>
+          </div>
+
+          <section id="v-sheet">
+            <div class="card">
+              <div class="hd">
+                <button class="navbtn" id="prev">&#8249;</button>
+                <h1 id="spkName">&nbsp;</h1>
+                <button class="navbtn" id="next">&#8250;</button>
+              </div>
+              <div class="sub" id="spkSub"></div>
+              <div id="crits"></div>
+              <div class="dedu hide" id="deduRow">
+                <span class="l">Abzug (Chair)</span>
+                <button class="dedopt" data-lvl="">Keine</button>
+                <button class="dedopt" data-lvl="small">−3</button>
+                <button class="dedopt" data-lvl="big">−15</button>
+              </div>
+              <div class="sum">
+                <span>Gesamtpunkte</span><span><b id="spkTot">0</b></span>
+              </div>
+              <div class="exclrow">
+                <button class="exclbtn" id="exclBtn"></button>
+                <button class="undo hide" id="undoBtn">Rückgängig</button>
+              </div>
+            </div>
+          </section>
+
+          <section id="v-team" class="hide">
+            <div class="card">
+              <div class="hd">
+                <button class="navbtn" id="tprev">&#8249;</button>
+                <h1 id="tmName">&nbsp;</h1>
+                <button class="navbtn" id="tnext">&#8250;</button>
+              </div>
+              <div class="sub" id="tmSub"></div>
+              <div id="tcrits"></div>
+              <div class="sum">
+                <span>Teampunkte</span><span><b id="tmTot">0</b> / 200</span>
+              </div>
+              <div class="exclrow">
+                <button class="exclbtn" id="texclBtn"></button>
+                <button class="undo hide" id="tundoBtn">Rückgängig</button>
+              </div>
+            </div>
+          </section>
+
+          <section id="v-matrix" class="hide">
+            <div class="card">
+              <h2>Meine Wertung</h2>
+              <div id="matrix"></div>
+            </div>
+          </section>
+
+          <section id="v-chair" class="hide">
+            <div class="card" id="chairRoomCard">
+              <h2>Raum <span id="chCode"></span></h2>
+              <div class="sub">Link zum Teilen</div>
+              <input type="text" id="shareUrl" readonly />
+              <button class="btn ghost" id="btnCopy">Link kopieren</button>
+              <div id="judges" style="margin-top: 14px"></div>
+              <button
+                class="btn ghost"
+                id="btnSpreadOpen"
+                style="margin-top: 14px"
+              >
+                Spreads freigeben
+              </button>
+            </div>
+            <div class="card">
+              <h2>Abweichungen - Reden</h2>
+              <div id="totspread"></div>
+            </div>
+            <div class="card">
+              <h2>Abweichungen - Teampunkte</h2>
+              <div id="spread"></div>
+            </div>
+            <div class="card" id="chairFinalCard">
+              <h2>Endergebnis</h2>
+              <div id="finalResult"></div>
+              <button class="btn ghost" id="btnBallot">Ballot anzeigen</button>
+              <div id="ballotWrap" class="hide" style="margin-top: 12px"></div>
+            </div>
+          </section>
         </div>
 
-        <section id="v-sheet">
-          <div class="card">
-            <div class="hd">
-              <button class="navbtn" id="prev">&#8249;</button>
-              <h1 id="spkName">&nbsp;</h1>
-              <button class="navbtn" id="next">&#8250;</button>
-            </div>
-            <div class="sub" id="spkSub"></div>
-            <div id="crits"></div>
-            <div class="dedu hide" id="deduRow">
-              <span class="l">Abzug (Chair)</span>
-              <button class="dedopt" data-lvl="">Keine</button>
-              <button class="dedopt" data-lvl="small">−3</button>
-              <button class="dedopt" data-lvl="big">−15</button>
-            </div>
-            <div class="sum">
-              <span>Gesamtpunkte</span><span><b id="spkTot">0</b></span>
-            </div>
-            <div class="exclrow">
-              <button class="exclbtn" id="exclBtn"></button>
-              <button class="undo hide" id="undoBtn">Rückgängig</button>
-            </div>
+        <div class="dock hide" id="dock">
+          <div class="dockpad" id="dockSheet">
+            <hr class="sep" />
+            <div id="padHost"></div>
           </div>
-        </section>
-
-        <section id="v-team" class="hide">
-          <div class="card">
-            <div class="hd">
-              <button class="navbtn" id="tprev">&#8249;</button>
-              <h1 id="tmName">&nbsp;</h1>
-              <button class="navbtn" id="tnext">&#8250;</button>
-            </div>
-            <div class="sub" id="tmSub"></div>
-            <div id="tcrits"></div>
-            <div class="sum">
-              <span>Teampunkte</span><span><b id="tmTot">0</b> / 200</span>
-            </div>
-            <div class="exclrow">
-              <button class="exclbtn" id="texclBtn"></button>
-              <button class="undo hide" id="tundoBtn">Rückgängig</button>
-            </div>
+          <div class="dockpad hide" id="dockTeam">
+            <hr class="sep" />
+            <div id="tpadHost"></div>
           </div>
-        </section>
-
-        <section id="v-matrix" class="hide">
-          <div class="card">
-            <h2>Meine Wertung</h2>
-            <div id="matrix"></div>
-          </div>
-        </section>
-
-        <section id="v-chair" class="hide">
-          <div class="card" id="chairRoomCard">
-            <h2>Raum <span id="chCode"></span></h2>
-            <div class="sub">Link zum Teilen</div>
-            <input type="text" id="shareUrl" readonly />
-            <button class="btn ghost" id="btnCopy">Link kopieren</button>
-            <div id="judges" style="margin-top: 14px"></div>
-            <button class="btn ghost" id="btnSpreadOpen" style="margin-top: 14px">
-              Abweichungen für Beisitzer freigeben
+          <nav class="tabs" id="tabs">
+            <button data-t="sheet" aria-pressed="true">Reden</button>
+            <button data-t="team" aria-pressed="false">Team</button>
+            <button data-t="matrix" aria-pressed="false">Übersicht</button>
+            <button data-t="chair" aria-pressed="false" id="tabChair">
+              Chair
             </button>
-          </div>
-          <div class="card">
-            <h2>Abweichungen - Reden</h2>
-            <div id="totspread"></div>
-          </div>
-          <div class="card">
-            <h2>Abweichungen - Teampunkte</h2>
-            <div id="spread"></div>
-          </div>
-          <div class="card" id="chairFinalCard">
-            <h2>Endergebnis</h2>
-            <div class="sub">
-              Durchschnitt über alle einbezogenen Juror:innen.
-            </div>
-            <div id="finalResult"></div>
-            <button class="btn ghost" id="btnBallot">Ballot anzeigen</button>
-            <div id="ballotWrap" class="hide" style="margin-top: 12px"></div>
-          </div>
-        </section>
-      </div>
-
-      <div class="dock hide" id="dock">
-        <div class="dockpad" id="dockSheet">
-          <hr class="sep" />
-          <div id="padHost"></div>
+          </nav>
         </div>
-        <div class="dockpad hide" id="dockTeam">
-          <hr class="sep" />
-          <div id="tpadHost"></div>
-        </div>
-        <nav class="tabs" id="tabs">
-          <button data-t="sheet" aria-pressed="true">Reden</button>
-          <button data-t="team" aria-pressed="false">Team</button>
-          <button data-t="matrix" aria-pressed="false">Übersicht</button>
-          <button data-t="chair" aria-pressed="false" id="tabChair">
-            Chair
-          </button>
-        </nav>
-      </div>
       </div>
     </div>
 
