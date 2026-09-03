@@ -312,6 +312,12 @@ var peers = {}; // judge_id -> {name,is_chair,hidden,filled,online}
 var remote = {}; // judge_id -> {"target|criterion": points}
 var queue = {}; // "target|criterion" -> {target,criterion,points,seq}
 var seq = 0;
+// Blatt's free-text notes — local-only, never synced (no server field for
+// them, no queue entry, no websocket message). Keyed by "s{s}|{groupKey}"
+// where groupKey is "spr"/"auf"/"kon"/"sacurt" (Sachverstand+Urteilskraft
+// share one note, so it isn't keyed by CRITERIA[i].key directly).
+var notes = {};
+var notesSaveTimer = null;
 var ws = null,
   wsTries = 0,
   wsTimer = null,
@@ -332,6 +338,20 @@ function loadLocal() {
   mine = LS.get("opd.scores." + ME.code, {}) || {};
   queue = LS.get("opd.queue." + ME.code, {}) || {};
   seq = LS.get("opd.seq", 0) || 0;
+  notes = LS.get("opd.notes." + ME.code, {}) || {};
+}
+function noteKey(s, groupKey) {
+  return "s" + s + "|" + groupKey;
+}
+function getNote(s, groupKey) {
+  return notes[noteKey(s, groupKey)] || "";
+}
+function setNote(s, groupKey, text) {
+  notes[noteKey(s, groupKey)] = text;
+  clearTimeout(notesSaveTimer);
+  notesSaveTimer = setTimeout(function () {
+    if (ME) LS.set("opd.notes." + ME.code, notes);
+  }, 300);
 }
 
 // Save locally first, then push to db
@@ -600,6 +620,7 @@ function resetRoomState() {
   remote = {};
   mine = {};
   queue = {};
+  notes = {};
   deductions = {};
   myExclusions = {};
   remoteExclusions = {};
@@ -1787,11 +1808,11 @@ function renderChair() {
 // room) are the existing mobile `.bar` — it's left visible (and extended
 // with room/judges/nav) instead of duplicated. dashboardView tracks which
 // of these pages shows; "sheet"/"team" reuse the existing mobile pages
-// re-centered instead of rebuilt; "dashboard" and "schnell" are wide,
-// desktop-only views with no mobile equivalent.
+// re-centered instead of rebuilt; "dashboard", "schnell" and "blatt" are
+// wide, desktop-only views with no mobile equivalent.
 var dashboardSelected = { kind: "speaker", s: 0 };
 var dashboardView = "dashboard";
-var DASH_WIDE_VIEWS = ["dashboard", "schnell"];
+var DASH_WIDE_VIEWS = ["dashboard", "schnell", "blatt"];
 
 function isDesktopWidth() {
   return !!(ME && window.matchMedia("(min-width: 1024px)").matches);
@@ -1830,6 +1851,9 @@ function applyLayoutMode() {
   document
     .getElementById("v-schnell")
     .classList.toggle("hide", !dash || ev !== "schnell");
+  document
+    .getElementById("v-blatt")
+    .classList.toggle("hide", !dash || ev !== "blatt");
 
   if (wide) {
     ["v-sheet", "v-team", "v-matrix", "v-chair"].forEach(function (id) {
@@ -2596,21 +2620,245 @@ function schnellPanel(title, table) {
   return panel;
 }
 
+// A remote websocket event (someone else's score, judges list, ...) can
+// trigger render() while this judge is mid-edit in a desktop grid/sheet;
+// don't tear down the DOM under their cursor. Only blocks on an actual
+// input/textarea having focus — a button (e.g. Blatt's prev/next) should
+// still get its full rebuild on click even though it's inside `root`.
+function dashEditGuard(root) {
+  if (!root.firstChild) return false;
+  var ae = document.activeElement;
+  return !!(ae && root.contains(ae) && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA"));
+}
+
 function renderSchnell() {
   var root = document.getElementById("v-schnell");
   if (!root) return;
-  // A remote websocket event (someone else's score, judges list, ...) can
-  // trigger render() while this judge is mid-edit here; don't tear down
-  // the grid under their cursor. Each input already patches its own row's
-  // totals directly (updateSchnellSpeakerRow/updateSchnellTeamRow), so
-  // skipping the rebuild costs nothing but a moment's staleness elsewhere
-  // on the page, which the next render() (e.g. on blur) clears up anyway.
-  if (root.firstChild && root.contains(document.activeElement)) return;
+  // Each input already patches its own row's totals directly
+  // (updateSchnellSpeakerRow/updateSchnellTeamRow), so skipping the
+  // rebuild costs nothing but a moment's staleness elsewhere on the page,
+  // which the next render() (e.g. on blur) clears up anyway.
+  if (dashEditGuard(root)) return;
   root.innerHTML = "";
   var wrap = el("div", "dashcol");
   wrap.appendChild(schnellPanel("Reden", schnellSpeakerTable()));
   wrap.appendChild(schnellPanel("Teampunkte", schnellTeamTable()));
   root.appendChild(wrap);
+}
+
+// Adjudikationsblatt — one speech at a time, four columns (Sprachkraft /
+// Auftreten / Kontaktfähigkeit / Sachverstand+Urteilskraft merged), each
+// with a score and free-text notes. Scores go through write()/mine like
+// everywhere else; notes are local-only (notes/getNote/setNote above).
+// Shares `cs` with the mobile Reden page, so switching views mid-speech
+// keeps the same speaker in focus.
+var BLATT_GROUPS = [
+  { key: "spr", critIdx: [0], label: "Sprachkraft" },
+  { key: "auf", critIdx: [1], label: "Auftreten" },
+  { key: "kon", critIdx: [2], label: "Kontaktfähigkeit" },
+  { key: "sacurt", critIdx: [3, 4], label: "Sachverstand & Urteilskraft" },
+];
+
+function blattHintText(v) {
+  if (v === null) return "–";
+  var m = markOf(v);
+  return m.name ? m.name + " · " + m.mark : "–";
+}
+
+function updateBlattScore(s, c) {
+  var v = sget(s, c);
+  var valEl = document.getElementById("blatt-val-" + s + "-" + c);
+  var hintEl = document.getElementById("blatt-hint-" + s + "-" + c);
+  var minusEl = document.getElementById("blatt-minus-" + s + "-" + c);
+  var plusEl = document.getElementById("blatt-plus-" + s + "-" + c);
+  if (valEl) valEl.value = v === null ? "" : String(v);
+  if (hintEl) hintEl.textContent = blattHintText(v);
+  if (minusEl) minusEl.disabled = v === null || v <= 0;
+  if (plusEl) plusEl.disabled = v === null || v >= 20;
+  var totEl = document.getElementById("blattTot");
+  if (totEl) totEl.textContent = String(personPunkte(s));
+}
+
+function nudgeSpeakerCriterion(s, c, d) {
+  var v = sget(s, c);
+  var base = v === null ? 0 : v;
+  write("s" + s, CRITERIA[c].key, Math.max(0, Math.min(20, base + d)));
+  updateBlattScore(s, c);
+}
+
+function blattScoreField(s, c, tabIdx) {
+  var wrap = el("div", "blattscore");
+  wrap.appendChild(el("div", "blattlbl", CRITERIA[c].label));
+
+  var inp = el("input", "schnellinput blattinput");
+  inp.type = "number";
+  inp.inputMode = "numeric";
+  inp.min = "0";
+  inp.max = "20";
+  inp.step = "1";
+  inp.id = "blatt-val-" + s + "-" + c;
+  inp.tabIndex = tabIdx;
+  var v = sget(s, c);
+  if (v !== null) inp.value = String(v);
+  // Click or tab in and the whole value is selected, so typing a digit
+  // overwrites it instead of inserting next to what's already there.
+  inp.addEventListener("focus", function () {
+    inp.select();
+  });
+  inp.addEventListener("input", function () {
+    var digits = inp.value.replace(/[^0-9]/g, "");
+    if (digits !== inp.value) inp.value = digits;
+  });
+  inp.addEventListener("change", function () {
+    var raw = inp.value.trim();
+    if (raw === "") return;
+    var n = Math.round(Number(raw));
+    if (!isFinite(n)) {
+      updateBlattScore(s, c);
+      return;
+    }
+    n = Math.max(0, Math.min(20, n));
+    write("s" + s, CRITERIA[c].key, n);
+    updateBlattScore(s, c);
+  });
+  inp.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      inp.blur();
+      schnellFocusNext(inp);
+    }
+  });
+  wrap.appendChild(inp);
+
+  var hintRow = el("div", "blatthintrow");
+  var minus = el("button", "blattnudge", "−1");
+  minus.type = "button";
+  minus.tabIndex = -1;
+  minus.id = "blatt-minus-" + s + "-" + c;
+  minus.addEventListener("click", function () {
+    nudgeSpeakerCriterion(s, c, -1);
+  });
+  hintRow.appendChild(minus);
+
+  var hint = el("div", "blatthint", blattHintText(v));
+  hint.id = "blatt-hint-" + s + "-" + c;
+  hintRow.appendChild(hint);
+
+  var plus = el("button", "blattnudge", "+1");
+  plus.type = "button";
+  plus.tabIndex = -1;
+  plus.id = "blatt-plus-" + s + "-" + c;
+  plus.addEventListener("click", function () {
+    nudgeSpeakerCriterion(s, c, 1);
+  });
+  hintRow.appendChild(plus);
+  wrap.appendChild(hintRow);
+
+  minus.disabled = v === null || v <= 0;
+  plus.disabled = v === null || v >= 20;
+
+  return wrap;
+}
+
+function blattNotesField(s, group) {
+  // tabIndex is assigned afterwards in renderBlatt(), once every score
+  // field's index is known — notes as a group come after all scores.
+  var ta = el("textarea", "blattnotes");
+  ta.placeholder = "Notizen zu " + group.label + " …";
+  ta.value = getNote(s, group.key);
+  ta.addEventListener("input", function () {
+    setNote(s, group.key, ta.value);
+  });
+  return ta;
+}
+
+function blattColumn(s, group, scoreTabStart) {
+  var col = el("div", "blattcol");
+  if (group.critIdx.length > 1) col.classList.add("blattcol-wide");
+  var scores = el("div", "blattscores");
+  group.critIdx.forEach(function (c, i) {
+    scores.appendChild(blattScoreField(s, c, scoreTabStart + i));
+  });
+  col.appendChild(scores);
+  col.appendChild(blattNotesField(s, group));
+  return col;
+}
+
+function renderBlatt() {
+  var root = document.getElementById("v-blatt");
+  if (!root) return;
+  if (dashEditGuard(root)) return;
+  root.innerHTML = "";
+
+  var sp = SPEAKERS[cs];
+  var teamCls = sp.team === 0 ? "team-gov" : sp.team === 1 ? "team-opp" : "team-free";
+
+  var head = el("div", "blatthead " + teamCls);
+  var prev = el("button", "navbtn", "‹");
+  prev.disabled = cs === 0;
+  prev.addEventListener("click", function () {
+    if (cs > 0) {
+      cs--;
+      render();
+    }
+  });
+  head.appendChild(prev);
+
+  var mid = el("div", "blattheadmid");
+  mid.appendChild(el("h1", "blatttitle", sp.label));
+  mid.appendChild(el("div", "sub", "Rede " + (cs + 1) + " von " + NS));
+  head.appendChild(mid);
+
+  var next = el("button", "navbtn", "›");
+  next.disabled = cs === NS - 1;
+  next.addEventListener("click", function () {
+    if (cs < NS - 1) {
+      cs++;
+      render();
+    }
+  });
+  head.appendChild(next);
+
+  var totWrap = el("div", "blatttotwrap");
+  totWrap.appendChild(el("div", "blatttotlbl", "Gesamtpunkte"));
+  var totVal = el("div", "blatttotval", String(personPunkte(cs)));
+  totVal.id = "blattTot";
+  totWrap.appendChild(totVal);
+  head.appendChild(totWrap);
+  root.appendChild(head);
+
+  var body = el("div", "blattbody");
+  var tab = 1;
+  BLATT_GROUPS.forEach(function (group) {
+    var scoreTabStart = tab;
+    tab += group.critIdx.length;
+    body.appendChild(blattColumn(cs, group, scoreTabStart));
+  });
+  root.appendChild(body);
+  // Notes come after every score field in tab order — reassign now that
+  // the total number of score fields (`tab - 1`) is known.
+  [].slice.call(body.querySelectorAll(".blattnotes")).forEach(function (ta, i) {
+    ta.tabIndex = tab + i;
+  });
+
+  if (ME.is_chair) {
+    var dedu = el("div", "dedu");
+    dedu.appendChild(el("span", "l", "Abzüge"));
+    var lvl = deductionLevel(cs);
+    [
+      { l: "", t: "Keiner" },
+      { l: "small", t: "Klein (−3)" },
+      { l: "big", t: "Groß (−15)" },
+    ].forEach(function (o) {
+      var b = el("button", "dedopt" + (o.l === lvl ? " on" : ""), o.t);
+      b.tabIndex = -1;
+      b.addEventListener("click", function () {
+        setDeduction(cs, o.l); // calls render() itself
+      });
+      dedu.appendChild(b);
+    });
+    root.appendChild(dedu);
+  }
 }
 
 function render() {
@@ -2622,6 +2870,7 @@ function render() {
     if (ev === "sheet") renderSheet();
     else if (ev === "team") renderTeam();
     else if (ev === "schnell") renderSchnell();
+    else if (ev === "blatt") renderBlatt();
     else renderDashboard();
   } else {
     if (view === "sheet") renderSheet();

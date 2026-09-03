@@ -1153,3 +1153,157 @@ body {
 #v-schnell th.team-free {
   border-left: 3px solid #c99a1e;
 }
+
+/* Adjudikationsblatt (Blatt) */
+#v-blatt {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+}
+#v-blatt.hide {
+  display: none;
+}
+.blatthead {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 28px 12px;
+  border-bottom: 3px solid var(--line-2);
+  background: var(--card);
+}
+.blatthead.team-gov {
+  border-bottom-color: #2f8f3c;
+}
+.blatthead.team-opp {
+  border-bottom-color: #c23b3b;
+}
+.blatthead.team-free {
+  border-bottom-color: #c99a1e;
+}
+.blattheadmid {
+  flex: 1;
+  min-width: 0;
+}
+.blatttitle {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 500;
+}
+.blatthead.team-gov .blatttitle {
+  color: #2f8f3c;
+}
+.blatthead.team-opp .blatttitle {
+  color: #c23b3b;
+}
+.blatthead.team-free .blatttitle {
+  color: #c99a1e;
+}
+.blatttotwrap {
+  text-align: right;
+}
+.blatttotlbl {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.blatttotval {
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.blattbody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+.blattcol {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--line);
+  background: var(--card);
+}
+.blattcol:last-child {
+  border-right: 0;
+}
+.blattcol-wide {
+  flex: 2;
+}
+.blattscores {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 14px;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.blattscore {
+  flex: 1;
+  min-width: 0;
+}
+.blattlbl {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-bottom: 8px;
+}
+.blattinput {
+  width: 100%;
+  font-size: 26px;
+  font-weight: 500;
+  padding: 8px 4px;
+}
+.blatthintrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.blatthint {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--ink-3);
+  text-align: center;
+}
+.blattnudge {
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  text-decoration: underline;
+}
+.blattnudge:hover {
+  color: var(--live);
+}
+.blattnudge:disabled {
+  opacity: 0.35;
+  cursor: default;
+  text-decoration: none;
+}
+.blattnotes {
+  flex: 1;
+  min-height: 0;
+  border: 0;
+  resize: none;
+  padding: 14px 18px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  background: transparent;
+  outline: none;
+}
+#v-blatt .dedu {
+  flex: 0 0 auto;
+  padding: 10px 28px;
+  border-top: 1px solid var(--line);
+  background: var(--card);
+}
