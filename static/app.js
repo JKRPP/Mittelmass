@@ -2943,12 +2943,28 @@ function renderBlatt() {
   });
   head.appendChild(next);
 
+  var stat = el("div", "blattstat");
   var totWrap = el("div", "blatttotwrap");
-  totWrap.appendChild(el("div", "blatttotlbl", "Gesamtpunkte"));
-  var totVal = el("div", "blatttotval", String(personPunkte(cs)));
+  totWrap.appendChild(el("span", "blatttotlbl", "Gesamtpunkte"));
+  var totVal = el("span", "blatttotval", String(personPunkte(cs)));
   totVal.id = "blattTot";
   totWrap.appendChild(totVal);
-  head.appendChild(totWrap);
+  stat.appendChild(totWrap);
+
+  var excluded = !!myExclusions["s" + cs];
+  var exclBtn = el(
+    "button",
+    "exclbtn" + (excluded ? " on" : ""),
+    excluded ? "In Wertung eingehen" : "Aus Wertung nehmen",
+  );
+  exclBtn.type = "button";
+  exclBtn.tabIndex = -1;
+  exclBtn.addEventListener("click", function () {
+    setExclusion("s" + cs, !excluded);
+  });
+  stat.appendChild(exclBtn);
+  head.appendChild(stat);
+  root.classList.toggle("excluded", excluded);
   root.appendChild(head);
 
   var body = el("div", "blattbody");
@@ -3139,12 +3155,30 @@ function teamPointsSection(t, tabStart) {
 
   var head = el("div", "teampointssechead");
   head.appendChild(el("div", "teampointssecname", TEAMS[t]));
+
+  var right = el("div", "teampointssecright");
   var totWrap = el("div", "teampointstotwrap");
   totWrap.appendChild(el("span", "teampointstotlbl", "Teampunkte"));
   var totVal = el("span", "teampointstotval", String(teamPunkte(t)));
   totVal.id = "teampointsTot-t" + t;
   totWrap.appendChild(totVal);
-  head.appendChild(totWrap);
+  right.appendChild(totWrap);
+
+  var excluded = !!myExclusions["t" + t];
+  var exclBtn = el(
+    "button",
+    "exclbtn" + (excluded ? " on" : ""),
+    excluded ? "In Wertung eingehen" : "Aus Wertung nehmen",
+  );
+  exclBtn.type = "button";
+  exclBtn.tabIndex = -1;
+  exclBtn.addEventListener("click", function () {
+    setExclusion("t" + t, !excluded);
+  });
+  right.appendChild(exclBtn);
+  head.appendChild(right);
+
+  sec.classList.toggle("excluded", excluded);
   sec.appendChild(head);
 
   var body = el("div", "blattbody teampointsbody");

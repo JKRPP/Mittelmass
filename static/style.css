@@ -1243,8 +1243,16 @@ body {
 .blatthead.team-free .blatttitle {
   color: #c99a1e;
 }
+.blattstat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
 .blatttotwrap {
-  text-align: right;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
 }
 .blatttotlbl {
   font-size: 11px;
@@ -1348,6 +1356,9 @@ body {
   border-top: 1px solid var(--line);
   background: var(--card);
 }
+#v-blatt.excluded .blattbody {
+  opacity: 0.55;
+}
 
 /* Teampunkte-Blatt (team-first team points entry) */
 #v-teampoints {
@@ -1396,6 +1407,11 @@ body {
   font-size: 14px;
   font-weight: 500;
 }
+.teampointssecright {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
 .teampointstotwrap {
   display: flex;
   align-items: baseline;
@@ -1425,6 +1441,9 @@ body {
 }
 .teampointsbody .teampointscol-3 {
   flex: 3;
+}
+.teampointssec.excluded .teampointsbody {
+  opacity: 0.55;
 }
 .teampointscatrow {
   flex: 1;
