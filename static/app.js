@@ -1,3 +1,22 @@
+// The dock (score pad + tabs) is position:fixed to the bottom of the
+// viewport rather than sized into a fixed-height flex shell, because mobile
+// browsers (Firefox Android in particular) resize their address bar in and
+// out of the layout in ways that fixed-height shells (100dvh etc.) don't
+// track reliably. Fixed-position elements are anchored to the true visual
+// viewport by the browser itself, so this just works. The scrolling content
+// behind it needs bottom padding reserved to match, since the dock's height
+// itself varies (grade pad open/closed, view switching).
+function syncDockSpace() {
+  var dock = document.getElementById("dock");
+  var vp = document.getElementById("viewport");
+  if (!dock || !vp) return;
+  vp.style.paddingBottom = dock.classList.contains("hide")
+    ? ""
+    : dock.offsetHeight + 14 + "px";
+}
+window.addEventListener("resize", syncDockSpace);
+window.addEventListener("orientationchange", syncDockSpace);
+
 var SPEAKERS = [
   { label: "Eröffnungsrede Regierung", team: 0 },
   { label: "Eröffnungsrede Opposition", team: 1 },
@@ -1611,6 +1630,7 @@ function render() {
   if (view === "matrix") renderMatrix();
   if (view === "chair") renderChair();
   paintBar();
+  syncDockSpace();
 }
 
 // Lobby session
@@ -1622,7 +1642,7 @@ function showLobby() {
   var code = urlCode();
   document.getElementById("v-lobby").classList.remove("hide");
   document.getElementById("main").classList.add("hide");
-  document.getElementById("tabs").classList.add("hide");
+  document.getElementById("dock").classList.add("hide");
   if (code) {
     document.getElementById("lobbyCode").textContent = code;
     document.getElementById("lobbyJoin").classList.remove("hide");
@@ -1651,7 +1671,7 @@ function startSession(s) {
   Object.assign(remote[ME.judge_id], mine);
   document.getElementById("v-lobby").classList.add("hide");
   document.getElementById("main").classList.remove("hide");
-  document.getElementById("tabs").classList.remove("hide");
+  document.getElementById("dock").classList.remove("hide");
   updateChairTab();
   if (history.replaceState)
     history.replaceState({ room: ME.code }, "", "/r/" + ME.code);
@@ -1774,6 +1794,12 @@ function showView(v) {
   ["sheet", "team", "matrix", "chair"].forEach(function (vv) {
     document.getElementById("v-" + vv).classList.toggle("hide", vv !== view);
   });
+  document
+    .getElementById("dockSheet")
+    .classList.toggle("hide", view !== "sheet");
+  document
+    .getElementById("dockTeam")
+    .classList.toggle("hide", view !== "team");
 }
 document.getElementById("tabs").addEventListener("click", function (e) {
   var b = e.target.closest("button[data-t]");

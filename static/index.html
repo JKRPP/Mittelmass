@@ -162,6 +162,7 @@
 
       <!-- MAIN -->
       <div id="main" class="hide">
+      <div class="viewport" id="viewport">
         <div class="bar">
           <span class="dot" id="cdot"></span>
           <span id="cstate">verbinde …</span>
@@ -192,12 +193,6 @@
             <div class="exclrow">
               <button class="exclbtn" id="exclBtn"></button>
             </div>
-            <hr class="sep" />
-            <div id="padHost"></div>
-            <div class="foot">
-              <span id="lastEntry">Noch keine Eingabe</span>
-              <button class="undo hide" id="undoBtn">Rückgängig</button>
-            </div>
           </div>
         </section>
 
@@ -216,9 +211,6 @@
             <div class="exclrow">
               <button class="exclbtn" id="texclBtn"></button>
             </div>
-            <hr class="sep" />
-            <div id="tpadHost"></div>
-            <div class="foot"><span id="tlastEntry"></span></div>
           </div>
         </section>
 
@@ -259,14 +251,32 @@
           </div>
         </section>
       </div>
-    </div>
 
-    <nav class="tabs hide" id="tabs">
-      <button data-t="sheet" aria-pressed="true">Reden</button>
-      <button data-t="team" aria-pressed="false">Team</button>
-      <button data-t="matrix" aria-pressed="false">Übersicht</button>
-      <button data-t="chair" aria-pressed="false" id="tabChair">Chair</button>
-    </nav>
+      <div class="dock hide" id="dock">
+        <div class="dockpad" id="dockSheet">
+          <hr class="sep" />
+          <div id="padHost"></div>
+          <div class="foot">
+            <span id="lastEntry">Noch keine Eingabe</span>
+            <button class="undo hide" id="undoBtn">Rückgängig</button>
+          </div>
+        </div>
+        <div class="dockpad hide" id="dockTeam">
+          <hr class="sep" />
+          <div id="tpadHost"></div>
+          <div class="foot"><span id="tlastEntry"></span></div>
+        </div>
+        <nav class="tabs" id="tabs">
+          <button data-t="sheet" aria-pressed="true">Reden</button>
+          <button data-t="team" aria-pressed="false">Team</button>
+          <button data-t="matrix" aria-pressed="false">Übersicht</button>
+          <button data-t="chair" aria-pressed="false" id="tabChair">
+            Chair
+          </button>
+        </nav>
+      </div>
+      </div>
+    </div>
 
     <script src="/static/app.js"></script>
   </body>
