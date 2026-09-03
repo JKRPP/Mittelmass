@@ -1834,14 +1834,19 @@ function isDesktopChair() {
   return isDesktopWidth() && ME.is_chair;
 }
 // The view the desktop chrome should actually show right now — falls back
-// to "sheet" if a wing's dashboardView is somehow left on the chair-only
-// "dashboard" (e.g. after losing chair status) or on "matrix" (no longer
-// reachable from the desktop nav, replaced by Schnelleingabe), so neither
-// can end up showing on desktop just because the state var was left there
-// from before.
+// to "schnell" if a wing's dashboardView is somehow left on the chair-only
+// "dashboard" (e.g. after losing chair status) or on "matrix"/"sheet"/"team"
+// (no longer reachable from the desktop nav, replaced by Schnelleingabe and
+// the Notizen views), so none of those can end up showing on desktop just
+// because the state var was left there from before.
 function effectiveDashboardView() {
-  if (dashboardView === "dashboard" && !ME.is_chair) return "sheet";
-  if (dashboardView === "matrix") return "sheet";
+  if (dashboardView === "dashboard" && !ME.is_chair) return "schnell";
+  if (
+    dashboardView === "matrix" ||
+    dashboardView === "sheet" ||
+    dashboardView === "team"
+  )
+    return "schnell";
   return dashboardView;
 }
 
@@ -1906,6 +1911,8 @@ function renderDashChrome() {
   var jury = document.getElementById("dashJury");
   jury.innerHTML = "";
   jury.appendChild(el("span", "dashroom", "Raum " + ME.code));
+  var chips = el("div", "dashjurychips");
+  jury.appendChild(chips);
   if (!ME.is_chair) return;
   Object.keys(peers).forEach(function (id) {
     var j = peers[id];
@@ -1942,7 +1949,7 @@ function renderDashChrome() {
       });
       chip.appendChild(x);
     }
-    jury.appendChild(chip);
+    chips.appendChild(chip);
   });
 
   var ev = effectiveDashboardView();
@@ -2386,6 +2393,12 @@ function schnellNumberInput(width) {
   inp.min = "0";
   inp.step = "1";
   inp.style.width = width || "95px";
+  // Click or tab in and the whole value is selected, so typing a digit
+  // overwrites it instead of inserting next to what's already there —
+  // matches Blatt/Teampunkte's number fields.
+  inp.addEventListener("focus", function () {
+    inp.select();
+  });
   // type="number" still lets a user type e/+/-/. (they're valid in a
   // float, just not a score) — strip anything but digits as they type,
   // rather than only catching it once the field loses focus.
@@ -2464,7 +2477,16 @@ function updateSchnellSpeakerRow(s) {
   var abCell = document.getElementById("schnell-ab-" + s);
   var pCell = document.getElementById("schnell-p-" + s);
   if (sumCell) sumCell.textContent = z === null ? "·" : String(z);
-  if (abCell) abCell.textContent = deductionPoints(s) || "·";
+  if (abCell) {
+    var abVal = deductionPoints(s) || "·";
+    var abBtn = abCell.querySelector(".schnellab");
+    if (abBtn) {
+      abBtn.textContent = abVal;
+      abBtn.classList.toggle("on", !!deductionLevel(s));
+    } else {
+      abCell.textContent = abVal;
+    }
+  }
   if (pCell) pCell.textContent = z === null ? "·" : String(personPunkte(s));
   // The speaker's own total feeds that team's Reden/Gesamt columns too.
   var team = SPEAKERS[s].team;
@@ -2496,8 +2518,24 @@ function schnellSpeakerRow(s, teamCls) {
   var sumTd = el("td", "tot", z === null ? "·" : String(z));
   sumTd.id = "schnell-sum-" + s;
   tr.appendChild(sumTd);
-  var abTd = el("td", "mt", deductionPoints(s) || "·");
+  var abTd = el("td", "mt");
   abTd.id = "schnell-ab-" + s;
+  if (ME.is_chair) {
+    var abBtn = el(
+      "button",
+      "schnellab" + (deductionLevel(s) ? " on" : ""),
+      deductionPoints(s) || "·",
+    );
+    abBtn.type = "button";
+    abBtn.title = "Abzüge ändern";
+    abBtn.addEventListener("click", function () {
+      var lvl = deductionLevel(s);
+      setDeduction(s, lvl === "" ? "small" : lvl === "small" ? "big" : "");
+    });
+    abTd.appendChild(abBtn);
+  } else {
+    abTd.textContent = deductionPoints(s) || "·";
+  }
   tr.appendChild(abTd);
   var pTd = el("td", "tot", z === null ? "·" : String(personPunkte(s)));
   pTd.id = "schnell-p-" + s;

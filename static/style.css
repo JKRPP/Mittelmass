@@ -829,15 +829,25 @@ body {
   font-weight: 500;
 }
 .dashroom {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink-3);
   margin-right: 2px;
+  flex: 0 0 auto;
 }
 .dashjury {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 40vw;
+  gap: 8px;
+}
+.dashjurychips {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  min-width: 0;
   gap: 8px;
 }
 .dashjchip {
@@ -1045,6 +1055,8 @@ body {
   flex-wrap: wrap;
   gap: 6px;
   flex: 0 0 auto;
+  max-width: 50%;
+  justify-content: flex-end;
 }
 
 #v-dashboard tr.hot td {
@@ -1088,6 +1100,7 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: auto;
   padding: 14px 28px;
   background: var(--paper);
 }
@@ -1148,6 +1161,22 @@ body {
 }
 .schnellgstart {
   border-left: 1px solid var(--line-2);
+}
+.schnellab {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: inherit;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.schnellab:hover {
+  color: var(--live);
+}
+.schnellab.on {
+  color: var(--warn);
+  font-weight: 500;
 }
 #v-schnell td.team-gov,
 #v-schnell th.team-gov {
