@@ -1131,6 +1131,23 @@ function activeJudges() {
     return !peers[id].hidden;
   });
 }
+// Chair's column always comes first in a ballot comparison table, whichever
+// judge that happens to be — used by fullBallotTable/dashBallotTable/
+// dashTeamBallotTable.
+function chairFirstIds(ids) {
+  return ids.slice().sort(function (a, b) {
+    return (peers[b].is_chair ? 1 : 0) - (peers[a].is_chair ? 1 : 0);
+  });
+}
+// Mean of a list of numbers, rounded to 2 decimal places; null for an empty
+// list rather than NaN, so callers can render "·" without a separate check.
+function avgRound(vals) {
+  if (!vals.length) return null;
+  var sum = vals.reduce(function (a, b) {
+    return a + b;
+  }, 0);
+  return Math.round((sum / vals.length) * 100) / 100;
+}
 // Shared chair math: every spread/average computation used by both the
 // mobile chair view and the desktop dashboard lives here, so the two never
 // disagree.
@@ -1453,9 +1470,7 @@ function ballotSepRow(ncols) {
 }
 
 function fullBallotTable(summary) {
-  var chairFirst = summary.ids.slice().sort(function (a, b) {
-    return (peers[b].is_chair ? 1 : 0) - (peers[a].is_chair ? 1 : 0);
-  });
+  var chairFirst = chairFirstIds(summary.ids);
   var ncols = chairFirst.length + 2;
   var table = el("table", "ballottable");
   var head = el("tr");
@@ -1486,15 +1501,7 @@ function fullBallotTable(summary) {
     var scored = vals.filter(function (v) {
       return v !== null;
     });
-    var avg = scored.length
-      ? Math.round(
-          (scored.reduce(function (a, b) {
-            return a + b;
-          }, 0) /
-            scored.length) *
-            100,
-        ) / 100
-      : null;
+    var avg = avgRound(scored);
     var avgTd = el("td", "tot", avg === null ? "·" : String(avg));
     tr.appendChild(avgTd);
     table.appendChild(tr);
@@ -1514,15 +1521,7 @@ function fullBallotTable(summary) {
       tr.appendChild(el("td", "tot", String(v)));
       if (summary.includedFor(id, "t" + t)) vals.push(v);
     });
-    var avg = vals.length
-      ? Math.round(
-          (vals.reduce(function (a, b) {
-            return a + b;
-          }, 0) /
-            vals.length) *
-            100,
-        ) / 100
-      : null;
+    var avg = avgRound(vals);
     tr.appendChild(el("td", "tot", avg === null ? "·" : String(avg)));
     table.appendChild(tr);
   });
@@ -1566,15 +1565,7 @@ function fullBallotTable(summary) {
     var scored = vals.filter(function (v) {
       return v !== null;
     });
-    var avg = scored.length
-      ? Math.round(
-          (scored.reduce(function (a, b) {
-            return a + b;
-          }, 0) /
-            scored.length) *
-            100,
-        ) / 100
-      : null;
+    var avg = avgRound(scored);
     var avgTd = el("td", "tot", avg === null ? "·" : String(avg));
     tr.appendChild(avgTd);
     table.appendChild(tr);
@@ -2212,9 +2203,7 @@ function dashSpreadCell(spread) {
 }
 
 function dashBallotTable(summary, s) {
-  var chairFirst = summary.ids.slice().sort(function (a, b) {
-    return (peers[b].is_chair ? 1 : 0) - (peers[a].is_chair ? 1 : 0);
-  });
+  var chairFirst = chairFirstIds(summary.ids);
   var table = el("table", "ballottable");
   var head = el("tr");
   head.appendChild(el("th", "l", "Kriterium"));
@@ -2236,15 +2225,7 @@ function dashBallotTable(summary, s) {
       tr.appendChild(el("td", null, v === undefined ? "·" : String(v)));
       if (summary.includedFor(id, "s" + s) && v !== undefined) vals.push(v);
     });
-    var avg = vals.length
-      ? Math.round(
-          (vals.reduce(function (a, b) {
-            return a + b;
-          }, 0) /
-            vals.length) *
-            100,
-        ) / 100
-      : null;
+    var avg = avgRound(vals);
     tr.appendChild(el("td", "tot", avg === null ? "·" : String(avg)));
     tr.appendChild(dashSpreadCell(cell ? cell.spread : null));
     table.appendChild(tr);
@@ -2257,15 +2238,7 @@ function dashBallotTable(summary, s) {
     totTr.appendChild(el("td", "tot", v === null ? "·" : String(v)));
     if (summary.includedFor(id, "s" + s) && v !== null) totVals.push(v);
   });
-  var totAvg = totVals.length
-    ? Math.round(
-        (totVals.reduce(function (a, b) {
-          return a + b;
-        }, 0) /
-          totVals.length) *
-          100,
-      ) / 100
-    : null;
+  var totAvg = avgRound(totVals);
   totTr.appendChild(el("td", "tot", totAvg === null ? "·" : String(totAvg)));
   var totCell = summary.totals.filter(function (x) {
     return x.key === "s" + s;
@@ -2276,9 +2249,7 @@ function dashBallotTable(summary, s) {
 }
 
 function dashTeamBallotTable(summary, t, grp) {
-  var chairFirst = summary.ids.slice().sort(function (a, b) {
-    return (peers[b].is_chair ? 1 : 0) - (peers[a].is_chair ? 1 : 0);
-  });
+  var chairFirst = chairFirstIds(summary.ids);
   var cats = TEAMCATS.filter(function (c) {
     return c.grp === grp;
   });
@@ -2303,15 +2274,7 @@ function dashTeamBallotTable(summary, t, grp) {
       tr.appendChild(el("td", null, v === undefined ? "·" : String(v)));
       if (summary.includedFor(id, "t" + t) && v !== undefined) vals.push(v);
     });
-    var avg = vals.length
-      ? Math.round(
-          (vals.reduce(function (a, b) {
-            return a + b;
-          }, 0) /
-            vals.length) *
-            100,
-        ) / 100
-      : null;
+    var avg = avgRound(vals);
     tr.appendChild(el("td", "tot", avg === null ? "·" : String(avg)));
     tr.appendChild(dashSpreadCell(cell ? cell.spread : null));
     table.appendChild(tr);
@@ -2333,15 +2296,7 @@ function dashTeamBallotTable(summary, t, grp) {
     totTr.appendChild(el("td", "tot", complete ? String(sum) : "·"));
     if (summary.includedFor(id, "t" + t) && complete) totVals.push(sum);
   });
-  var totAvg = totVals.length
-    ? Math.round(
-        (totVals.reduce(function (a, b) {
-          return a + b;
-        }, 0) /
-          totVals.length) *
-          100,
-      ) / 100
-    : null;
+  var totAvg = avgRound(totVals);
   totTr.appendChild(el("td", "tot", totAvg === null ? "·" : String(totAvg)));
   var totCell = summary.groupCells.filter(function (x) {
     return x.key === "t" + t + "/grp-" + TEAMS[t] + " · " + grp;
@@ -2437,21 +2392,32 @@ function renderDashboard() {
 // the chair — it's personal score entry, same as mobile Reden/Team.
 // Enter moves to the next cell just like Tab, instead of just committing
 // the current one and leaving focus behind.
-function schnellFocusNext(inp) {
-  var root = document.getElementById("v-schnell");
+// Shared by every desktop number-grid view (Schnelleingabe, Blatt,
+// Teampunkte) — scopes to whichever "v-*" view the input actually lives in,
+// rather than a single hardcoded root, so one helper works everywhere.
+function focusNextNumberInput(inp) {
+  var root = inp.closest('[id^="v-"]');
   if (!root) return;
   var inputs = [].slice.call(root.querySelectorAll("input.schnellinput"));
   var next = inputs[inputs.indexOf(inp) + 1];
   if (next) next.focus();
 }
 
-function schnellNumberInput(width) {
-  var inp = el("input", "schnellinput");
+// Shared by every number field in the desktop score-entry views
+// (Schnelleingabe, Blatt, Teampunkte) — digit-filtering, select-on-focus,
+// and Enter-to-next-field are identical everywhere; only sizing/class and
+// the "change" handler (what a valid value means, how it's clamped) differ
+// per view, so those are left to the caller.
+// opts: { width, extraClass } — pass width:false to skip the inline width
+// (e.g. Blatt/Teampunkte size their inputs via CSS instead).
+function schnellNumberInput(opts) {
+  opts = opts || {};
+  var inp = el("input", "schnellinput" + (opts.extraClass ? " " + opts.extraClass : ""));
   inp.type = "number";
   inp.inputMode = "numeric";
   inp.min = "0";
   inp.step = "1";
-  inp.style.width = width || "95px";
+  if (opts.width !== false) inp.style.width = opts.width || "95px";
   // Click or tab in and the whole value is selected, so typing a digit
   // overwrites it instead of inserting next to what's already there —
   // matches Blatt/Teampunkte's number fields.
@@ -2469,7 +2435,7 @@ function schnellNumberInput(width) {
     if (e.key === "Enter") {
       e.preventDefault();
       inp.blur(); // commits the value (fires "change") before moving on
-      schnellFocusNext(inp);
+      focusNextNumberInput(inp);
     }
   });
   return inp;
@@ -2811,25 +2777,12 @@ function blattScoreField(s, c, tabIdx) {
   var wrap = el("div", "blattscore");
   wrap.appendChild(el("div", "blattlbl", CRITERIA[c].label));
 
-  var inp = el("input", "schnellinput blattinput");
-  inp.type = "number";
-  inp.inputMode = "numeric";
-  inp.min = "0";
+  var inp = schnellNumberInput({ extraClass: "blattinput", width: false });
   inp.max = "20";
-  inp.step = "1";
   inp.id = "blatt-val-" + s + "-" + c;
   inp.tabIndex = tabIdx;
   var v = sget(s, c);
   if (v !== null) inp.value = String(v);
-  // Click or tab in and the whole value is selected, so typing a digit
-  // overwrites it instead of inserting next to what's already there.
-  inp.addEventListener("focus", function () {
-    inp.select();
-  });
-  inp.addEventListener("input", function () {
-    var digits = inp.value.replace(/[^0-9]/g, "");
-    if (digits !== inp.value) inp.value = digits;
-  });
   inp.addEventListener("change", function () {
     var raw = inp.value.trim();
     if (raw === "") return;
@@ -2841,13 +2794,6 @@ function blattScoreField(s, c, tabIdx) {
     n = Math.max(0, Math.min(20, n));
     write("s" + s, CRITERIA[c].key, n);
     updateBlattScore(s, c);
-  });
-  inp.addEventListener("keydown", function (e) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      inp.blur();
-      schnellFocusNext(inp);
-    }
   });
   wrap.appendChild(inp);
 
@@ -3004,14 +2950,6 @@ function renderBlatt() {
 // Teampunkte-Blatt — team-first sibling to Blatt: both teams' 7 category
 // scores plus per-group notes, all on one screen (no paging, unlike Blatt,
 // since a judge switching here mid-debate wants to see both teams at once).
-function teamPointsFocusNext(inp) {
-  var root = document.getElementById("v-teampoints");
-  if (!root) return;
-  var inputs = [].slice.call(root.querySelectorAll("input.schnellinput"));
-  var next = inputs[inputs.indexOf(inp) + 1];
-  if (next) next.focus();
-}
-
 function teamPointsHintText(v, max) {
   if (v === null) return "–";
   var m = markOf(katOf(v, max));
@@ -3048,23 +2986,12 @@ function teamPointsScoreField(t, catIdx, tabIdx) {
   var wrap = el("div", "blattscore");
   wrap.appendChild(el("div", "blattlbl", cat.label + " (max " + cat.max + ")"));
 
-  var inp = el("input", "schnellinput blattinput");
-  inp.type = "number";
-  inp.inputMode = "numeric";
-  inp.min = "0";
+  var inp = schnellNumberInput({ extraClass: "blattinput", width: false });
   inp.max = String(cat.max);
-  inp.step = "1";
   inp.id = "teampoints-val-t" + t + "-c" + catIdx;
   inp.tabIndex = tabIdx;
   var v = tget(t, catIdx);
   if (v !== null) inp.value = String(v);
-  inp.addEventListener("focus", function () {
-    inp.select();
-  });
-  inp.addEventListener("input", function () {
-    var digits = inp.value.replace(/[^0-9]/g, "");
-    if (digits !== inp.value) inp.value = digits;
-  });
   inp.addEventListener("change", function () {
     var raw = inp.value.trim();
     if (raw === "") return;
@@ -3079,13 +3006,6 @@ function teamPointsScoreField(t, catIdx, tabIdx) {
     n = Math.max(0, Math.min(cat.max, n));
     write("t" + t, cat.key, n);
     updateTeamPointsScore(t, catIdx);
-  });
-  inp.addEventListener("keydown", function (e) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      inp.blur();
-      teamPointsFocusNext(inp);
-    }
   });
   wrap.appendChild(inp);
 
