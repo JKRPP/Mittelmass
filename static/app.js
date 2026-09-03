@@ -606,7 +606,7 @@ function leaveRoom() {
 // Always defaults to light, regardless of the device's system setting.
 // Only an explicit tap on the theme button ever switches to dark.
 var THEME_CYCLE = ["light", "dark"];
-var THEME_LABEL = { light: "Light", dark: "Dark" };
+var THEME_LABEL = { light: "Heller Modus", dark: "Dunkler Modus" };
 function applyTheme(t) {
   document.documentElement.setAttribute("data-theme", t || "light");
   var b = document.getElementById("themeBtn");
@@ -1706,25 +1706,36 @@ document.getElementById("nm").addEventListener("keydown", function (e) {
     else document.getElementById("btnCreate").click();
   }
 });
-document.getElementById("btnCopy").addEventListener("click", function () {
-  var u = document.getElementById("shareUrl");
-  u.select();
-  u.setSelectionRange(0, 99999);
+function copyRoomLink(btn, url) {
+  var label = btn.textContent;
   var done = function () {
-    var b = document.getElementById("btnCopy");
-    b.textContent = "Kopiert";
+    btn.textContent = "Kopiert";
     setTimeout(function () {
-      b.textContent = "Link kopieren";
+      btn.textContent = label;
     }, 1500);
   };
-  if (navigator.clipboard)
-    navigator.clipboard.writeText(u.value).then(done, function () {});
-  else {
-    try {
-      document.execCommand("copy");
-      done();
-    } catch (e) {}
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(done, function () {});
+    return;
   }
+  var tmp = document.createElement("input");
+  tmp.value = url;
+  tmp.style.position = "fixed";
+  tmp.style.opacity = "0";
+  document.body.appendChild(tmp);
+  tmp.select();
+  tmp.setSelectionRange(0, 99999);
+  try {
+    document.execCommand("copy");
+    done();
+  } catch (e) {}
+  document.body.removeChild(tmp);
+}
+document.getElementById("btnCopy").addEventListener("click", function () {
+  copyRoomLink(this, document.getElementById("shareUrl").value);
+});
+document.getElementById("menuCopyLink").addEventListener("click", function () {
+  copyRoomLink(this, location.origin + "/r/" + ME.code);
 });
 document.getElementById("btnSpreadOpen").addEventListener("click", function () {
   var next = !spreadOpen;
@@ -1854,6 +1865,32 @@ document.getElementById("texclBtn").addEventListener("click", function () {
   setExclusion("t" + ct, !myExclusions["t" + ct]);
 });
 document.getElementById("leaveBtn").addEventListener("click", leaveRoom);
+
+function closeMenu() {
+  document.getElementById("menuPanel").classList.add("hide");
+  document.getElementById("menuBtn").setAttribute("aria-expanded", "false");
+}
+document.getElementById("menuBtn").addEventListener("click", function (e) {
+  e.stopPropagation();
+  var panel = document.getElementById("menuPanel");
+  var open = panel.classList.toggle("hide") === false;
+  this.setAttribute("aria-expanded", String(open));
+});
+document.getElementById("menuPanel").addEventListener("click", function (e) {
+  var item = e.target.closest(".menuitem");
+  // Copying stays open briefly to show the "Kopiert" confirmation instead
+  // of vanishing the instant it's tapped.
+  if (item && item.id !== "menuCopyLink") closeMenu();
+});
+document.addEventListener("click", function (e) {
+  var panel = document.getElementById("menuPanel");
+  if (panel.classList.contains("hide")) return;
+  if (e.target.closest("#menuPanel") || e.target.closest("#menuBtn")) return;
+  closeMenu();
+});
+document.addEventListener("keydown", function (e) {
+  if (e.key === "Escape") closeMenu();
+});
 window.addEventListener("popstate", function () {
   var code = urlCode();
   if (code && !ME) {

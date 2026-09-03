@@ -158,7 +158,11 @@
           <button class="btn hide" id="btnJoin">Beitreten</button>
           <div class="err" id="lobbyErr"></div>
           <div class="legalrow">
-            <a class="legallink" href="/impressum" target="_blank" rel="noopener"
+            <a
+              class="legallink"
+              href="/impressum"
+              target="_blank"
+              rel="noopener"
               >Impressum</a
             >
           </div>
@@ -172,9 +176,27 @@
             <span class="dot" id="cdot"></span>
             <span id="cstate">verbinde …</span>
             <span class="sp"></span>
-            <button class="themebtn" id="themeBtn"></button>
-            <span id="whoami"></span>
-            <button class="leavebtn" id="leaveBtn">Verlassen</button>
+            <button
+              class="menubtn"
+              id="menuBtn"
+              aria-label="Menü"
+              aria-expanded="false"
+            >
+              &#8942;
+            </button>
+            <div class="menupanel hide" id="menuPanel">
+              <div class="menuwho" id="whoami"></div>
+              <button class="menuitem" id="menuCopyLink">Link kopieren</button>
+              <button class="menuitem" id="themeBtn"></button>
+              <a
+                class="menuitem"
+                href="/impressum"
+                target="_blank"
+                rel="noopener"
+                >Impressum</a
+              >
+              <button class="menuitem" id="leaveBtn">Raum verlassen</button>
+            </div>
           </div>
 
           <section id="v-sheet">
@@ -187,10 +209,10 @@
               <div class="sub" id="spkSub"></div>
               <div id="crits"></div>
               <div class="dedu hide" id="deduRow">
-                <span class="l">Abzug (Chair)</span>
-                <button class="dedopt" data-lvl="">Keine</button>
-                <button class="dedopt" data-lvl="small">−3</button>
-                <button class="dedopt" data-lvl="big">−15</button>
+                <span class="l">Abzüge</span>
+                <button class="dedopt" data-lvl="">Keiner</button>
+                <button class="dedopt" data-lvl="small">Klein (−3)</button>
+                <button class="dedopt" data-lvl="big">Groß (−15)</button>
               </div>
               <div class="sum">
                 <span>Gesamtpunkte</span><span><b id="spkTot">0</b></span>
@@ -276,13 +298,6 @@
             <button data-t="chair" aria-pressed="false" id="tabChair">
               Chair
             </button>
-            <a
-              class="tabs-legal"
-              href="/impressum"
-              target="_blank"
-              rel="noopener"
-              >Impressum</a
-            >
           </nav>
         </div>
       </div>
