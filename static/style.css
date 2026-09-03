@@ -766,41 +766,77 @@ input:focus-visible {
 }
 
 /* Desktop chair dashboard */
+html,
+body {
+  height: 100%;
+}
 #app.dashboard-mode {
   max-width: none;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+#app.dashboard-mode #main:not(.hide) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 /* The mobile top bar (connection dot/state + ⋮ menu) stays visible and
-   does the same job here — just give it dashboard-scale padding. */
+   carries the desktop nav + room/judges info too — one bar, not two. */
 #app.dashboard-mode .bar {
   padding: 10px 24px;
   border-bottom: 1px solid var(--line);
+}
+/* A subview (Reden/Team/Übersicht) re-centers the existing mobile page —
+   reused as-is — instead of stretching it full width. */
+#app.dashboard-mode.dashboard-subview #v-sheet,
+#app.dashboard-mode.dashboard-subview #v-team,
+#app.dashboard-mode.dashboard-subview #v-matrix,
+#app.dashboard-mode.dashboard-subview .dock {
+  max-width: 440px;
+  margin: 0 auto;
 }
 #v-dashboard.hide {
   display: none;
 }
 #v-dashboard {
   background: var(--paper);
-  min-height: 100vh;
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
-.dashbar {
-  flex: 0 0 auto;
+.dashnav {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 24px;
-  border-bottom: 1px solid var(--line);
+  gap: 4px;
+  margin-left: 10px;
+}
+.dashnav button {
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.dashnav button[aria-pressed="true"] {
+  color: var(--live);
+  background: var(--live-bg);
+  border-color: var(--live-line);
+  font-weight: 500;
 }
 .dashroom {
-  font-size: 17px;
+  font-size: 13px;
   font-weight: 500;
-  letter-spacing: -0.01em;
-  margin-right: 4px;
+  color: var(--ink-2);
+  margin-right: 2px;
 }
 .dashjury {
-  margin-left: auto;
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 8px;
 }
@@ -834,11 +870,12 @@ input:focus-visible {
 .dashbody {
   flex: 1;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: stretch;
   gap: 20px;
   padding: 20px 24px;
   min-height: 0;
+  overflow: hidden;
 }
 .dashcol {
   display: flex;
@@ -847,13 +884,16 @@ input:focus-visible {
   min-width: 0;
 }
 .dashcol-a {
-  flex: 0 0 280px;
+  flex: 0 1 280px;
+  min-width: 220px;
 }
 .dashcol-b {
-  flex: 1 1 460px;
+  flex: 0 1 420px;
+  min-width: 340px;
 }
 .dashcol-c {
-  flex: 0 0 440px;
+  flex: 1 1 420px;
+  min-width: 320px;
 }
 .dashpanel {
   background: var(--card);
@@ -971,9 +1011,14 @@ input:focus-visible {
   gap: 10px;
   padding: 9px 14px;
   border-bottom: 1px solid var(--line);
+  border-left: 3px solid transparent;
+  cursor: pointer;
 }
 .dashrow.hot {
   background: var(--warn-bg);
+}
+.dashrow.sel {
+  border-left-color: var(--live);
 }
 .dashrowlbl {
   flex: 1;
@@ -1001,4 +1046,32 @@ input:focus-visible {
 }
 #v-dashboard tr.hot td.l {
   font-weight: 500;
+}
+
+#v-dashboard .ballottable tr:hover td {
+  background: color-mix(in srgb, var(--ink) 8%, var(--card));
+}
+#v-dashboard .ballottable tr.hot:hover td {
+  background: color-mix(in srgb, var(--ink) 10%, var(--warn-bg));
+}
+.ballottable td.spreadhot {
+  color: var(--warn);
+  font-weight: 500;
+}
+.ballottable tr.tsep td {
+  padding: 0;
+  border: 0;
+  border-top: 2px solid var(--line-2);
+}
+.ballottable tr.tsep:hover td {
+  background: none;
+}
+.ballottable tr.grandtot td {
+  font-weight: 700;
+}
+.ballottable tr.rowbest td {
+  background: var(--live-bg);
+}
+#v-dashboard .ballottable tr.rowbest:hover td {
+  background: color-mix(in srgb, var(--ink) 10%, var(--live-bg));
 }

@@ -424,13 +424,13 @@ function connect() {
       m.patches.forEach(function (p) {
         remote[m.judge_id][kk(p.target, p.criterion)] = p.points;
       });
-      if (view === "chair") render();
+      if (view === "chair" || isDesktopChair()) render();
     } else if (m.type === "judges") {
       peers = {};
       m.judges.forEach(function (j) {
         peers[j.id] = j;
       });
-      if (view === "chair") render();
+      if (view === "chair" || isDesktopChair()) render();
     } else if (m.type === "deductions") {
       deductions[m.speaker_idx] = m.level;
       render();
@@ -450,7 +450,7 @@ function connect() {
     } else if (m.type === "spread_open") {
       spreadOpen = m.open;
       updateChairTab();
-      if (view === "chair") render();
+      if (view === "chair" || isDesktopChair()) render();
     }
   };
   ws.onclose = function () {
@@ -1057,6 +1057,11 @@ function updateChairTab() {
   tab.classList.toggle("hide", !show);
   tab.textContent = ME.is_chair ? "Chair" : "Spreads";
 }
+function hiddenToggleMessage(name, goingHidden) {
+  return goingHidden
+    ? name + " wirklich aus der Wertung nehmen?"
+    : name + " wieder als Wing zur Wertung hinzufügen?";
+}
 function activeJudges() {
   return Object.keys(peers).filter(function (id) {
     return !peers[id].hidden;
@@ -1370,6 +1375,191 @@ function finalResultHTML(summary) {
   return fh.join("");
 }
 
+// Full ballot: one column per adjudicator (chair first), one row per
+// speaker in speaking order plus a team-total row per team — the mobile
+// "Ballot anzeigen" table and the desktop dashboard's ballot panel share
+// this exact build.
+function ballotSepRow(ncols) {
+  var tr = el("tr", "tsep");
+  var td = el("td");
+  td.setAttribute("colspan", String(ncols));
+  tr.appendChild(td);
+  return tr;
+}
+
+function fullBallotTable(summary) {
+  var chairFirst = summary.ids.slice().sort(function (a, b) {
+    return (peers[b].is_chair ? 1 : 0) - (peers[a].is_chair ? 1 : 0);
+  });
+  var ncols = chairFirst.length + 2;
+  var table = el("table", "ballottable");
+  var head = el("tr");
+  head.appendChild(el("th", "l", "Redner:in"));
+  chairFirst.forEach(function (id) {
+    head.appendChild(el("th", null, peers[id].name));
+  });
+  head.appendChild(el("th", null, "Ø"));
+  table.appendChild(head);
+
+  // Collected as {vals: [per-judge value or null, ...], avg, tds: [per-judge
+  // td, ...], avgTd} so the highest speech (per judge, and on average) and
+  // the winning team (per judge, and on average) can be marked "best" once
+  // every row has actually been built and compared.
+  var speakerMeta = [];
+  SPEAKERS.forEach(function (sp, s) {
+    var tr = el("tr");
+    tr.appendChild(el("td", "l", sp.label));
+    var vals = [],
+      tds = [];
+    chairFirst.forEach(function (id) {
+      var v = summary.remoteTotal(id, s);
+      var td = el("td", null, v === null ? "·" : String(v));
+      tr.appendChild(td);
+      vals.push(summary.includedFor(id, "s" + s) ? v : null);
+      tds.push(td);
+    });
+    var scored = vals.filter(function (v) {
+      return v !== null;
+    });
+    var avg = scored.length
+      ? Math.round(
+          (scored.reduce(function (a, b) {
+            return a + b;
+          }, 0) /
+            scored.length) *
+            100,
+        ) / 100
+      : null;
+    var avgTd = el("td", "tot", avg === null ? "·" : String(avg));
+    tr.appendChild(avgTd);
+    table.appendChild(tr);
+    speakerMeta.push({ vals: vals, avg: avg, tds: tds, avgTd: avgTd, tr: tr });
+  });
+  markColumnBest(speakerMeta, chairFirst.length);
+
+  table.appendChild(ballotSepRow(ncols));
+
+  TEAMS.forEach(function (tm, t) {
+    var tr = el("tr");
+    var teamAbbr = tm.replace("Regierung", "Reg").replace("Opposition", "Opp");
+    tr.appendChild(el("td", "l tot", "Teampunkte " + teamAbbr));
+    var vals = [];
+    chairFirst.forEach(function (id) {
+      var v = summary.remoteTeamTotal(id, t);
+      tr.appendChild(el("td", "tot", String(v)));
+      if (summary.includedFor(id, "t" + t)) vals.push(v);
+    });
+    var avg = vals.length
+      ? Math.round(
+          (vals.reduce(function (a, b) {
+            return a + b;
+          }, 0) /
+            vals.length) *
+            100,
+        ) / 100
+      : null;
+    tr.appendChild(el("td", "tot", avg === null ? "·" : String(avg)));
+    table.appendChild(tr);
+  });
+
+  table.appendChild(ballotSepRow(ncols));
+
+  // Total result: each team's grand total per judge — their own team
+  // points plus the totals of their own speakers, same figure as the
+  // "Gesamt" column of the mobile Endergebnis card, but per judge here.
+  // The higher of the two teams (per judge, and on average) is the
+  // winning team on that ballot, so it gets the same "best" mark.
+  var teamMeta = [];
+  TEAMS.forEach(function (tm, t) {
+    var teamSpeakers = [];
+    SPEAKERS.forEach(function (sp, s) {
+      if (sp.team === t) teamSpeakers.push(s);
+    });
+    var tr = el("tr", "grandtot");
+    var teamAbbr = tm.replace("Regierung", "Reg").replace("Opposition", "Opp");
+    tr.appendChild(el("td", "l tot", "Gesamt " + teamAbbr));
+    var vals = [],
+      tds = [];
+    chairFirst.forEach(function (id) {
+      var teamPts = summary.remoteTeamTotal(id, t);
+      var speakerSum = 0,
+        complete = true;
+      teamSpeakers.forEach(function (s) {
+        var v = summary.remoteTotal(id, s);
+        if (v === null) {
+          complete = false;
+          return;
+        }
+        speakerSum += v;
+      });
+      var grand = complete ? teamPts + speakerSum : null;
+      var td = el("td", "tot", grand === null ? "·" : String(grand));
+      tr.appendChild(td);
+      vals.push(summary.includedFor(id, "t" + t) ? grand : null);
+      tds.push(td);
+    });
+    var scored = vals.filter(function (v) {
+      return v !== null;
+    });
+    var avg = scored.length
+      ? Math.round(
+          (scored.reduce(function (a, b) {
+            return a + b;
+          }, 0) /
+            scored.length) *
+            100,
+        ) / 100
+      : null;
+    var avgTd = el("td", "tot", avg === null ? "·" : String(avg));
+    tr.appendChild(avgTd);
+    table.appendChild(tr);
+    teamMeta.push({ vals: vals, avg: avg, tds: tds, avgTd: avgTd, tr: tr });
+  });
+  markColumnBest(teamMeta, chairFirst.length);
+
+  return table;
+}
+
+// Marks, per judge column and in the Ø column, whichever row in `rows`
+// (speaker totals, or team grand totals) scored strictly highest — a tie
+// gets no mark, since there is no single winner to call out.
+function markColumnBest(rows, ncols) {
+  for (var col = 0; col < ncols; col++) {
+    var best = null,
+      bestRow = null,
+      tie = false;
+    rows.forEach(function (r) {
+      var v = r.vals[col];
+      if (v === null) return;
+      if (best === null || v > best) {
+        best = v;
+        bestRow = r;
+        tie = false;
+      } else if (v === best) {
+        tie = true;
+      }
+    });
+    if (bestRow && !tie) bestRow.tds[col].classList.add("best");
+  }
+  var bestAvg = null,
+    bestAvgRow = null,
+    avgTie = false;
+  rows.forEach(function (r) {
+    if (r.avg === null) return;
+    if (bestAvg === null || r.avg > bestAvg) {
+      bestAvg = r.avg;
+      bestAvgRow = r;
+      avgTie = false;
+    } else if (r.avg === bestAvg) {
+      avgTie = true;
+    }
+  });
+  if (bestAvgRow && !avgTie) {
+    bestAvgRow.avgTd.classList.add("best");
+    bestAvgRow.tr.classList.add("rowbest");
+  }
+}
+
 function renderChair() {
   document
     .getElementById("chairRoomCard")
@@ -1408,11 +1598,7 @@ function renderChair() {
         var x = el("button", "x", j.hidden ? "Zu Wing" : "Zu Trainee");
         x.addEventListener("click", function () {
           var goingHidden = !j.hidden;
-          if (
-            goingHidden &&
-            !confirm(j.name + " wirklich aus der Wertung nehmen?")
-          )
-            return;
+          if (!confirm(hiddenToggleMessage(j.name, goingHidden))) return;
           fetch(
             "/api/rooms/" +
               ME.code +
@@ -1432,11 +1618,7 @@ function renderChair() {
   }
 
   var summary = computeChairSummary();
-  var ids = summary.ids,
-    includedFor = summary.includedFor,
-    remoteTotal = summary.remoteTotal,
-    remoteTeamTotal = summary.remoteTeamTotal,
-    cells = summary.cells,
+  var cells = summary.cells,
     groupCells = summary.groupCells,
     totals = summary.totals;
 
@@ -1555,65 +1737,9 @@ function renderChair() {
   var ballotWrap = document.getElementById("ballotWrap");
   ballotWrap.classList.toggle("hide", !ballotOpen);
   if (ballotOpen) {
-    var chairFirst = ids.slice().sort(function (a, b) {
-      return (peers[b].is_chair ? 1 : 0) - (peers[a].is_chair ? 1 : 0);
-    });
-    var bTable = el("table");
-    var head = el("tr");
-    head.appendChild(el("th", "l", "Redner:in"));
-    chairFirst.forEach(function (id) {
-      head.appendChild(el("th", null, peers[id].name));
-    });
-    head.appendChild(el("th", null, "Ø"));
-    bTable.appendChild(head);
-    SPEAKERS.forEach(function (sp, s) {
-      var tr = el("tr");
-      tr.appendChild(el("td", "l", sp.label));
-      var vals = [];
-      chairFirst.forEach(function (id) {
-        var v = remoteTotal(id, s);
-        tr.appendChild(el("td", null, v === null ? "·" : String(v)));
-        if (includedFor(id, "s" + s) && v !== null) vals.push(v);
-      });
-      var avg = vals.length
-        ? Math.round(
-            (vals.reduce(function (a, b) {
-              return a + b;
-            }, 0) /
-              vals.length) *
-              100,
-          ) / 100
-        : null;
-      tr.appendChild(el("td", "tot", avg === null ? "·" : String(avg)));
-      bTable.appendChild(tr);
-    });
-    TEAMS.forEach(function (tm, t) {
-      var tr = el("tr");
-      var teamAbbr = tm
-        .replace("Regierung", "Reg")
-        .replace("Opposition", "Opp");
-      tr.appendChild(el("td", "l tot", "Teampunkte " + teamAbbr));
-      var vals = [];
-      chairFirst.forEach(function (id) {
-        var v = remoteTeamTotal(id, t);
-        tr.appendChild(el("td", "tot", String(v)));
-        if (includedFor(id, "t" + t)) vals.push(v);
-      });
-      var avg = vals.length
-        ? Math.round(
-            (vals.reduce(function (a, b) {
-              return a + b;
-            }, 0) /
-              vals.length) *
-              100,
-          ) / 100
-        : null;
-      tr.appendChild(el("td", "tot", avg === null ? "·" : String(avg)));
-      bTable.appendChild(tr);
-    });
     var scrollHost = el("div");
     scrollHost.style.overflowX = "auto";
-    scrollHost.appendChild(bTable);
+    scrollHost.appendChild(fullBallotTable(summary));
     ballotWrap.innerHTML = "";
     ballotWrap.appendChild(scrollHost);
   }
@@ -1624,11 +1750,15 @@ function renderChair() {
 // scrolling mobile cards. Chair-only, shown automatically above the
 // isDesktopChair() width threshold. The connection dot/state and the ⋮ menu
 // (link copy, theme, Impressum, leave room) are the existing mobile `.bar` —
-// it's left visible in dashboard mode instead of duplicated.
+// it's left visible (and extended with room/judges/nav) instead of
+// duplicated. dashboardView lets the desktop chair switch to their own
+// Reden/Team/Übersicht pages — the existing mobile pages, just re-centered
+// instead of hidden, not new desktop-specific ones.
 var dashboardSelected = { kind: "speaker", s: 0 };
+var dashboardView = "dashboard";
 
 function isDesktopChair() {
-  return !!(ME && ME.is_chair && window.matchMedia("(min-width: 900px)").matches);
+  return !!(ME && ME.is_chair && window.matchMedia("(min-width: 1024px)").matches);
 }
 
 function applyLayoutMode() {
@@ -1636,36 +1766,46 @@ function applyLayoutMode() {
   var app = document.getElementById("app");
   var changed = app.classList.contains("dashboard-mode") !== dash;
   app.classList.toggle("dashboard-mode", dash);
-  document.getElementById("v-dashboard").classList.toggle("hide", !dash);
-  if (dash) {
+  document.getElementById("dashNav").classList.toggle("hide", !dash);
+  document.getElementById("dashJury").classList.toggle("hide", !dash);
+
+  var subview = dash && dashboardView !== "dashboard";
+  app.classList.toggle("dashboard-subview", subview);
+  document.getElementById("v-dashboard").classList.toggle("hide", !dash || subview);
+
+  if (dash && !subview) {
     ["v-sheet", "v-team", "v-matrix", "v-chair"].forEach(function (id) {
       document.getElementById(id).classList.add("hide");
     });
     document.getElementById("dock").classList.add("hide");
+  } else if (subview) {
+    document.getElementById("v-chair").classList.add("hide");
+    ["sheet", "team", "matrix"].forEach(function (vv) {
+      document
+        .getElementById("v-" + vv)
+        .classList.toggle("hide", vv !== dashboardView);
+    });
+    document
+      .getElementById("dock")
+      .classList.toggle("hide", dashboardView === "matrix");
+    document
+      .getElementById("dockSheet")
+      .classList.toggle("hide", dashboardView !== "sheet");
+    document
+      .getElementById("dockTeam")
+      .classList.toggle("hide", dashboardView !== "team");
+    document.getElementById("tabs").classList.add("hide");
   } else {
+    document.getElementById("tabs").classList.remove("hide");
     showView(view);
   }
   return changed;
 }
 
-function dashSpreadBadge(spread) {
-  if (spread === null || spread === undefined) return el("span", "dashbadge", "·");
-  return el("span", "dashbadge" + (spread >= 5 ? " hot" : ""), "±" + spread);
-}
-
-function dashJudgeChips(judges) {
-  var wrap = el("div", "dashchips");
-  judges.forEach(function (j) {
-    wrap.appendChild(el("span", "chip", j.name + " " + j.v));
-  });
-  return wrap;
-}
-
-function dashJuryBar() {
-  var bar = el("div", "dashbar");
-  bar.appendChild(el("span", "dashroom", "Raum " + ME.code));
-
-  var jury = el("div", "dashjury");
+function renderDashChrome() {
+  var jury = document.getElementById("dashJury");
+  jury.innerHTML = "";
+  jury.appendChild(el("span", "dashroom", "Raum " + ME.code));
   Object.keys(peers).forEach(function (id) {
     var j = peers[id];
     var chip = el("span", "dashjchip" + (j.hidden ? " off" : ""));
@@ -1686,8 +1826,7 @@ function dashJuryBar() {
       x.addEventListener("click", function (e) {
         e.stopPropagation();
         var goingHidden = !j.hidden;
-        if (goingHidden && !confirm(j.name + " wirklich aus der Wertung nehmen?"))
-          return;
+        if (!confirm(hiddenToggleMessage(j.name, goingHidden))) return;
         fetch(
           "/api/rooms/" +
             ME.code +
@@ -1704,8 +1843,32 @@ function dashJuryBar() {
     }
     jury.appendChild(chip);
   });
-  bar.appendChild(jury);
-  return bar;
+
+  [].forEach.call(
+    document.querySelectorAll("#dashNav button[data-dv]"),
+    function (b) {
+      b.setAttribute("aria-pressed", String(b.dataset.dv === dashboardView));
+    },
+  );
+}
+document.getElementById("dashNav").addEventListener("click", function (e) {
+  var b = e.target.closest("button[data-dv]");
+  if (!b) return;
+  dashboardView = b.dataset.dv;
+  render();
+});
+
+function dashSpreadBadge(spread) {
+  if (spread === null || spread === undefined) return el("span", "dashbadge", "·");
+  return el("span", "dashbadge" + (spread >= 5 ? " hot" : ""), "±" + spread);
+}
+
+function dashJudgeChips(judges) {
+  var wrap = el("div", "dashchips");
+  judges.forEach(function (j) {
+    wrap.appendChild(el("span", "chip", j.name + " " + j.v));
+  });
+  return wrap;
 }
 
 function dashSpeakerGroup(label, teamVal, summary) {
@@ -1795,6 +1958,25 @@ function dashColA(summary) {
   return col;
 }
 
+// A cell's key is "s{s}/{critKey}" or "t{t}/{catKey}" — resolve it back to
+// the speaker or team-category the dashboard can select and focus.
+function dashRowTarget(key) {
+  var sm = /^s(\d+)\//.exec(key);
+  if (sm) return { kind: "speaker", s: parseInt(sm[1], 10) };
+  var tm = /^t(\d+)\/(.+)$/.exec(key);
+  if (tm) {
+    var cat = TEAMCATS.filter(function (c) {
+      return c.key === tm[2];
+    })[0];
+    if (cat) return { kind: "team", t: parseInt(tm[1], 10), grp: cat.grp };
+  }
+  return null;
+}
+function dashSameTarget(a, b) {
+  if (!a || !b || a.kind !== b.kind) return false;
+  return a.kind === "speaker" ? a.s === b.s : a.t === b.t && a.grp === b.grp;
+}
+
 function dashSpreadPanel(title, list) {
   var panel = el("div", "dashpanel dashpanel-grow");
   var head = el("div", "dashpanelhead");
@@ -1805,7 +1987,12 @@ function dashSpreadPanel(title, list) {
     body.appendChild(el("p", "note", "Noch keine zwei vollständigen Wertungen."));
   } else {
     list.forEach(function (c) {
-      var row = el("div", "dashrow" + (c.spread >= 5 ? " hot" : ""));
+      var target = dashRowTarget(c.key);
+      var sel = dashSameTarget(target, dashboardSelected);
+      var row = el(
+        "div",
+        "dashrow" + (c.spread >= 5 ? " hot" : "") + (sel ? " sel" : ""),
+      );
       row.appendChild(dashSpreadBadge(c.spread));
       var parts = c.label.split(" · ");
       var mid = el("div", "dashrowlbl");
@@ -1813,6 +2000,12 @@ function dashSpreadPanel(title, list) {
       mid.appendChild(el("div", "dashrowsub", parts.slice(1).join(" · ")));
       row.appendChild(mid);
       row.appendChild(dashJudgeChips(c.judges));
+      if (target) {
+        row.addEventListener("click", function () {
+          dashboardSelected = target;
+          renderDashboard();
+        });
+      }
       body.appendChild(row);
     });
   }
@@ -1841,17 +2034,26 @@ function dashColB(summary) {
   return col;
 }
 
+function dashSpreadCell(spread) {
+  return el(
+    "td",
+    "tot" + (spread !== null && spread >= 5 ? " spreadhot" : ""),
+    spread === null ? "·" : "±" + spread,
+  );
+}
+
 function dashBallotTable(summary, s) {
   var chairFirst = summary.ids.slice().sort(function (a, b) {
     return (peers[b].is_chair ? 1 : 0) - (peers[a].is_chair ? 1 : 0);
   });
-  var table = el("table");
+  var table = el("table", "ballottable");
   var head = el("tr");
   head.appendChild(el("th", "l", "Kriterium"));
   chairFirst.forEach(function (id) {
     head.appendChild(el("th", null, peers[id].name));
   });
   head.appendChild(el("th", null, "Ø"));
+  head.appendChild(el("th", null, "Spread"));
   table.appendChild(head);
   CRITERIA.forEach(function (c) {
     var cell = summary.cells.filter(function (x) {
@@ -1875,6 +2077,7 @@ function dashBallotTable(summary, s) {
         ) / 100
       : null;
     tr.appendChild(el("td", "tot", avg === null ? "·" : String(avg)));
+    tr.appendChild(dashSpreadCell(cell ? cell.spread : null));
     table.appendChild(tr);
   });
   var totTr = el("tr");
@@ -1895,6 +2098,10 @@ function dashBallotTable(summary, s) {
       ) / 100
     : null;
   totTr.appendChild(el("td", "tot", totAvg === null ? "·" : String(totAvg)));
+  var totCell = summary.totals.filter(function (x) {
+    return x.key === "s" + s;
+  })[0];
+  totTr.appendChild(dashSpreadCell(totCell ? totCell.spread : null));
   table.appendChild(totTr);
   return table;
 }
@@ -1906,13 +2113,14 @@ function dashTeamBallotTable(summary, t, grp) {
   var cats = TEAMCATS.filter(function (c) {
     return c.grp === grp;
   });
-  var table = el("table");
+  var table = el("table", "ballottable");
   var head = el("tr");
   head.appendChild(el("th", "l", "Kategorie"));
   chairFirst.forEach(function (id) {
     head.appendChild(el("th", null, peers[id].name));
   });
   head.appendChild(el("th", null, "Ø"));
+  head.appendChild(el("th", null, "Spread"));
   table.appendChild(head);
   cats.forEach(function (c) {
     var cell = summary.cells.filter(function (x) {
@@ -1936,6 +2144,7 @@ function dashTeamBallotTable(summary, t, grp) {
         ) / 100
       : null;
     tr.appendChild(el("td", "tot", avg === null ? "·" : String(avg)));
+    tr.appendChild(dashSpreadCell(cell ? cell.spread : null));
     table.appendChild(tr);
   });
   var totTr = el("tr");
@@ -1965,6 +2174,10 @@ function dashTeamBallotTable(summary, t, grp) {
       ) / 100
     : null;
   totTr.appendChild(el("td", "tot", totAvg === null ? "·" : String(totAvg)));
+  var totCell = summary.groupCells.filter(function (x) {
+    return x.key === "t" + t + "/grp-" + TEAMS[t] + " · " + grp;
+  })[0];
+  totTr.appendChild(dashSpreadCell(totCell ? totCell.spread : null));
   table.appendChild(totTr);
   return table;
 }
@@ -2001,10 +2214,13 @@ function dashTeamBallotPanel(summary, t, grp) {
 function dashFinalPanel(summary) {
   var panel = el("div", "dashpanel dashpanel-grow");
   var head = el("div", "dashpanelhead");
-  head.appendChild(el("h2", null, "Endergebnis"));
+  head.appendChild(el("h2", null, "Ballot"));
   panel.appendChild(head);
   var body = el("div", "dashpanelbody dashpanelbody-table");
-  body.innerHTML = finalResultHTML(summary);
+  var scrollHost = el("div");
+  scrollHost.style.overflowX = "auto";
+  scrollHost.appendChild(fullBallotTable(summary));
+  body.appendChild(scrollHost);
   panel.appendChild(body);
   return panel;
 }
@@ -2034,11 +2250,10 @@ function renderDashboard() {
   if (!validSpeaker && !validTeam) dashboardSelected = { kind: "speaker", s: 0 };
   var summary = computeChairSummary();
   root.innerHTML = "";
-  root.appendChild(dashJuryBar());
   var body = el("div", "dashbody");
   body.appendChild(dashColA(summary));
-  body.appendChild(dashColB(summary));
   body.appendChild(dashColC(summary));
+  body.appendChild(dashColB(summary));
   root.appendChild(body);
 }
 
@@ -2046,7 +2261,11 @@ function render() {
   if (!ME) return;
   applyLayoutMode();
   if (isDesktopChair()) {
-    renderDashboard();
+    renderDashChrome();
+    if (dashboardView === "sheet") renderSheet();
+    else if (dashboardView === "team") renderTeam();
+    else if (dashboardView === "matrix") renderMatrix();
+    else renderDashboard();
   } else {
     if (view === "sheet") renderSheet();
     if (view === "team") renderTeam();
