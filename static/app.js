@@ -447,6 +447,10 @@ function connect() {
       handleRemoved();
     } else if (m.type === "restored") {
       handleRestored();
+    } else if (m.type === "spread_open") {
+      spreadOpen = m.open;
+      updateChairTab();
+      if (view === "chair") render();
     }
   };
   ws.onclose = function () {
@@ -493,6 +497,8 @@ function resync() {
       // Always take local state over server state
       remote[ME.judge_id] = Object.assign({}, remote[ME.judge_id] || {}, mine);
       ME.is_chair = s.me.is_chair;
+      spreadOpen = !!s.spread_open;
+      updateChairTab();
 
       deductions = {};
       (s.deductions || []).forEach(function (d) {
@@ -921,7 +927,7 @@ function renderTeam() {
       "div",
       "crit" + (v === null ? " empty" : "") + (i === ctc ? " live" : ""),
     );
-    row.appendChild(el("span", "nm", cat.label + " · max " + cat.max));
+    row.appendChild(el("span", "nm", cat.label));
     var rt = el("span", "rt");
     if (v === null) {
       rt.appendChild(el("span", "mk", ""));
@@ -1060,58 +1066,78 @@ function renderMatrix() {
 // Chair
 var openSpread = {};
 var ballotOpen = false;
+var spreadOpen = false;
+function updateChairTab() {
+  var tab = document.getElementById("tabChair");
+  var show = ME.is_chair || spreadOpen;
+  tab.classList.toggle("hide", !show);
+  tab.textContent = ME.is_chair ? "Chair" : "Spreads";
+}
 function activeJudges() {
   return Object.keys(peers).filter(function (id) {
     return !peers[id].hidden;
   });
 }
 function renderChair() {
-  document.getElementById("chCode").textContent = ME.code;
-  var url = location.origin + "/r/" + ME.code;
-  document.getElementById("shareUrl").value = url;
+  document
+    .getElementById("chairRoomCard")
+    .classList.toggle("hide", !ME.is_chair);
+  document
+    .getElementById("chairFinalCard")
+    .classList.toggle("hide", !ME.is_chair);
 
-  var jh = document.getElementById("judges");
-  jh.innerHTML = "";
-  Object.keys(peers).forEach(function (id) {
-    var j = peers[id];
-    var row = el("div", "jrow");
-    var dot = el("span", "dot " + (j.online ? "on" : "off"));
-    row.appendChild(dot);
-    row.appendChild(
-      el(
-        "span",
-        "n",
-        j.name +
-          (j.is_chair ? " · Chair" : "") +
-          (j.hidden ? " · entfernt" : ""),
-      ),
-    );
-    row.appendChild(el("span", "p", j.filled + " / 59"));
-    if (!j.is_chair) {
-      var x = el("button", "x", j.hidden ? "wiederherstellen" : "entfernen");
-      x.addEventListener("click", function () {
-        var goingHidden = !j.hidden;
-        if (
-          goingHidden &&
-          !confirm(j.name + " wirklich aus der Wertung nehmen?")
-        )
-          return;
-        fetch(
-          "/api/rooms/" +
-            ME.code +
-            "/judges/" +
-            id +
-            "/hidden?hidden=" +
-            goingHidden +
-            "&token=" +
-            encodeURIComponent(ME.token),
-          { method: "POST" },
-        );
-      });
-      row.appendChild(x);
-    }
-    jh.appendChild(row);
-  });
+  if (ME.is_chair) {
+    document.getElementById("chCode").textContent = ME.code;
+    var url = location.origin + "/r/" + ME.code;
+    document.getElementById("shareUrl").value = url;
+
+    var spb = document.getElementById("btnSpreadOpen");
+    spb.textContent = spreadOpen ? "Spreads sperren" : "Spreads freigeben";
+    spb.classList.toggle("on", spreadOpen);
+
+    var jh = document.getElementById("judges");
+    jh.innerHTML = "";
+    Object.keys(peers).forEach(function (id) {
+      var j = peers[id];
+      var row = el("div", "jrow");
+      var dot = el("span", "dot " + (j.online ? "on" : "off"));
+      row.appendChild(dot);
+      row.appendChild(
+        el(
+          "span",
+          "n",
+          j.name +
+            (j.is_chair ? " · Chair" : "") +
+            (j.hidden ? " · (Trainee)" : ""),
+        ),
+      );
+      row.appendChild(el("span", "p", j.filled + " / 59"));
+      if (!j.is_chair) {
+        var x = el("button", "x", j.hidden ? "Zu Wing" : "Zu Trainee");
+        x.addEventListener("click", function () {
+          var goingHidden = !j.hidden;
+          if (
+            goingHidden &&
+            !confirm(j.name + " wirklich aus der Wertung nehmen?")
+          )
+            return;
+          fetch(
+            "/api/rooms/" +
+              ME.code +
+              "/judges/" +
+              id +
+              "/hidden?hidden=" +
+              goingHidden +
+              "&token=" +
+              encodeURIComponent(ME.token),
+            { method: "POST" },
+          );
+        });
+        row.appendChild(x);
+      }
+      jh.appendChild(row);
+    });
+  }
 
   var ids = activeJudges();
   function includedFor(id, target) {
@@ -1283,11 +1309,7 @@ function renderChair() {
   th.innerHTML = "";
   if (!totals.length) {
     th.appendChild(
-      el(
-        "p",
-        "note",
-        "Sobald zwei Juroren dieselbe Rede vollständig bewertet haben, erscheint hier die Abweichung der Gesamtpunktzahl.",
-      ),
+      el("p", "note", "Noch keine zwei vollständig bewerteten Reden."),
     );
   } else {
     totals.forEach(function (c) {
@@ -1342,11 +1364,7 @@ function renderChair() {
   sh.innerHTML = "";
   if (!groupCells.length) {
     sh.appendChild(
-      el(
-        "p",
-        "note",
-        "Sobald zwei Juroren dieselbe Team-Kategorie vollständig bewertet haben, erscheint hier die Abweichung.",
-      ),
+      el("p", "note", "Noch keine zwei Vollständigen Teampunkte."),
     );
   } else {
     groupCells.forEach(function (c) {
@@ -1634,7 +1652,7 @@ function startSession(s) {
   document.getElementById("v-lobby").classList.add("hide");
   document.getElementById("main").classList.remove("hide");
   document.getElementById("tabs").classList.remove("hide");
-  document.getElementById("tabChair").classList.toggle("hide", !ME.is_chair);
+  updateChairTab();
   if (history.replaceState)
     history.replaceState({ room: ME.code }, "", "/r/" + ME.code);
   connect();
@@ -1728,6 +1746,21 @@ document.getElementById("btnCopy").addEventListener("click", function () {
       done();
     } catch (e) {}
   }
+});
+document.getElementById("btnSpreadOpen").addEventListener("click", function () {
+  var next = !spreadOpen;
+  fetch(
+    "/api/rooms/" +
+      ME.code +
+      "/spread_open?open=" +
+      next +
+      "&token=" +
+      encodeURIComponent(ME.token),
+    { method: "POST" },
+  ).then(function () {
+    spreadOpen = next;
+    render();
+  });
 });
 
 function showView(v) {

@@ -185,6 +185,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-height: 32px;
 }
 .crit .mk {
   font-size: 12px;

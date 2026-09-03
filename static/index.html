@@ -230,12 +230,15 @@
         </section>
 
         <section id="v-chair" class="hide">
-          <div class="card">
+          <div class="card" id="chairRoomCard">
             <h2>Raum <span id="chCode"></span></h2>
             <div class="sub">Link zum Teilen</div>
             <input type="text" id="shareUrl" readonly />
             <button class="btn ghost" id="btnCopy">Link kopieren</button>
             <div id="judges" style="margin-top: 14px"></div>
+            <button class="btn ghost" id="btnSpreadOpen" style="margin-top: 14px">
+              Abweichungen für Beisitzer freigeben
+            </button>
           </div>
           <div class="card">
             <h2>Abweichungen - Reden</h2>
@@ -245,7 +248,7 @@
             <h2>Abweichungen - Teampunkte</h2>
             <div id="spread"></div>
           </div>
-          <div class="card">
+          <div class="card" id="chairFinalCard">
             <h2>Endergebnis</h2>
             <div class="sub">
               Durchschnitt über alle einbezogenen Juror:innen.
