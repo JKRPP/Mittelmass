@@ -353,6 +353,19 @@ function setNote(s, groupKey, text) {
     if (ME) LS.set("opd.notes." + ME.code, notes);
   }, 300);
 }
+function teamNoteKey(t, groupKey) {
+  return "t" + t + "|" + groupKey;
+}
+function getTeamNote(t, groupKey) {
+  return notes[teamNoteKey(t, groupKey)] || "";
+}
+function setTeamNote(t, groupKey, text) {
+  notes[teamNoteKey(t, groupKey)] = text;
+  clearTimeout(notesSaveTimer);
+  notesSaveTimer = setTimeout(function () {
+    if (ME) LS.set("opd.notes." + ME.code, notes);
+  }, 300);
+}
 
 // Save locally first, then push to db
 function write(target, criterion, points) {
@@ -1812,7 +1825,7 @@ function renderChair() {
 // wide, desktop-only views with no mobile equivalent.
 var dashboardSelected = { kind: "speaker", s: 0 };
 var dashboardView = "dashboard";
-var DASH_WIDE_VIEWS = ["dashboard", "schnell", "blatt"];
+var DASH_WIDE_VIEWS = ["dashboard", "schnell", "blatt", "teampoints"];
 
 function isDesktopWidth() {
   return !!(ME && window.matchMedia("(min-width: 1024px)").matches);
@@ -1854,6 +1867,9 @@ function applyLayoutMode() {
   document
     .getElementById("v-blatt")
     .classList.toggle("hide", !dash || ev !== "blatt");
+  document
+    .getElementById("v-teampoints")
+    .classList.toggle("hide", !dash || ev !== "teampoints");
 
   if (wide) {
     ["v-sheet", "v-team", "v-matrix", "v-chair"].forEach(function (id) {
@@ -2861,6 +2877,209 @@ function renderBlatt() {
   }
 }
 
+// Teampunkte-Blatt — team-first sibling to Blatt: both teams' 7 category
+// scores plus per-group notes, all on one screen (no paging, unlike Blatt,
+// since a judge switching here mid-debate wants to see both teams at once).
+function teamPointsFocusNext(inp) {
+  var root = document.getElementById("v-teampoints");
+  if (!root) return;
+  var inputs = [].slice.call(root.querySelectorAll("input.schnellinput"));
+  var next = inputs[inputs.indexOf(inp) + 1];
+  if (next) next.focus();
+}
+
+function teamPointsHintText(v, max) {
+  if (v === null) return "–";
+  var m = markOf(katOf(v, max));
+  return m.name ? m.name + " · " + m.mark : "–";
+}
+
+function updateTeamPointsScore(t, catIdx) {
+  var cat = TEAMCATS[catIdx];
+  var v = tget(t, catIdx);
+  var valEl = document.getElementById("teampoints-val-t" + t + "-c" + catIdx);
+  var hintEl = document.getElementById(
+    "teampoints-hint-t" + t + "-c" + catIdx,
+  );
+  var minusEl = document.getElementById(
+    "teampoints-minus-t" + t + "-c" + catIdx,
+  );
+  var plusEl = document.getElementById(
+    "teampoints-plus-t" + t + "-c" + catIdx,
+  );
+  if (valEl) valEl.value = v === null ? "" : String(v);
+  if (hintEl) hintEl.textContent = teamPointsHintText(v, cat.max);
+  if (minusEl) minusEl.disabled = v === null || v <= 0;
+  if (plusEl) plusEl.disabled = v === null || v >= cat.max;
+  var totEl = document.getElementById("teampointsTot-t" + t);
+  if (totEl) totEl.textContent = String(teamPunkte(t));
+}
+
+function nudgeTeamCategory(t, catIdx, d) {
+  var cat = TEAMCATS[catIdx];
+  var v = tget(t, catIdx);
+  var base = v === null ? 0 : v;
+  write("t" + t, cat.key, Math.max(0, Math.min(cat.max, base + d)));
+  updateTeamPointsScore(t, catIdx);
+}
+
+function teamPointsScoreField(t, catIdx, tabIdx) {
+  var cat = TEAMCATS[catIdx];
+  var wrap = el("div", "blattscore");
+  wrap.appendChild(el("div", "blattlbl", cat.label + " (max " + cat.max + ")"));
+
+  var inp = el("input", "schnellinput blattinput");
+  inp.type = "number";
+  inp.inputMode = "numeric";
+  inp.min = "0";
+  inp.max = String(cat.max);
+  inp.step = "1";
+  inp.id = "teampoints-val-t" + t + "-c" + catIdx;
+  inp.tabIndex = tabIdx;
+  var v = tget(t, catIdx);
+  if (v !== null) inp.value = String(v);
+  inp.addEventListener("focus", function () {
+    inp.select();
+  });
+  inp.addEventListener("input", function () {
+    var digits = inp.value.replace(/[^0-9]/g, "");
+    if (digits !== inp.value) inp.value = digits;
+  });
+  inp.addEventListener("change", function () {
+    var raw = inp.value.trim();
+    if (raw === "") return;
+    var n = Math.round(Number(raw));
+    if (!isFinite(n)) {
+      updateTeamPointsScore(t, catIdx);
+      return;
+    }
+    n = Math.max(0, Math.min(cat.max, n));
+    var grade = katOf(n, cat.max);
+    var snapped = grade === null ? n : mid(convert(grade, cat.max));
+    write("t" + t, cat.key, snapped);
+    updateTeamPointsScore(t, catIdx);
+  });
+  inp.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      inp.blur();
+      teamPointsFocusNext(inp);
+    }
+  });
+  wrap.appendChild(inp);
+
+  var hintRow = el("div", "blatthintrow");
+  var minus = el("button", "blattnudge", "−1");
+  minus.type = "button";
+  minus.tabIndex = -1;
+  minus.id = "teampoints-minus-t" + t + "-c" + catIdx;
+  minus.addEventListener("click", function () {
+    nudgeTeamCategory(t, catIdx, -1);
+  });
+  hintRow.appendChild(minus);
+
+  var hint = el("div", "blatthint", teamPointsHintText(v, cat.max));
+  hint.id = "teampoints-hint-t" + t + "-c" + catIdx;
+  hintRow.appendChild(hint);
+
+  var plus = el("button", "blattnudge", "+1");
+  plus.type = "button";
+  plus.tabIndex = -1;
+  plus.id = "teampoints-plus-t" + t + "-c" + catIdx;
+  plus.addEventListener("click", function () {
+    nudgeTeamCategory(t, catIdx, 1);
+  });
+  hintRow.appendChild(plus);
+  wrap.appendChild(hintRow);
+
+  minus.disabled = v === null || v <= 0;
+  plus.disabled = v === null || v >= cat.max;
+
+  return wrap;
+}
+
+function teamPointsNotesField(t, cat) {
+  var ta = el("textarea", "blattnotes");
+  ta.placeholder = "Notizen zu " + cat.label + " …";
+  ta.value = getTeamNote(t, cat.key);
+  ta.addEventListener("input", function () {
+    setTeamNote(t, cat.key, ta.value);
+  });
+  return ta;
+}
+
+function teamPointsCategoryBlock(t, catIdx, tabIdx) {
+  var cat = TEAMCATS[catIdx];
+  var block = el("div", "teampointscatblock");
+  var scoreWrap = el("div", "teampointscatscore");
+  scoreWrap.appendChild(teamPointsScoreField(t, catIdx, tabIdx));
+  block.appendChild(scoreWrap);
+  block.appendChild(teamPointsNotesField(t, cat));
+  return block;
+}
+
+function teamPointsColumn(t, group, scoreTabStart) {
+  var col = el("div", "blattcol teampointscol-" + group.cats.length);
+  var row = el("div", "teampointscatrow");
+  group.cats.forEach(function (catIdx, i) {
+    row.appendChild(teamPointsCategoryBlock(t, catIdx, scoreTabStart + i));
+  });
+  col.appendChild(row);
+  return col;
+}
+
+function teamPointsSection(t, tabStart) {
+  var teamCls = t === 0 ? "team-gov" : "team-opp";
+  var sec = el("div", "teampointssec " + teamCls);
+
+  var head = el("div", "teampointssechead");
+  head.appendChild(el("div", "teampointssecname", TEAMS[t]));
+  var totWrap = el("div", "teampointstotwrap");
+  totWrap.appendChild(el("span", "teampointstotlbl", "Teampunkte"));
+  var totVal = el("span", "teampointstotval", String(teamPunkte(t)));
+  totVal.id = "teampointsTot-t" + t;
+  totWrap.appendChild(totVal);
+  head.appendChild(totWrap);
+  sec.appendChild(head);
+
+  var body = el("div", "blattbody teampointsbody");
+  var tab = tabStart;
+  TEAMGROUPS_INFO.forEach(function (group) {
+    var scoreTabStart = tab;
+    tab += group.cats.length;
+    body.appendChild(teamPointsColumn(t, group, scoreTabStart));
+  });
+  sec.appendChild(body);
+
+  return { el: sec, nextTab: tab, body: body };
+}
+
+function renderTeamPoints() {
+  var root = document.getElementById("v-teampoints");
+  if (!root) return;
+  if (dashEditGuard(root)) return;
+  root.innerHTML = "";
+
+  var wrap = el("div", "teampointswrap");
+  var tab = 1;
+  var sections = [];
+  for (var t = 0; t < 2; t++) {
+    var sec = teamPointsSection(t, tab);
+    tab = sec.nextTab;
+    sections.push(sec);
+    wrap.appendChild(sec.el);
+  }
+  // Notes come after every score field in tab order, within each section.
+  sections.forEach(function (sec) {
+    var notesEls = [].slice.call(sec.body.querySelectorAll(".blattnotes"));
+    notesEls.forEach(function (ta, i) {
+      ta.tabIndex = tab + i;
+    });
+    tab += notesEls.length;
+  });
+  root.appendChild(wrap);
+}
+
 function render() {
   if (!ME) return;
   applyLayoutMode();
@@ -2871,6 +3090,7 @@ function render() {
     else if (ev === "team") renderTeam();
     else if (ev === "schnell") renderSchnell();
     else if (ev === "blatt") renderBlatt();
+    else if (ev === "teampoints") renderTeamPoints();
     else renderDashboard();
   } else {
     if (view === "sheet") renderSheet();
