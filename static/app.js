@@ -2385,7 +2385,7 @@ function schnellNumberInput(width) {
   inp.inputMode = "numeric";
   inp.min = "0";
   inp.step = "1";
-  inp.style.width = width || "56px";
+  inp.style.width = width || "95px";
   // type="number" still lets a user type e/+/-/. (they're valid in a
   // float, just not a score) — strip anything but digits as they type,
   // rather than only catching it once the field loses focus.
@@ -2486,6 +2486,7 @@ function schnellSpeakerRow(s, teamCls) {
   var lbl = el("td", "l", SPEAKERS[s].label);
   if (teamCls) lbl.classList.add(teamCls);
   tr.appendChild(lbl);
+  tr.appendChild(el("td", "schnellspacer"));
   for (var c = 0; c < NC; c++) {
     var td = el("td");
     td.appendChild(schnellSpeakerInput(s, c));
@@ -2521,7 +2522,7 @@ function schnellSpeakerGroupRows(label, speakers, teamCls) {
   var rows = [];
   var grpTr = el("tr");
   var grpTd = el("td", "schnellgrp", label);
-  grpTd.setAttribute("colspan", String(NC + 4));
+  grpTd.setAttribute("colspan", String(NC + 5));
   grpTr.appendChild(grpTd);
   rows.push(grpTr);
   speakers.forEach(function (s) {
@@ -2531,9 +2532,10 @@ function schnellSpeakerGroupRows(label, speakers, teamCls) {
 }
 
 function schnellSpeakerTable() {
-  var table = el("table", "schnelltable");
+  var table = el("table", "schnelltable schnelltable-speaker");
   var head = el("tr");
   head.appendChild(el("th", "l", "Rede"));
+  head.appendChild(el("th", "schnellspacer"));
   CRITERIA.forEach(function (c) {
     head.appendChild(el("th", null, c.label));
   });
@@ -2644,7 +2646,11 @@ function schnellPanel(title, table) {
 function dashEditGuard(root) {
   if (!root.firstChild) return false;
   var ae = document.activeElement;
-  return !!(ae && root.contains(ae) && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA"));
+  return !!(
+    ae &&
+    root.contains(ae) &&
+    (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA")
+  );
 }
 
 function renderSchnell() {
@@ -2807,7 +2813,8 @@ function renderBlatt() {
   root.innerHTML = "";
 
   var sp = SPEAKERS[cs];
-  var teamCls = sp.team === 0 ? "team-gov" : sp.team === 1 ? "team-opp" : "team-free";
+  var teamCls =
+    sp.team === 0 ? "team-gov" : sp.team === 1 ? "team-opp" : "team-free";
 
   var head = el("div", "blatthead " + teamCls);
   var prev = el("button", "navbtn", "‹");
@@ -2898,15 +2905,11 @@ function updateTeamPointsScore(t, catIdx) {
   var cat = TEAMCATS[catIdx];
   var v = tget(t, catIdx);
   var valEl = document.getElementById("teampoints-val-t" + t + "-c" + catIdx);
-  var hintEl = document.getElementById(
-    "teampoints-hint-t" + t + "-c" + catIdx,
-  );
+  var hintEl = document.getElementById("teampoints-hint-t" + t + "-c" + catIdx);
   var minusEl = document.getElementById(
     "teampoints-minus-t" + t + "-c" + catIdx,
   );
-  var plusEl = document.getElementById(
-    "teampoints-plus-t" + t + "-c" + catIdx,
-  );
+  var plusEl = document.getElementById("teampoints-plus-t" + t + "-c" + catIdx);
   if (valEl) valEl.value = v === null ? "" : String(v);
   if (hintEl) hintEl.textContent = teamPointsHintText(v, cat.max);
   if (minusEl) minusEl.disabled = v === null || v <= 0;
