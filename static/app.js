@@ -4287,6 +4287,9 @@ document.getElementById("tundoBtn").addEventListener("click", function () {
 
 // boot function
 (function () {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/static/sw.js");
+  }
   applyTheme(LS.get("opd.theme", "light"));
   // Only an explicit /r/CODE link auto-resumes a session - landing on the
   // bare app URL always shows the lobby (with the recent-rooms list to

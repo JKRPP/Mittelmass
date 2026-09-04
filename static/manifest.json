@@ -1,0 +1,11 @@
+{
+  "name": "Mittelmaß 2.0",
+  "short_name": "Mittelmaß",
+  "start_url": "/static/index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "/static/favicon.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
