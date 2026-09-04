@@ -1979,6 +1979,17 @@ function renderDashChrome() {
   jury.appendChild(el("span", "dashroom", "Raum " + ME.code));
   var chips = el("div", "dashjurychips");
   jury.appendChild(chips);
+
+  // Highlights the active tab for every judge, not just the chair - the
+  // rest of this function (jury chips, trainee controls) is chair-only.
+  var ev = effectiveDashboardView();
+  [].forEach.call(
+    document.querySelectorAll("#dashNav button[data-dv]"),
+    function (b) {
+      b.setAttribute("aria-pressed", String(b.dataset.dv === ev));
+    },
+  );
+
   if (!ME.is_chair) return;
 
   // Reuses spreadOpen - opening it also gives wings the stripped dashboard (minus the right column).
@@ -2031,14 +2042,6 @@ function renderDashChrome() {
     }
     chips.appendChild(chip);
   });
-
-  var ev = effectiveDashboardView();
-  [].forEach.call(
-    document.querySelectorAll("#dashNav button[data-dv]"),
-    function (b) {
-      b.setAttribute("aria-pressed", String(b.dataset.dv === ev));
-    },
-  );
 }
 document.getElementById("dashNav").addEventListener("click", function (e) {
   var b = e.target.closest("button[data-dv]");
