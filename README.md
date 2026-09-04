@@ -22,6 +22,20 @@ docker build -t opd .
 docker run -p 8000:8000 -v opd-data:/data opd
 ```
 
+Or with Docker Compose (recommended):
+
+copy `.env.example` to `.env` and fill in the
+Impressum fields (required by german law), then:
+
+```bash
+docker compose up -d
+```
+
+`docker-compose.yml` expects an external Docker network to publish to
+(default name `proxy`, override with `PROXY_NETWORK` in `.env`. The app
+listens on `OPD_PORT` (default `8000`) and keeps its SQLite database in
+the `opd_data` volume, so it survives container recreation.
+
 Tests:
 
 ```bash
