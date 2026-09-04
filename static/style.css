@@ -1485,3 +1485,83 @@ body {
   padding: 14px 18px 10px;
   border-bottom: 1px solid var(--line);
 }
+
+/* Ballot export modal */
+.dashpanelhead-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.ballotexportbackdrop {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--ink) 45%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 24px;
+}
+.ballotexportbox {
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  padding: 22px 26px;
+  width: 420px;
+  max-width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+.ballotexportbox h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 500;
+}
+.ballotexportjudges {
+  border: 1px solid var(--line);
+  margin: 10px 0;
+}
+.ballotexportjrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.ballotexportjrow:last-child {
+  border-bottom: 0;
+}
+.ballotexportjrow .n {
+  color: var(--ink-3);
+  font-size: 13px;
+  width: 18px;
+}
+.ballotexportjrow .nm {
+  flex: 1;
+  min-width: 0;
+}
+.ballotexportactions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.ballotexportactions .btn {
+  flex: 1;
+}
+.bookmarklet {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 10px 16px;
+  border: 1px dashed var(--line-2);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.bookmarklet:hover {
+  border-color: var(--live);
+  color: var(--live);
+}

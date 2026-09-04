@@ -900,7 +900,11 @@ function renderSheet() {
   setTeamAccent(document.querySelector("#v-sheet .card"), teamOf(cs));
   var z = zwischensumme(cs);
   document.getElementById("spkSub").textContent =
-    "Rede " + (cs + 1) + " von " + NS + (z !== null ? " · Zwischensumme " + z : "");
+    "Rede " +
+    (cs + 1) +
+    " von " +
+    NS +
+    (z !== null ? " · Zwischensumme " + z : "");
   document.getElementById("prev").disabled = cs === 0;
   document.getElementById("next").disabled = cs === NS - 1;
 
@@ -2337,8 +2341,17 @@ function dashTeamBallotPanel(summary, t, grp) {
 
 function dashFinalPanel(summary) {
   var panel = el("div", "dashpanel dashpanel-grow");
-  var head = el("div", "dashpanelhead");
+  var head = el("div", "dashpanelhead dashpanelhead-row");
   head.appendChild(el("h2", null, "Ballot"));
+  if (ME.is_chair) {
+    var exportBtn = el("button", "exclbtn", "Ballot exportieren");
+    exportBtn.type = "button";
+    exportBtn.tabIndex = -1;
+    exportBtn.addEventListener("click", function () {
+      openBallotExportModal(summary);
+    });
+    head.appendChild(exportBtn);
+  }
   panel.appendChild(head);
   var body = el("div", "dashpanelbody dashpanelbody-table");
   var scrollHost = el("div");
@@ -2347,6 +2360,234 @@ function dashFinalPanel(summary) {
   body.appendChild(scrollHost);
   panel.appendChild(body);
   return panel;
+}
+
+// Speech role/position in the OPD sense (government/opposition/non_aligned,
+// 0-indexed within that role) — derived purely from SPEAKERS' order and
+// team, so it survives SPEAKERS being reordered/relabeled rather than
+// depending on fixed array indices. This is the same role+position scheme
+// debateresult.com's ballot-entry form uses on its hidden speeches.N.role/
+// speeches.N.position fields, so a consumer (the bookmarklet) can match a
+// speech without caring what order our own SPEAKERS array happens to use.
+function speechRolePosition(s) {
+  var team = SPEAKERS[s].team;
+  var role =
+    team === 0 ? "government" : team === 1 ? "opposition" : "non_aligned";
+  var position = 0;
+  for (var i = 0; i < s; i++) {
+    if (SPEAKERS[i].team === team) position++;
+  }
+  return { role: role, position: position };
+}
+
+// The clipboard payload for the ballot-export bookmarklet. `judgeIds` is
+// the chair-chosen column order (must match the tabbing site's judge
+// columns); scores are the same deduction-adjusted totals shown everywhere
+// else (summary.remoteTotal/remoteTeamTotal), null where a judge's score
+// is missing or excluded so the bookmarklet knows to leave that field
+// alone rather than writing a blank/zero over something.
+function buildBallotExport(summary, judgeIds) {
+  var speeches = SPEAKERS.map(function (sp, s) {
+    var rp = speechRolePosition(s);
+    return {
+      role: rp.role,
+      position: rp.position,
+      label: sp.label,
+      scores: judgeIds.map(function (id) {
+        var v = summary.remoteTotal(id, s);
+        return v !== null && summary.includedFor(id, "s" + s) ? v : null;
+      }),
+    };
+  });
+  var teams = {};
+  TEAMS.forEach(function (_, t) {
+    var key = t === 0 ? "government" : "opposition";
+    teams[key] = judgeIds.map(function (id) {
+      var v = summary.remoteTeamTotal(id, t);
+      return v !== null && summary.includedFor(id, "t" + t) ? v : null;
+    });
+  });
+  return {
+    app: "mittelmass",
+    version: 1,
+    judges: judgeIds.map(function (id) {
+      return peers[id] ? peers[id].name : id;
+    }),
+    speeches: speeches,
+    teams: teams,
+  };
+}
+
+// The bookmarklet's source, run on the tabbing site's own ballot-entry
+// page (not ours) — dragged to the bookmarks bar once, then clicked while
+// that page is open. It reads the clipboard payload buildBallotExport()
+// produced, matches each speech by role+position (the tabbing site's own
+// hidden speeches.N.role/speeches.N.position fields), and fills the
+// number inputs for the chosen judge order. It deliberately never submits
+// the form itself — that's left for a human to review and click.
+var BALLOT_BOOKMARKLET_SRC = [
+  "(function(){",
+  'function fail(m){alert("Ballot-Import: "+m);}',
+  "navigator.clipboard.readText().then(function(t){",
+  "var data;",
+  'try{data=JSON.parse(t);}catch(e){fail("Zwischenablage enthält kein gültiges Ballot-Export.");return;}',
+  'if(!data||data.app!=="mittelmass"||!data.speeches){fail("Zwischenablage enthält kein gültiges Ballot-Export.");return;}',
+  "var bySpeech={};",
+  '[].forEach.call(document.querySelectorAll(\'input[type="hidden"][name^="speeches."][name$=".role"]\'),function(r){',
+  "var m=/^speeches\\.(\\d+)\\.role$/.exec(r.name);",
+  "if(!m)return;",
+  "var p=document.querySelector('input[name=\"speeches.'+m[1]+'.position\"]');",
+  "if(!p)return;",
+  'bySpeech[r.value+"|"+p.value]=m[1];',
+  "});",
+  "var filled=0,missing=[];",
+  "function setVal(inp,v){",
+  "if(!inp||v===null||v===undefined)return;",
+  "inp.value=String(v);",
+  'inp.dispatchEvent(new Event("input",{bubbles:true}));',
+  'inp.dispatchEvent(new Event("change",{bubbles:true}));',
+  "filled++;",
+  "}",
+  "data.speeches.forEach(function(sp){",
+  'var n=bySpeech[sp.role+"|"+sp.position];',
+  "if(n===undefined){missing.push(sp.label);return;}",
+  "(sp.scores||[]).forEach(function(v,j){",
+  "setVal(document.querySelector('input[name=\"speeches.'+n+\".scores.\"+j+'\"]'),v);",
+  "});",
+  "});",
+  '["government","opposition"].forEach(function(key){',
+  "var arr=data.teams&&data.teams[key];",
+  "if(!arr)return;",
+  "arr.forEach(function(v,j){",
+  "setVal(document.querySelector('input[name=\"'+key+\".scores.\"+j+'\"]'),v);",
+  "});",
+  "});",
+  'var msg="Ballot eingetragen: "+filled+" Felder ausgefüllt.";',
+  'if(missing.length)msg+="\\nNicht gefunden: "+missing.join(", ");',
+  "alert(msg);",
+  "},function(){",
+  'fail("Zwischenablage konnte nicht gelesen werden (Berechtigung erteilt?).");',
+  "});",
+  "})();",
+].join("");
+
+function ballotBookmarkletHref() {
+  return "javascript:" + encodeURIComponent(BALLOT_BOOKMARKLET_SRC);
+}
+
+function closeBallotExportModal() {
+  var m = document.getElementById("ballotExportModal");
+  if (m) m.remove();
+  document.removeEventListener("keydown", ballotExportEscHandler);
+}
+function ballotExportEscHandler(e) {
+  if (e.key === "Escape") closeBallotExportModal();
+}
+
+// Standalone overlay appended to <body>, deliberately outside #v-dashboard
+// — that panel gets torn down and rebuilt on every render() (e.g. a remote
+// websocket patch), which would otherwise silently close this mid-use.
+function openBallotExportModal(summary) {
+  closeBallotExportModal();
+
+  var order = chairFirstIds(summary.ids);
+
+  var backdrop = el("div", "ballotexportbackdrop");
+  backdrop.id = "ballotExportModal";
+  backdrop.addEventListener("click", function (e) {
+    if (e.target === backdrop) closeBallotExportModal();
+  });
+
+  var box = el("div", "ballotexportbox");
+  box.appendChild(el("h2", null, "Ballot exportieren"));
+  box.appendChild(
+    el(
+      "p",
+      "note",
+      "Die Ordnung der Juror:innen muss der in Opentab entsprechen.",
+    ),
+  );
+
+  var list = el("div", "ballotexportjudges");
+  function renderList() {
+    list.innerHTML = "";
+    order.forEach(function (id, i) {
+      var row = el("div", "ballotexportjrow");
+      row.appendChild(el("span", "n", String(i + 1) + "."));
+      row.appendChild(el("span", "nm", peers[id] ? peers[id].name : id));
+      var up = el("button", "adj", "▲");
+      up.type = "button";
+      up.disabled = i === 0;
+      up.addEventListener("click", function () {
+        var tmp = order[i - 1];
+        order[i - 1] = order[i];
+        order[i] = tmp;
+        renderList();
+      });
+      var down = el("button", "adj", "▼");
+      down.type = "button";
+      down.disabled = i === order.length - 1;
+      down.addEventListener("click", function () {
+        var tmp = order[i + 1];
+        order[i + 1] = order[i];
+        order[i] = tmp;
+        renderList();
+      });
+      row.appendChild(up);
+      row.appendChild(down);
+      list.appendChild(row);
+    });
+  }
+  renderList();
+  box.appendChild(list);
+
+  box.appendChild(
+    el(
+      "p",
+      "note",
+      "Automatisches einfügen benötigt das Opentab bookmarklet. Einmalig einrichten: den Link in die Lesezeichenleiste ziehen. Danach auf der Ballot-Seite des Tabbing-Programms anklicken, um das Ballot einzufügen.",
+    ),
+  );
+  var bmLink = el("a", "bookmarklet", "📋 Ballot einfügen");
+  bmLink.href = ballotBookmarkletHref();
+  bmLink.title = "In die Lesezeichenleiste ziehen";
+  bmLink.addEventListener("click", function (e) {
+    // A direct click here would run in this page's own context, not the
+    // tabbing site's — harmless (no matching fields, so it just alerts
+    // "0 Felder ausgefüllt"), but not what dragging-to-bookmarks is for.
+    e.preventDefault();
+    alert(
+      "Den Link in die Lesezeichenleiste ziehen, nicht anklicken — er muss später auf der Ballot-Seite des Tabbing-Programms ausgeführt werden.",
+    );
+  });
+  box.appendChild(bmLink);
+
+  var actions = el("div", "ballotexportactions");
+  var copyBtn = el("button", "btn", "In Zwischenablage kopieren");
+  copyBtn.type = "button";
+  copyBtn.addEventListener("click", function () {
+    var payload = buildBallotExport(summary, order);
+    copyText(JSON.stringify(payload))
+      .then(function () {
+        copyBtn.textContent = "Kopiert ✓";
+        setTimeout(function () {
+          copyBtn.textContent = "In Zwischenablage kopieren";
+        }, 1500);
+      })
+      .catch(function () {
+        copyBtn.textContent = "Kopieren fehlgeschlagen";
+      });
+  });
+  var closeBtn = el("button", "btn ghost", "Schließen");
+  closeBtn.type = "button";
+  closeBtn.addEventListener("click", closeBallotExportModal);
+  actions.appendChild(copyBtn);
+  actions.appendChild(closeBtn);
+  box.appendChild(actions);
+
+  backdrop.appendChild(box);
+  document.body.appendChild(backdrop);
+  document.addEventListener("keydown", ballotExportEscHandler);
 }
 
 function dashColC(summary) {
@@ -2412,7 +2653,10 @@ function focusNextNumberInput(inp) {
 // (e.g. Blatt/Teampunkte size their inputs via CSS instead).
 function schnellNumberInput(opts) {
   opts = opts || {};
-  var inp = el("input", "schnellinput" + (opts.extraClass ? " " + opts.extraClass : ""));
+  var inp = el(
+    "input",
+    "schnellinput" + (opts.extraClass ? " " + opts.extraClass : ""),
+  );
   inp.type = "number";
   inp.inputMode = "numeric";
   inp.min = "0";
@@ -3274,30 +3518,43 @@ document.getElementById("nm").addEventListener("keydown", function (e) {
     else document.getElementById("btnCreate").click();
   }
 });
+// navigator.clipboard needs a secure context (https, or localhost) — this
+// app is typically reached over plain http on the local network (see
+// run.sh), where it's simply undefined, so every caller needs the
+// execCommand("copy") fallback. Centralized here rather than duplicated
+// per call site.
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text);
+  }
+  return new Promise(function (resolve, reject) {
+    var tmp = document.createElement("input");
+    tmp.value = text;
+    tmp.style.position = "fixed";
+    tmp.style.opacity = "0";
+    document.body.appendChild(tmp);
+    tmp.select();
+    tmp.setSelectionRange(0, 99999);
+    var ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch (e) {}
+    document.body.removeChild(tmp);
+    if (ok) resolve();
+    else reject(new Error("copy failed"));
+  });
+}
 function copyRoomLink(btn, url) {
   var label = btn.textContent;
-  var done = function () {
-    btn.textContent = "Kopiert";
-    setTimeout(function () {
-      btn.textContent = label;
-    }, 1500);
-  };
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(url).then(done, function () {});
-    return;
-  }
-  var tmp = document.createElement("input");
-  tmp.value = url;
-  tmp.style.position = "fixed";
-  tmp.style.opacity = "0";
-  document.body.appendChild(tmp);
-  tmp.select();
-  tmp.setSelectionRange(0, 99999);
-  try {
-    document.execCommand("copy");
-    done();
-  } catch (e) {}
-  document.body.removeChild(tmp);
+  copyText(url).then(
+    function () {
+      btn.textContent = "Kopiert";
+      setTimeout(function () {
+        btn.textContent = label;
+      }, 1500);
+    },
+    function () {},
+  );
 }
 document.getElementById("btnCopy").addEventListener("click", function () {
   copyRoomLink(this, document.getElementById("shareUrl").value);
