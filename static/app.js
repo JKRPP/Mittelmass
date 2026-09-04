@@ -667,14 +667,15 @@ function setExclusion(target, excluded) {
 
 function handleRemoved() {
   if (!ME) return;
-  alert(
+  openInfoModal(
+    null,
     "Du wurdest aus der Wertung genommen. Du kannst weiter " +
       "bewerten, deine Punkte zählen aber vorerst nicht mit.",
   );
 }
 function handleRestored() {
   if (!ME) return;
-  alert("Du wurdest wieder in die Wertung aufgenommen.");
+  openInfoModal(null, "Du wurdest wieder in die Wertung aufgenommen.");
 }
 
 function resetRoomState() {
@@ -1204,6 +1205,26 @@ function hiddenToggleMessage(name, goingHidden) {
     ? name + " wirklich aus der Wertung nehmen?"
     : name + " wieder als Wing zur Wertung hinzufügen?";
 }
+// Shared by the mobile chair view and the desktop dashboard's judge chips.
+function confirmHiddenToggle(id, name, goingHidden) {
+  openConfirmModal({
+    text: hiddenToggleMessage(name, goingHidden),
+    confirmLabel: goingHidden ? "Zu Trainee" : "Zu Wing",
+    onConfirm: function () {
+      fetch(
+        "/api/rooms/" +
+          ME.code +
+          "/judges/" +
+          id +
+          "/hidden?hidden=" +
+          goingHidden +
+          "&token=" +
+          encodeURIComponent(ME.token),
+        { method: "POST" },
+      );
+    },
+  });
+}
 function activeJudges() {
   return Object.keys(peers).filter(function (id) {
     return !peers[id].hidden;
@@ -1721,19 +1742,7 @@ function renderChair() {
       if (!j.is_chair) {
         var x = el("button", "x", j.hidden ? "Zu Wing" : "Zu Trainee");
         x.addEventListener("click", function () {
-          var goingHidden = !j.hidden;
-          if (!confirm(hiddenToggleMessage(j.name, goingHidden))) return;
-          fetch(
-            "/api/rooms/" +
-              ME.code +
-              "/judges/" +
-              id +
-              "/hidden?hidden=" +
-              goingHidden +
-              "&token=" +
-              encodeURIComponent(ME.token),
-            { method: "POST" },
-          );
+          confirmHiddenToggle(id, j.name, !j.hidden);
         });
         row.appendChild(x);
       }
@@ -2016,19 +2025,7 @@ function renderDashChrome() {
       x.tabIndex = -1;
       x.addEventListener("click", function (e) {
         e.stopPropagation();
-        var goingHidden = !j.hidden;
-        if (!confirm(hiddenToggleMessage(j.name, goingHidden))) return;
-        fetch(
-          "/api/rooms/" +
-            ME.code +
-            "/judges/" +
-            id +
-            "/hidden?hidden=" +
-            goingHidden +
-            "&token=" +
-            encodeURIComponent(ME.token),
-          { method: "POST" },
-        );
+        confirmHiddenToggle(id, j.name, !j.hidden);
       });
       chip.appendChild(x);
     }
@@ -2613,6 +2610,82 @@ var BALLOT_BOOKMARKLET_SRC = [
 
 function ballotBookmarkletHref() {
   return "javascript:" + encodeURIComponent(BALLOT_BOOKMARKLET_SRC);
+}
+
+function closeConfirmModal() {
+  var m = document.getElementById("confirmModal");
+  if (m) m.remove();
+  document.removeEventListener("keydown", confirmModalEscHandler);
+}
+function confirmModalEscHandler(e) {
+  if (e.key === "Escape") closeConfirmModal();
+}
+// Generic confirm dialog in the app's modal style - an Abbrechen/confirm
+// pair instead of confirm(). opts: {title, text, confirmLabel, cancelLabel, onConfirm}.
+function openConfirmModal(opts) {
+  closeConfirmModal();
+
+  var backdrop = el("div", "modalbackdrop");
+  backdrop.id = "confirmModal";
+  backdrop.addEventListener("click", function (e) {
+    if (e.target === backdrop) closeConfirmModal();
+  });
+
+  var box = el("div", "modalbox");
+  if (opts.title) box.appendChild(el("h2", null, opts.title));
+  box.appendChild(el("p", "note", opts.text));
+
+  var actions = el("div", "modalactions");
+  var cancelBtn = el("button", "btn ghost", opts.cancelLabel || "Abbrechen");
+  cancelBtn.type = "button";
+  cancelBtn.addEventListener("click", closeConfirmModal);
+  var confirmBtn = el("button", "btn", opts.confirmLabel);
+  confirmBtn.type = "button";
+  confirmBtn.addEventListener("click", function () {
+    closeConfirmModal();
+    opts.onConfirm();
+  });
+  actions.appendChild(cancelBtn);
+  actions.appendChild(confirmBtn);
+  box.appendChild(actions);
+
+  backdrop.appendChild(box);
+  document.body.appendChild(backdrop);
+  document.addEventListener("keydown", confirmModalEscHandler);
+}
+
+function closeInfoModal() {
+  var m = document.getElementById("infoModal");
+  if (m) m.remove();
+  document.removeEventListener("keydown", infoModalEscHandler);
+}
+function infoModalEscHandler(e) {
+  if (e.key === "Escape") closeInfoModal();
+}
+// Generic single-button notice in the app's modal style, replacing alert().
+function openInfoModal(title, text) {
+  closeInfoModal();
+
+  var backdrop = el("div", "modalbackdrop");
+  backdrop.id = "infoModal";
+  backdrop.addEventListener("click", function (e) {
+    if (e.target === backdrop) closeInfoModal();
+  });
+
+  var box = el("div", "modalbox");
+  if (title) box.appendChild(el("h2", null, title));
+  box.appendChild(el("p", "note", text));
+
+  var actions = el("div", "modalactions");
+  var okBtn = el("button", "btn", "OK");
+  okBtn.type = "button";
+  okBtn.addEventListener("click", closeInfoModal);
+  actions.appendChild(okBtn);
+  box.appendChild(actions);
+
+  backdrop.appendChild(box);
+  document.body.appendChild(backdrop);
+  document.addEventListener("keydown", infoModalEscHandler);
 }
 
 function closeBallotExportModal() {
@@ -3763,40 +3836,16 @@ function startSession(s) {
   render();
 }
 
-function closePromotionNotice() {
-  var m = document.getElementById("promotionNotice");
-  if (m) m.remove();
-  document.removeEventListener("keydown", promotionNoticeEscHandler);
-}
-function promotionNoticeEscHandler(e) {
-  if (e.key === "Escape") closePromotionNotice();
-}
 // Wings can't join an offline room (joining needs the server too), so once
 // promotion gets it a real code the chair needs to know, in order to
 // (re-)share the link - the status-bar text alone is too easy to miss.
 function showPromotionNotice(code) {
-  closePromotionNotice();
-
-  var backdrop = el("div", "modalbackdrop");
-  backdrop.id = "promotionNotice";
-  backdrop.addEventListener("click", function (e) {
-    if (e.target === backdrop) closePromotionNotice();
-  });
-
-  var box = el("div", "modalbox");
-  box.appendChild(el("h2", null, "Raum wurde online geschaltet"));
-  box.appendChild(el("p", "note", "Neuer Code: " + code + "."));
-
-  var actions = el("div", "modalactions");
-  var okBtn = el("button", "btn", "OK");
-  okBtn.type = "button";
-  okBtn.addEventListener("click", closePromotionNotice);
-  actions.appendChild(okBtn);
-  box.appendChild(actions);
-
-  backdrop.appendChild(box);
-  document.body.appendChild(backdrop);
-  document.addEventListener("keydown", promotionNoticeEscHandler);
+  openInfoModal(
+    "Raum wurde online geschaltet",
+    "Neuer Code: " +
+      code +
+      ". Bitte den Link erneut teilen, damit Beisitzer:innen beitreten können.",
+  );
 }
 
 // Tries to turn a pending offline room into a real server one, migrating
@@ -3858,54 +3907,20 @@ function lobbyErr(msg) {
   document.getElementById("lobbyErr").textContent = msg || "";
 }
 
-function closeOfflineRoomModal() {
-  var m = document.getElementById("offlineRoomModal");
-  if (m) m.remove();
-  document.removeEventListener("keydown", offlineRoomEscHandler);
-}
-function offlineRoomEscHandler(e) {
-  if (e.key === "Escape") closeOfflineRoomModal();
-}
 // Offered when POST /api/rooms fails at the network level (no connectivity) -
 // a reachable server that merely rejected the request should not offer this.
 function openOfflineRoomModal(name) {
-  closeOfflineRoomModal();
-
-  var backdrop = el("div", "modalbackdrop");
-  backdrop.id = "offlineRoomModal";
-  backdrop.addEventListener("click", function (e) {
-    if (e.target === backdrop) closeOfflineRoomModal();
-  });
-
-  var box = el("div", "modalbox");
-  box.appendChild(el("h2", null, "Server nicht erreichbar"));
-  box.appendChild(
-    el(
-      "p",
-      "note",
+  openConfirmModal({
+    title: "Server nicht erreichbar",
+    text:
       "Der Server kann aktuell nicht erreicht werden. Du kannst einen " +
-        "Offline-Raum erstellen, der automatisch zu einem Standard-Raum " +
-        "wird, wenn der Server wieder erreicht wird.",
-    ),
-  );
-
-  var actions = el("div", "modalactions");
-  var cancelBtn = el("button", "btn ghost", "Abbrechen");
-  cancelBtn.type = "button";
-  cancelBtn.addEventListener("click", closeOfflineRoomModal);
-  var confirmBtn = el("button", "btn", "Offline-Raum erstellen");
-  confirmBtn.type = "button";
-  confirmBtn.addEventListener("click", function () {
-    closeOfflineRoomModal();
-    createOfflineRoom(name);
+      "Offline-Raum erstellen, der automatisch zu einem Standard-Raum " +
+      "wird, wenn der Server wieder erreicht wird.",
+    confirmLabel: "Offline-Raum erstellen",
+    onConfirm: function () {
+      createOfflineRoom(name);
+    },
   });
-  actions.appendChild(cancelBtn);
-  actions.appendChild(confirmBtn);
-  box.appendChild(actions);
-
-  backdrop.appendChild(box);
-  document.body.appendChild(backdrop);
-  document.addEventListener("keydown", offlineRoomEscHandler);
 }
 
 // Fabricates a room/judge identity in the same shape POST /api/rooms
@@ -3944,6 +3959,14 @@ document.getElementById("btnCreate").addEventListener("click", function () {
     return;
   }
   lobbyErr("");
+  var btn = document.getElementById("btnCreate");
+  var label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Verbinde …";
+  function restore() {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
   fetch("/api/rooms", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -3951,16 +3974,18 @@ document.getElementById("btnCreate").addEventListener("click", function () {
   })
     .then(function (r) {
       if (!r.ok) {
+        restore();
         lobbyErr("Raum konnte nicht erstellt werden (" + r.status + ").");
         return null;
       }
       return r.json();
     })
     .then(function (data) {
-      if (data) startSession(data);
+      if (data) startSession(data); // navigates away - no need to restore the button
     })
     .catch(function () {
       // fetch() itself rejected - no connectivity, not a server-side error.
+      restore();
       openOfflineRoomModal(name);
     });
 });
