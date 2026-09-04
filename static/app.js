@@ -4285,10 +4285,45 @@ document.getElementById("tundoBtn").addEventListener("click", function () {
   render();
 });
 
+// Install button - shown on any phone-width screen, browser support for an
+// automatic prompt or not. Chromium browsers fire beforeinstallprompt, so
+// there the button triggers the native install dialog directly; everywhere
+// else (Firefox Android, iOS Safari) it falls back to a note pointing at the
+// browser's own "Add to Home screen" menu item, since those browsers don't
+// expose an installability API to trigger it from the page.
+var deferredInstallPrompt = null;
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 1023px)").matches;
+}
+function isStandalone() {
+  return window.matchMedia("(display-mode: standalone)").matches;
+}
+window.addEventListener("beforeinstallprompt", function (e) {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+});
+document.getElementById("btnInstall").addEventListener("click", function () {
+  if (deferredInstallPrompt) {
+    var e = deferredInstallPrompt;
+    deferredInstallPrompt = null;
+    document.getElementById("btnInstall").classList.add("hide");
+    e.prompt();
+  } else {
+    document.getElementById("installNote").classList.remove("hide");
+  }
+});
+window.addEventListener("appinstalled", function () {
+  document.getElementById("btnInstall").classList.add("hide");
+  document.getElementById("installNote").classList.add("hide");
+});
+
 // boot function
 (function () {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("/static/sw.js");
+  }
+  if (isMobileViewport() && !isStandalone()) {
+    document.getElementById("btnInstall").classList.remove("hide");
   }
   applyTheme(LS.get("opd.theme", "light"));
   // Only an explicit /r/CODE link auto-resumes a session - landing on the

@@ -3,6 +3,7 @@
   "short_name": "Mittelmaß",
   "start_url": "/static/index.html",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#ffffff",
   "icons": [
