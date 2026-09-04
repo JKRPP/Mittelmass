@@ -33,7 +33,6 @@ IMPRESSUM_DEFAULTS = {
     "IMPRESSUM_STREET": "[Straße und Hausnummer]",
     "IMPRESSUM_CITY": "[PLZ und Ort]",
     "IMPRESSUM_COUNTRY": "[Land]",
-    "IMPRESSUM_PHONE": "[Telefonnummer]",
     "IMPRESSUM_EMAIL": "[E-Mail-Adresse]",
 }
 
