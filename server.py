@@ -48,11 +48,12 @@ MAX_ROOMS = 5000
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS rooms (
-  code         TEXT PRIMARY KEY,
-  motion       TEXT NOT NULL DEFAULT '',
-  spread_open  INTEGER NOT NULL DEFAULT 0,
-  created_at   REAL NOT NULL,
-  closed_at    REAL
+  code          TEXT PRIMARY KEY,
+  motion        TEXT NOT NULL DEFAULT '',
+  spread_open   INTEGER NOT NULL DEFAULT 0,
+  free_speakers INTEGER NOT NULL DEFAULT 3,
+  created_at    REAL NOT NULL,
+  closed_at     REAL
 );
 CREATE TABLE IF NOT EXISTS judges (
   id           TEXT PRIMARY KEY,
@@ -106,6 +107,12 @@ async def lifespan(app: FastAPI):
     try:
         con.execute(
             "ALTER TABLE rooms ADD COLUMN spread_open INTEGER NOT NULL DEFAULT 0"
+        )
+    except sqlite3.OperationalError:
+        pass  # already there
+    try:
+        con.execute(
+            "ALTER TABLE rooms ADD COLUMN free_speakers INTEGER NOT NULL DEFAULT 3"
         )
     except sqlite3.OperationalError:
         pass  # already there
@@ -414,6 +421,7 @@ async def snapshot(code: str, token: str = Query(...)):
             "motion": room["motion"],
             "closed": bool(room["closed_at"]),
             "spread_open": bool(room["spread_open"]),
+            "free_speakers": room["free_speakers"],
             "me": {
                 "judge_id": me["id"],
                 "name": me["display_name"],
@@ -584,6 +592,24 @@ async def set_spread_open(code: str, open: bool = Query(...), token: str = Query
         )
         con.commit()
         await hub.broadcast(code, {"type": "spread_open", "open": open})
+        return {"ok": True}
+    finally:
+        con.close()
+
+
+@app.post("/api/rooms/{code}/free_speakers")
+async def set_free_speakers(
+    code: str, count: int = Query(..., ge=3, le=10), token: str = Query(...)
+):
+    code = code.upper()
+    con = db()
+    try:
+        me = auth(con, code, token)
+        if not me["is_chair"]:
+            raise HTTPException(403, "only the chair can do that")
+        con.execute("UPDATE rooms SET free_speakers=? WHERE code=?", (count, code))
+        con.commit()
+        await hub.broadcast(code, {"type": "free_speakers", "count": count})
         return {"ok": True}
     finally:
         con.close()

@@ -1,14 +1,54 @@
-var SPEAKERS = [
-  { label: "Eröffnungsrede Regierung", team: 0 },
-  { label: "Eröffnungsrede Opposition", team: 1 },
-  { label: "Ergänzungsrede Regierung", team: 0 },
-  { label: "Ergänzungsrede Opposition", team: 1 },
-  { label: "1. Fraktionsfreie Rede", team: null },
-  { label: "2. Fraktionsfreie Rede", team: null },
-  { label: "3. Fraktionsfreie Rede", team: null },
-  { label: "Schlussrede Opposition", team: 1 },
-  { label: "Schlussrede Regierung", team: 0 },
-];
+var MAX_FREE_SPEAKERS = 10;
+var FREE_START = 4;
+var SPEAKERS = (function () {
+  var arr = [
+    { label: "Eröffnungsrede Regierung", team: 0 },
+    { label: "Eröffnungsrede Opposition", team: 1 },
+    { label: "Ergänzungsrede Regierung", team: 0 },
+    { label: "Ergänzungsrede Opposition", team: 1 },
+  ];
+  for (var i = 1; i <= MAX_FREE_SPEAKERS; i++) {
+    arr.push({ label: i + ". Fraktionsfreie Rede", team: null });
+  }
+  arr.push({ label: "Schlussrede Opposition", team: 1 });
+  arr.push({ label: "Schlussrede Regierung", team: 0 });
+  return arr;
+})();
+// Chair-settable room setting (default 3, the normal OPD case) — how many
+// of the reserved free-speaker slots above are currently active.
+var freeSpeakerCount = 3;
+function isActiveSpeaker(s) {
+  if (s < FREE_START || s >= FREE_START + MAX_FREE_SPEAKERS) return true;
+  return s - FREE_START < freeSpeakerCount;
+}
+function activeSpeakerIndices() {
+  var out = [];
+  for (var s = 0; s < SPEAKERS.length; s++) if (isActiveSpeaker(s)) out.push(s);
+  return out;
+}
+function activeSpeakerCount() {
+  return activeSpeakerIndices().length;
+}
+function activeOrdinal(s) {
+  return activeSpeakerIndices().indexOf(s) + 1;
+}
+function nextActiveSpeaker(s) {
+  for (var i = s + 1; i < SPEAKERS.length; i++)
+    if (isActiveSpeaker(i)) return i;
+  return -1;
+}
+function prevActiveSpeaker(s) {
+  for (var i = s - 1; i >= 0; i--) if (isActiveSpeaker(i)) return i;
+  return -1;
+}
+// If freeSpeakerCount just changed underneath the current speaker index,
+// move to the nearest still-active one rather than leaving cs pointing at
+// a hidden slot.
+function snapToActiveSpeaker() {
+  if (isActiveSpeaker(cs)) return;
+  var p = prevActiveSpeaker(cs);
+  cs = p !== -1 ? p : nextActiveSpeaker(cs);
+}
 function teamOf(s) {
   return SPEAKERS[s].team;
 }
@@ -501,6 +541,10 @@ function connect() {
       spreadOpen = m.open;
       updateChairTab();
       if (view === "chair" || isDesktopWidth()) render();
+    } else if (m.type === "free_speakers") {
+      freeSpeakerCount = m.count;
+      snapToActiveSpeaker();
+      render();
     }
   };
   ws.onclose = function () {
@@ -548,6 +592,8 @@ function resync() {
       remote[ME.judge_id] = Object.assign({}, remote[ME.judge_id] || {}, mine);
       ME.is_chair = s.me.is_chair;
       spreadOpen = !!s.spread_open;
+      freeSpeakerCount = s.free_speakers || 3;
+      snapToActiveSpeaker();
       updateChairTab();
 
       deductions = {};
@@ -733,11 +779,13 @@ function paintBar() {
   document.getElementById("whoami").textContent = ME
     ? ME.name + (ME.is_chair ? " · Chair" : "") + " · " + ME.code
     : "";
+  document
+    .getElementById("menuFreeSpeakers")
+    .classList.toggle("hide", !ME || !ME.is_chair);
 }
 
 // Scoring state for local judge
-var NS = SPEAKERS.length,
-  NC = CRITERIA.length,
+var NC = CRITERIA.length,
   NT = TEAMCATS.length;
 var view = "sheet",
   cs = 0,
@@ -887,8 +935,9 @@ function pickSpeaker(v) {
   if (wasEmpty) {
     var nx = firstEmptyS(cs);
     if (nx === -1) {
-      if (cs < NS - 1) {
-        cs++;
+      var na = nextActiveSpeaker(cs);
+      if (na !== -1) {
+        cs = na;
         cc = Math.max(0, firstEmptyS(cs));
       }
     } else cc = nx;
@@ -901,12 +950,12 @@ function renderSheet() {
   var z = zwischensumme(cs);
   document.getElementById("spkSub").textContent =
     "Rede " +
-    (cs + 1) +
+    activeOrdinal(cs) +
     " von " +
-    NS +
+    activeSpeakerCount() +
     (z !== null ? " · Zwischensumme " + z : "");
-  document.getElementById("prev").disabled = cs === 0;
-  document.getElementById("next").disabled = cs === NS - 1;
+  document.getElementById("prev").disabled = prevActiveSpeaker(cs) === -1;
+  document.getElementById("next").disabled = nextActiveSpeaker(cs) === -1;
 
   var host = document.getElementById("crits");
   host.innerHTML = "";
@@ -1049,7 +1098,8 @@ function renderMatrix() {
     h.push("<th>" + c.short + "</th>");
   });
   h.push("<th>Σ</th><th>Ab</th><th>P</th></tr>");
-  SPEAKERS.forEach(function (sp, s) {
+  activeSpeakerIndices().forEach(function (s) {
+    var sp = SPEAKERS[s];
     var lbl = sp.label
       .replace("Eröffnungsrede", "Eröff.")
       .replace("Ergänzungsrede", "Ergän.")
@@ -1209,7 +1259,7 @@ function computeChairSummary() {
       key: target + "/" + criterion,
     });
   }
-  SPEAKERS.forEach(function (_, s) {
+  activeSpeakerIndices().forEach(function (s) {
     CRITERIA.forEach(function (c) {
       scan("s" + s, c.key, labelOf("s" + s, c.key));
     });
@@ -1281,7 +1331,8 @@ function computeChairSummary() {
 
   // Display by total score
   var totals = [];
-  SPEAKERS.forEach(function (sp, s) {
+  activeSpeakerIndices().forEach(function (s) {
+    var sp = SPEAKERS[s];
     var vals = [],
       names = [],
       judges = [];
@@ -1330,8 +1381,11 @@ function computeChairSummary() {
       : null;
     return { label: sp.label, avg: avg, n: vals.length };
   });
-  var bestSpeakerAvg = speakerRows.reduce(function (m, r) {
-    return r.avg !== null && r.avg > m ? r.avg : m;
+  // speakerRows stays positional (summary.speakerRows[s] is looked up by
+  // raw index elsewhere) — but a hidden free speaker's stale avg must not
+  // win "best speech" while their slot is inactive.
+  var bestSpeakerAvg = speakerRows.reduce(function (m, r, s) {
+    return isActiveSpeaker(s) && r.avg !== null && r.avg > m ? r.avg : m;
   }, -Infinity);
 
   var teamRows = TEAMS.map(function (tm, t) {
@@ -1405,7 +1459,8 @@ function finalResultHTML(summary) {
   var fh = [
     '<table class="finalTbl"><tr><th class="l">Redner:in</th><th>Ø Punkte</th><th>n</th></tr>',
   ];
-  summary.speakerRows.forEach(function (r) {
+  summary.speakerRows.forEach(function (r, s) {
+    if (!isActiveSpeaker(s)) return;
     var isBest = r.avg !== null && r.avg === summary.bestSpeakerAvg;
     fh.push(
       '<tr><td class="l' +
@@ -1490,7 +1545,8 @@ function fullBallotTable(summary) {
   // the winning team (per judge, and on average) can be marked "best" once
   // every row has actually been built and compared.
   var speakerMeta = [];
-  SPEAKERS.forEach(function (sp, s) {
+  activeSpeakerIndices().forEach(function (s) {
+    var sp = SPEAKERS[s];
     var tr = el("tr");
     tr.appendChild(el("td", "l", sp.label));
     var vals = [],
@@ -2040,13 +2096,13 @@ function dashJudgeChips(judges) {
 
 function dashSpeakerGroup(label, teamVal, summary) {
   var wrap = el("div");
-  var rows = SPEAKERS.filter(function (sp) {
-    return sp.team === teamVal;
+  var rows = activeSpeakerIndices().filter(function (s) {
+    return SPEAKERS[s].team === teamVal;
   });
   if (!rows.length) return wrap;
   wrap.appendChild(el("div", "dashgrp", label));
-  SPEAKERS.forEach(function (sp, s) {
-    if (sp.team !== teamVal) return;
+  rows.forEach(function (s) {
+    var sp = SPEAKERS[s];
     var teamCls =
       teamVal === 0 ? "team-gov" : teamVal === 1 ? "team-opp" : "team-free";
     var sel = dashboardSelected.kind === "speaker" && dashboardSelected.s === s;
@@ -2392,7 +2448,8 @@ function speechRolePosition(s) {
 // is missing or excluded so the bookmarklet knows to leave that field
 // alone rather than writing a blank/zero over something.
 function buildBallotExport(summary, judgeIds) {
-  var speeches = SPEAKERS.map(function (sp, s) {
+  var speeches = activeSpeakerIndices().map(function (s) {
+    var sp = SPEAKERS[s];
     var rp = speechRolePosition(s);
     return {
       role: rp.role,
@@ -2497,13 +2554,13 @@ function openBallotExportModal(summary) {
 
   var order = chairFirstIds(summary.ids);
 
-  var backdrop = el("div", "ballotexportbackdrop");
+  var backdrop = el("div", "modalbackdrop");
   backdrop.id = "ballotExportModal";
   backdrop.addEventListener("click", function (e) {
     if (e.target === backdrop) closeBallotExportModal();
   });
 
-  var box = el("div", "ballotexportbox");
+  var box = el("div", "modalbox");
   box.appendChild(el("h2", null, "Ballot exportieren"));
   box.appendChild(
     el(
@@ -2567,7 +2624,7 @@ function openBallotExportModal(summary) {
   });
   box.appendChild(bmLink);
 
-  var actions = el("div", "ballotexportactions");
+  var actions = el("div", "modalactions");
   var copyBtn = el("button", "btn", "In Zwischenablage kopieren");
   copyBtn.type = "button";
   copyBtn.addEventListener("click", function () {
@@ -2595,6 +2652,93 @@ function openBallotExportModal(summary) {
   document.addEventListener("keydown", ballotExportEscHandler);
 }
 
+function closeFreeSpeakersModal() {
+  var m = document.getElementById("freeSpeakersModal");
+  if (m) m.remove();
+  document.removeEventListener("keydown", freeSpeakersEscHandler);
+}
+function freeSpeakersEscHandler(e) {
+  if (e.key === "Escape") closeFreeSpeakersModal();
+}
+
+// Chair-only: how many of the reserved free-speaker slots are active (see
+// isActiveSpeaker() near SPEAKERS). Reducing the count never deletes
+// anything already scored — it only stops being shown/counted — so raising
+// it again brings those scores right back.
+function openFreeSpeakersModal() {
+  closeFreeSpeakersModal();
+
+  var backdrop = el("div", "modalbackdrop");
+  backdrop.id = "freeSpeakersModal";
+  backdrop.addEventListener("click", function (e) {
+    if (e.target === backdrop) closeFreeSpeakersModal();
+  });
+
+  var box = el("div", "modalbox");
+  box.appendChild(el("h2", null, "Fraktionsfreie Reden"));
+  box.appendChild(
+    el(
+      "p",
+      "note",
+      "Standardwert 3. Entfernte FFRs werden versteckt, Punktzahlen bleiben erhalten.",
+    ),
+  );
+
+  var input = el("input", "modalinput");
+  input.type = "number";
+  input.inputMode = "numeric";
+  input.min = "3";
+  input.max = String(MAX_FREE_SPEAKERS);
+  input.step = "1";
+  input.value = String(freeSpeakerCount);
+  box.appendChild(input);
+
+  var err = el("p", "err");
+  box.appendChild(err);
+
+  var actions = el("div", "modalactions");
+  var saveBtn = el("button", "btn", "Speichern");
+  saveBtn.type = "button";
+  saveBtn.addEventListener("click", function () {
+    var n = Math.round(Number(input.value));
+    if (!isFinite(n) || n < 3 || n > MAX_FREE_SPEAKERS) {
+      err.textContent =
+        "Bitte eine Zahl zwischen 3 und " + MAX_FREE_SPEAKERS + " eingeben.";
+      return;
+    }
+    freeSpeakerCount = n;
+    snapToActiveSpeaker();
+    render();
+    closeFreeSpeakersModal();
+    fetch(
+      "/api/rooms/" +
+        ME.code +
+        "/free_speakers?count=" +
+        n +
+        "&token=" +
+        encodeURIComponent(ME.token),
+      { method: "POST" },
+    ).catch(function () {});
+  });
+  var cancelBtn = el("button", "btn ghost", "Abbrechen");
+  cancelBtn.type = "button";
+  cancelBtn.addEventListener("click", closeFreeSpeakersModal);
+  actions.appendChild(saveBtn);
+  actions.appendChild(cancelBtn);
+  box.appendChild(actions);
+
+  backdrop.appendChild(box);
+  document.body.appendChild(backdrop);
+  document.addEventListener("keydown", freeSpeakersEscHandler);
+  input.focus();
+  input.select();
+}
+document
+  .getElementById("menuFreeSpeakers")
+  .addEventListener("click", function () {
+    openFreeSpeakersModal();
+  });
+
 function dashColC(summary) {
   var col = el("div", "dashcol dashcol-c");
   if (dashboardSelected.kind === "team") {
@@ -2612,7 +2756,9 @@ function renderDashboard() {
   var root = document.getElementById("v-dashboard");
   if (!root) return;
   var validSpeaker =
-    dashboardSelected.kind === "speaker" && SPEAKERS[dashboardSelected.s];
+    dashboardSelected.kind === "speaker" &&
+    SPEAKERS[dashboardSelected.s] &&
+    isActiveSpeaker(dashboardSelected.s);
   var validTeam =
     dashboardSelected.kind === "team" &&
     TEAMS[dashboardSelected.t] !== undefined &&
@@ -2863,15 +3009,16 @@ function schnellSpeakerTable() {
     return t === 0 ? "team-gov" : t === 1 ? "team-opp" : "team-free";
   }
 
+  var active = activeSpeakerIndices();
   var i = 0;
-  while (i < SPEAKERS.length) {
-    var phase = schnellSpeakerPhase(SPEAKERS[i].label);
+  while (i < active.length) {
+    var phase = schnellSpeakerPhase(SPEAKERS[active[i]].label);
     var speakers = [];
     while (
-      i < SPEAKERS.length &&
-      schnellSpeakerPhase(SPEAKERS[i].label) === phase
+      i < active.length &&
+      schnellSpeakerPhase(SPEAKERS[active[i]].label) === phase
     ) {
-      speakers.push(i);
+      speakers.push(active[i]);
       i++;
     }
     schnellSpeakerGroupRows(phase, speakers, teamClsOf).forEach(function (row) {
@@ -3113,10 +3260,11 @@ function renderBlatt() {
   var head = el("div", "blatthead " + teamCls);
   var prev = el("button", "navbtn", "‹");
   prev.tabIndex = -1;
-  prev.disabled = cs === 0;
+  prev.disabled = prevActiveSpeaker(cs) === -1;
   prev.addEventListener("click", function () {
-    if (cs > 0) {
-      cs--;
+    var p = prevActiveSpeaker(cs);
+    if (p !== -1) {
+      cs = p;
       render();
     }
   });
@@ -3124,15 +3272,22 @@ function renderBlatt() {
 
   var mid = el("div", "blattheadmid");
   mid.appendChild(el("h1", "blatttitle", sp.label));
-  mid.appendChild(el("div", "sub", "Rede " + (cs + 1) + " von " + NS));
+  mid.appendChild(
+    el(
+      "div",
+      "sub",
+      "Rede " + activeOrdinal(cs) + " von " + activeSpeakerCount(),
+    ),
+  );
   head.appendChild(mid);
 
   var next = el("button", "navbtn", "›");
   next.tabIndex = -1;
-  next.disabled = cs === NS - 1;
+  next.disabled = nextActiveSpeaker(cs) === -1;
   next.addEventListener("click", function () {
-    if (cs < NS - 1) {
-      cs++;
+    var n = nextActiveSpeaker(cs);
+    if (n !== -1) {
+      cs = n;
       render();
     }
   });
@@ -3606,15 +3761,17 @@ document.getElementById("tabs").addEventListener("click", function (e) {
   render();
 });
 document.getElementById("prev").addEventListener("click", function () {
-  if (cs > 0) {
-    cs--;
+  var p = prevActiveSpeaker(cs);
+  if (p !== -1) {
+    cs = p;
     cc = Math.max(0, firstEmptyS(cs));
     render();
   }
 });
 document.getElementById("next").addEventListener("click", function () {
-  if (cs < NS - 1) {
-    cs++;
+  var n = nextActiveSpeaker(cs);
+  if (n !== -1) {
+    cs = n;
     cc = Math.max(0, firstEmptyS(cs));
     render();
   }

@@ -1493,7 +1493,7 @@ body {
   justify-content: space-between;
   gap: 10px;
 }
-.ballotexportbackdrop {
+.modalbackdrop {
   position: fixed;
   inset: 0;
   background: color-mix(in srgb, var(--ink) 45%, transparent);
@@ -1503,7 +1503,7 @@ body {
   z-index: 100;
   padding: 24px;
 }
-.ballotexportbox {
+.modalbox {
   background: var(--card);
   border: 1px solid var(--line-2);
   padding: 22px 26px;
@@ -1512,7 +1512,7 @@ body {
   max-height: 85vh;
   overflow-y: auto;
 }
-.ballotexportbox h2 {
+.modalbox h2 {
   margin: 0 0 8px;
   font-size: 18px;
   font-weight: 500;
@@ -1540,13 +1540,24 @@ body {
   flex: 1;
   min-width: 0;
 }
-.ballotexportactions {
+.modalactions {
   display: flex;
   gap: 10px;
   margin-top: 14px;
 }
-.ballotexportactions .btn {
+.modalactions .btn {
   flex: 1;
+}
+.modalinput {
+  width: 100%;
+  font: inherit;
+  font-size: 16px;
+  padding: 11px 12px;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  margin: 4px 0 10px;
 }
 .bookmarklet {
   display: inline-block;
