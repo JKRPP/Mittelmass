@@ -1893,6 +1893,11 @@ function applyLayoutMode() {
     document.getElementById("tabs").classList.add("hide");
   } else {
     document.getElementById("tabs").classList.remove("hide");
+    // dock (the score-entry keypad) was hidden by the "wide" branch above
+    // if the window was ever desktop-width during this session — restore
+    // it here the same way the subview branch does, or shrinking back down
+    // from desktop leaves the mobile card with no way to enter scores.
+    document.getElementById("dock").classList.remove("hide");
     showView(view);
   }
   return changed;
