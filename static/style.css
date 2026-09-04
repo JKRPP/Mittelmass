@@ -15,7 +15,7 @@
   --team-gov: #2f8f3c;
   --team-opp: #c23b3b;
   --team-free: #c99a1e;
-  /* Raw dark-palette values, defined once — both the "system preference"
+  /* Raw dark-palette values, defined once - both the "system preference"
      block below (@media, only when data-theme isn't explicitly "light")
      and the "explicit dark toggle" block reference these instead of
      repeating the hex values, so the two can't drift out of sync. */
@@ -803,13 +803,13 @@ body {
   min-height: 0;
 }
 /* The mobile top bar (connection dot/state + ⋮ menu) stays visible and
-   carries the desktop nav + room/judges info too — one bar, not two. */
+   carries the desktop nav + room/judges info too, so it's a single bar. */
 #app.dashboard-mode .bar {
   padding: 10px 24px;
   border-bottom: 1px solid var(--line);
 }
-/* A subview (Reden/Team/Übersicht) re-centers the existing mobile page —
-   reused as-is — instead of stretching it full width. */
+/* A subview (Reden/Team/Übersicht) re-centers the existing mobile page at
+   its natural width, reused as-is. */
 #app.dashboard-mode.dashboard-subview #v-sheet,
 #app.dashboard-mode.dashboard-subview #v-team,
 #app.dashboard-mode.dashboard-subview #v-matrix,

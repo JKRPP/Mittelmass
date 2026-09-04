@@ -14,7 +14,7 @@ var SPEAKERS = (function () {
   arr.push({ label: "Schlussrede Regierung", team: 0 });
   return arr;
 })();
-// Chair-settable room setting (default 3, the normal OPD case) — how many
+// Chair-settable room setting (default 3, the normal OPD case) - how many
 // of the reserved free-speaker slots above are currently active.
 var freeSpeakerCount = 3;
 function isActiveSpeaker(s) {
@@ -41,9 +41,7 @@ function prevActiveSpeaker(s) {
   for (var i = s - 1; i >= 0; i--) if (isActiveSpeaker(i)) return i;
   return -1;
 }
-// If freeSpeakerCount just changed underneath the current speaker index,
-// move to the nearest still-active one rather than leaving cs pointing at
-// a hidden slot.
+// Snaps cs onto the nearest active speaker after freeSpeakerCount changes.
 function snapToActiveSpeaker() {
   if (isActiveSpeaker(cs)) return;
   var p = prevActiveSpeaker(cs);
@@ -80,9 +78,7 @@ var TEAMCATS = [
     grp: "Überzeugungskraft",
   },
 ];
-// TEAMCATS grouped by .grp, in first-seen order — {label, cats: [indices
-// into TEAMCATS]}. Used wherever a group header needs to span its member
-// categories (Schnelleingabe's Teampunkte table).
+// TEAMCATS grouped by .grp - used by Schnelleingabe's Teampunkte header.
 var TEAMGROUPS_INFO = (function () {
   var groups = [];
   TEAMCATS.forEach(function (c, i) {
@@ -352,10 +348,7 @@ var peers = {}; // judge_id -> {name,is_chair,hidden,filled,online}
 var remote = {}; // judge_id -> {"target|criterion": points}
 var queue = {}; // "target|criterion" -> {target,criterion,points,seq}
 var seq = 0;
-// Blatt's free-text notes — local-only, never synced (no server field for
-// them, no queue entry, no websocket message). Keyed by "s{s}|{groupKey}"
-// where groupKey is "spr"/"auf"/"kon"/"sacurt" (Sachverstand+Urteilskraft
-// share one note, so it isn't keyed by CRITERIA[i].key directly).
+// Blatt's free-text notes - local-only, keyed "s{s}|{groupKey}" (Sac+Urt share one).
 var notes = {};
 var notesSaveTimer = null;
 var ws = null,
@@ -414,7 +407,7 @@ function write(target, criterion, points) {
   if (!remote[ME.judge_id]) remote[ME.judge_id] = {};
   remote[ME.judge_id][k] = points;
   seq += 1;
-  // Collapsing by key means an hour offline costs one entry per cell, not one per tap.
+  // Collapsing by key caps an hour offline at one queued entry per cell.
   queue[k] = {
     target: target,
     criterion: criterion,
@@ -694,8 +687,8 @@ function resetRoomState() {
 function leaveRoom() {
   if (!ME) return;
   resetRoomState();
-  // Pushed (not replaced): a stray tap on "Verlassen" is recoverable with
-  // the browser's back button, since opd.session.<code> is kept around.
+  // history.pushState keeps a back-button escape hatch: a stray tap on
+  // "Verlassen" is recoverable since opd.session.<code> stays around.
   if (history.pushState) history.pushState({ left: true }, "", "/");
   showLobby();
 }
@@ -846,9 +839,7 @@ function firstEmptyS(s) {
   for (var c = 0; c < NC; c++) if (sget(s, c) === null) return c;
   return -1;
 }
-// This judge's own team points plus their own speaker totals for that
-// team — Übersicht's "Gesamt" column and Schnelleingabe's Teampunkte row
-// both show this, so it lives here once instead of twice.
+// Own team points + own speakers' totals - shared by Übersicht and Schnelleingabe's Teampunkte row.
 function myTeamGrand(t) {
   var teamSpeakers = SPEAKERS.filter(function (sp) {
     return sp.team === t;
@@ -1185,16 +1176,14 @@ function activeJudges() {
     return !peers[id].hidden;
   });
 }
-// Chair's column always comes first in a ballot comparison table, whichever
-// judge that happens to be — used by fullBallotTable/dashBallotTable/
-// dashTeamBallotTable.
+// Chair's column always comes first in a ballot comparison table.
 function chairFirstIds(ids) {
   return ids.slice().sort(function (a, b) {
     return (peers[b].is_chair ? 1 : 0) - (peers[a].is_chair ? 1 : 0);
   });
 }
-// Mean of a list of numbers, rounded to 2 decimal places; null for an empty
-// list rather than NaN, so callers can render "·" without a separate check.
+// Mean of a list of numbers, rounded to 2 decimals; returns null for an
+// empty list, so callers can render "·" without a separate check.
 function avgRound(vals) {
   if (!vals.length) return null;
   var sum = vals.reduce(function (a, b) {
@@ -1202,9 +1191,7 @@ function avgRound(vals) {
   }, 0);
   return Math.round((sum / vals.length) * 100) / 100;
 }
-// Shared chair math: every spread/average computation used by both the
-// mobile chair view and the desktop dashboard lives here, so the two never
-// disagree.
+// Shared chair math, used by both mobile chair view and desktop dashboard.
 function computeChairSummary() {
   var ids = activeJudges();
   function includedFor(id, target) {
@@ -1382,7 +1369,7 @@ function computeChairSummary() {
     return { label: sp.label, avg: avg, n: vals.length };
   });
   // speakerRows stays positional (summary.speakerRows[s] is looked up by
-  // raw index elsewhere) — but a hidden free speaker's stale avg must not
+  // raw index elsewhere) - but a hidden free speaker's stale avg must not
   // win "best speech" while their slot is inactive.
   var bestSpeakerAvg = speakerRows.reduce(function (m, r, s) {
     return isActiveSpeaker(s) && r.avg !== null && r.avg > m ? r.avg : m;
@@ -1453,7 +1440,7 @@ function computeChairSummary() {
   };
 }
 
-// Speaker/team result tables — shared markup for the mobile "Endergebnis"
+// Speaker/team result tables - shared markup for the mobile "Endergebnis"
 // card and the desktop dashboard's final-result panel.
 function finalResultHTML(summary) {
   var fh = [
@@ -1516,10 +1503,7 @@ function finalResultHTML(summary) {
   return fh.join("");
 }
 
-// Full ballot: one column per adjudicator (chair first), one row per
-// speaker in speaking order plus a team-total row per team — the mobile
-// "Ballot anzeigen" table and the desktop dashboard's ballot panel share
-// this exact build.
+// One column per adjudicator (chair first), one row per speaker + a team-total row - shared by mobile "Ballot anzeigen" and the dashboard.
 function ballotSepRow(ncols) {
   var tr = el("tr", "tsep");
   var td = el("td");
@@ -1540,10 +1524,7 @@ function fullBallotTable(summary) {
   head.appendChild(el("th", null, "Ø"));
   table.appendChild(head);
 
-  // Collected as {vals: [per-judge value or null, ...], avg, tds: [per-judge
-  // td, ...], avgTd} so the highest speech (per judge, and on average) and
-  // the winning team (per judge, and on average) can be marked "best" once
-  // every row has actually been built and compared.
+  // {vals, avg, tds, avgTd} per row, so best-speech/best-team can be marked once every row is built.
   var speakerMeta = [];
   activeSpeakerIndices().forEach(function (s) {
     var sp = SPEAKERS[s];
@@ -1588,11 +1569,7 @@ function fullBallotTable(summary) {
 
   table.appendChild(ballotSepRow(ncols));
 
-  // Total result: each team's grand total per judge — their own team
-  // points plus the totals of their own speakers, same figure as the
-  // "Gesamt" column of the mobile Endergebnis card, but per judge here.
-  // The higher of the two teams (per judge, and on average) is the
-  // winning team on that ballot, so it gets the same "best" mark.
+  // Each team's grand total per judge (team pts + own speakers) - the higher team per judge gets the "best" mark.
   var teamMeta = [];
   TEAMS.forEach(function (tm, t) {
     var teamSpeakers = [];
@@ -1636,9 +1613,7 @@ function fullBallotTable(summary) {
   return table;
 }
 
-// Marks, per judge column and in the Ø column, whichever row in `rows`
-// (speaker totals, or team grand totals) scored strictly highest — a tie
-// gets no mark, since there is no single winner to call out.
+// Marks the strictly-highest row per column; a tie gets no mark.
 function markColumnBest(rows, ncols) {
   for (var col = 0; col < ncols; col++) {
     var best = null,
@@ -1787,12 +1762,7 @@ function renderChair() {
     });
   }
 
-  // Speaker criteria already have their own drill-down under each
-  // speech above (totspread); this list is just the team side — one
-  // row per team per point-category group (Strategie, Interaktion,
-  // Überzeugungskraft). Tapping one reveals the spread of its
-  // individual categories, same pattern as a speech revealing its
-  // per-criterion breakdown.
+  // Team-side spread rows, one per category group - tap to drill in, same pattern as a speech row.
   var sh = document.getElementById("spread");
   sh.innerHTML = "";
   if (!groupCells.length) {
@@ -1861,19 +1831,18 @@ function renderChair() {
   }
 }
 
-// Desktop layout — a wide-screen chrome (top nav + room/judges bar) shown
+// Desktop layout - a wide-screen chrome (top nav + room/judges bar) shown
 // to any judge, chair or wing, above the isDesktopWidth() threshold. Only
 // the "Dashboard" view (chair spread/ballot overview, computeChairSummary())
 // is chair-only; Reden/Team/Schnelleingabe are every desktop judge's own
-// entry pages, same as on mobile. Übersicht has no desktop nav entry —
-// Schnelleingabe is a superset of what it shows (same totals, editable) —
-// but "matrix"/renderMatrix() itself stays, since mobile still uses it. The
+// entry pages, same as on mobile. Übersicht has no desktop nav entry, since
+// Schnelleingabe is a superset of what it shows (same totals, editable);
+// "matrix"/renderMatrix() itself still stays for mobile's own use. The
 // connection dot/state and the ⋮ menu (link copy, theme, Impressum, leave
-// room) are the existing mobile `.bar` — it's left visible (and extended
-// with room/judges/nav) instead of duplicated. dashboardView tracks which
-// of these pages shows; "sheet"/"team" reuse the existing mobile pages
-// re-centered instead of rebuilt; "dashboard", "schnell" and "blatt" are
-// wide, desktop-only views with no mobile equivalent.
+// room) are the existing mobile `.bar`, extended in place with room/judges/
+// nav. dashboardView tracks which of these pages shows; "sheet"/"team"
+// reuse the existing mobile pages, just re-centered; "dashboard", "schnell"
+// and "blatt" are wide, desktop-only views with no mobile equivalent.
 var dashboardSelected = { kind: "speaker", s: 0 };
 var dashboardView = "blatt";
 var DASH_WIDE_VIEWS = ["dashboard", "schnell", "blatt", "teampoints"];
@@ -1884,14 +1853,9 @@ function isDesktopWidth() {
 function isDesktopChair() {
   return isDesktopWidth() && ME.is_chair;
 }
-// The view the desktop chrome should actually show right now — falls back
-// to "schnell" if a wing's dashboardView is left on "dashboard" while the
-// chair hasn't opened it (spreadOpen, the same flag mobile's "Spreads"
-// tab uses) — e.g. after losing chair status, or after the chair locks it
-// again mid-view — or on "matrix"/"sheet"/"team" (no longer reachable from
-// the desktop nav, replaced by Schnelleingabe and the Notizen views), so
-// none of those can end up showing on desktop just because the state var
-// was left there from before.
+// Falls back to "schnell" when dashboardView points somewhere unreachable
+// now - "dashboard" for a wing the chair hasn't opened it to, or the
+// retired matrix/sheet/team.
 function effectiveDashboardView() {
   if (dashboardView === "dashboard" && !ME.is_chair && !spreadOpen)
     return "schnell";
@@ -1949,10 +1913,8 @@ function applyLayoutMode() {
     document.getElementById("tabs").classList.add("hide");
   } else {
     document.getElementById("tabs").classList.remove("hide");
-    // dock (the score-entry keypad) was hidden by the "wide" branch above
-    // if the window was ever desktop-width during this session — restore
-    // it here the same way the subview branch does, or shrinking back down
-    // from desktop leaves the mobile card with no way to enter scores.
+    // Restore dock (hidden by the "wide" branch) on plain mobile - otherwise
+    // shrinking down from desktop leaves no way to score.
     document.getElementById("dock").classList.remove("hide");
     showView(view);
   }
@@ -1974,9 +1936,7 @@ function renderDashChrome() {
   jury.appendChild(chips);
   if (!ME.is_chair) return;
 
-  // Same spreadOpen flag mobile's "Spreads freigeben/sperren" button uses —
-  // opening it also gives wings the stripped-down Dashboard (see
-  // effectiveDashboardView()/renderDashboard()'s chair-only right column).
+  // Reuses spreadOpen - opening it also gives wings the stripped dashboard (minus the right column).
   var dob = el(
     "button",
     "dashjbtn" + (spreadOpen ? " on" : ""),
@@ -2054,10 +2014,7 @@ document.getElementById("dashNav").addEventListener("click", function (e) {
   dashboardView = b.dataset.dv;
   render();
 });
-// PageUp/PageDown cycle through the desktop chrome's nav buttons — the tab
-// order deliberately skips them (they'd otherwise clutter scoring flow), so
-// this is the keyboard-only way to switch views without reaching for the
-// mouse.
+// PageUp/PageDown cycle nav views - the keyboard route now that tab order skips the chrome.
 document.addEventListener("keydown", function (e) {
   if (!ME || !isDesktopWidth()) return;
   if (e.key !== "PageUp" && e.key !== "PageDown") return;
@@ -2181,7 +2138,7 @@ function dashColA(summary) {
   return col;
 }
 
-// A cell's key is "s{s}/{critKey}" or "t{t}/{catKey}" — resolve it back to
+// A cell's key is "s{s}/{critKey}" or "t{t}/{catKey}" - resolve it back to
 // the speaker or team-category the dashboard can select and focus.
 function dashRowTarget(key) {
   var sm = /^s(\d+)\//.exec(key);
@@ -2424,7 +2381,7 @@ function dashFinalPanel(summary) {
 }
 
 // Speech role/position in the OPD sense (government/opposition/non_aligned,
-// 0-indexed within that role) — derived purely from SPEAKERS' order and
+// 0-indexed within that role) - derived purely from SPEAKERS' order and
 // team, so it survives SPEAKERS being reordered/relabeled rather than
 // depending on fixed array indices. This is the same role+position scheme
 // debateresult.com's ballot-entry form uses on its hidden speeches.N.role/
@@ -2441,12 +2398,9 @@ function speechRolePosition(s) {
   return { role: role, position: position };
 }
 
-// The clipboard payload for the ballot-export bookmarklet. `judgeIds` is
-// the chair-chosen column order (must match the tabbing site's judge
-// columns); scores are the same deduction-adjusted totals shown everywhere
-// else (summary.remoteTotal/remoteTeamTotal), null where a judge's score
-// is missing or excluded so the bookmarklet knows to leave that field
-// alone rather than writing a blank/zero over something.
+// Ballot-export payload: judgeIds is the chair-chosen column order; scores
+// are deduction-adjusted totals, null when missing/excluded so the
+// bookmarklet skips that field.
 function buildBallotExport(summary, judgeIds) {
   var speeches = activeSpeakerIndices().map(function (s) {
     var sp = SPEAKERS[s];
@@ -2480,13 +2434,12 @@ function buildBallotExport(summary, judgeIds) {
   };
 }
 
-// The bookmarklet's source, run on the tabbing site's own ballot-entry
-// page (not ours) — dragged to the bookmarks bar once, then clicked while
+// The bookmarklet's source, meant to run on the tabbing site's own
+// ballot-entry page - dragged to the bookmarks bar once, then clicked while
 // that page is open. It reads the clipboard payload buildBallotExport()
 // produced, matches each speech by role+position (the tabbing site's own
-// hidden speeches.N.role/speeches.N.position fields), and fills the
-// number inputs for the chosen judge order. It deliberately never submits
-// the form itself — that's left for a human to review and click.
+// hidden speeches.N.role/speeches.N.position fields), and fills the number
+// inputs for the chosen judge order, leaving review and submission to a human.
 var BALLOT_BOOKMARKLET_SRC = [
   "(function(){",
   'function fail(m){alert("Ballot-Import: "+m);}',
@@ -2546,9 +2499,7 @@ function ballotExportEscHandler(e) {
   if (e.key === "Escape") closeBallotExportModal();
 }
 
-// Standalone overlay appended to <body>, deliberately outside #v-dashboard
-// — that panel gets torn down and rebuilt on every render() (e.g. a remote
-// websocket patch), which would otherwise silently close this mid-use.
+// Appended to <body>, since #v-dashboard gets torn down on every render().
 function openBallotExportModal(summary) {
   closeBallotExportModal();
 
@@ -2614,9 +2565,7 @@ function openBallotExportModal(summary) {
   bmLink.href = ballotBookmarkletHref();
   bmLink.title = "In die Lesezeichenleiste ziehen";
   bmLink.addEventListener("click", function (e) {
-    // A direct click here would run in this page's own context, not the
-    // tabbing site's — harmless (no matching fields, so it just alerts
-    // "0 Felder ausgefüllt"), but not what dragging-to-bookmarks is for.
+    // A direct click (vs. dragging) just runs harmlessly here - the alert explains why nothing happened.
     e.preventDefault();
     alert(
       "Den Link in die Lesezeichenleiste ziehen, nicht anklicken — er muss später auf der Ballot-Seite des Tabbing-Programms ausgeführt werden.",
@@ -2661,10 +2610,8 @@ function freeSpeakersEscHandler(e) {
   if (e.key === "Escape") closeFreeSpeakersModal();
 }
 
-// Chair-only: how many of the reserved free-speaker slots are active (see
-// isActiveSpeaker() near SPEAKERS). Reducing the count never deletes
-// anything already scored — it only stops being shown/counted — so raising
-// it again brings those scores right back.
+// Chair-only: how many reserved free-speaker slots are active. Lowering
+// never deletes scores; raising brings them back.
 function openFreeSpeakersModal() {
   closeFreeSpeakersModal();
 
@@ -2770,23 +2717,14 @@ function renderDashboard() {
   var body = el("div", "dashbody");
   body.appendChild(dashColA(summary));
   body.appendChild(dashColC(summary));
-  // The right column (Abweichungen) stays chair-only even when the chair
-  // opens the dashboard to wings via spreadOpen — wings only ever get the
-  // stripped-down view (everything but that column).
+  // Right column stays chair-only even when the dashboard itself is opened to wings.
   if (ME.is_chair) body.appendChild(dashColB(summary));
   root.appendChild(body);
 }
 
-// Schnelleingabe — an editable grid over the judge's own scores (`mine`,
-// via the same write()/sget()/tget() primitives as the mobile Reden/Team
-// pages), for entering everything fast with a keyboard instead of tapping
-// through one criterion at a time. Any desktop judge gets this, not just
-// the chair — it's personal score entry, same as mobile Reden/Team.
-// Enter moves to the next cell just like Tab, instead of just committing
-// the current one and leaving focus behind.
-// Shared by every desktop number-grid view (Schnelleingabe, Blatt,
-// Teampunkte) — scopes to whichever "v-*" view the input actually lives in,
-// rather than a single hardcoded root, so one helper works everywhere.
+// Schnelleingabe: editable grid over the judge's own scores for fast
+// keyboard entry, open to any desktop judge. Enter advances like Tab.
+// Scopes to whichever "v-*" view the input lives in, so one helper serves every grid.
 function focusNextNumberInput(inp) {
   var root = inp.closest('[id^="v-"]');
   if (!root) return;
@@ -2795,13 +2733,8 @@ function focusNextNumberInput(inp) {
   if (next) next.focus();
 }
 
-// Shared by every number field in the desktop score-entry views
-// (Schnelleingabe, Blatt, Teampunkte) — digit-filtering, select-on-focus,
-// and Enter-to-next-field are identical everywhere; only sizing/class and
-// the "change" handler (what a valid value means, how it's clamped) differ
-// per view, so those are left to the caller.
-// opts: { width, extraClass } — pass width:false to skip the inline width
-// (e.g. Blatt/Teampunkte size their inputs via CSS instead).
+// Shared digit-filter/select-on-focus/Enter-to-next for every desktop number field.
+// opts: {width, extraClass} - width:false skips inline width (Blatt/Teampunkte size via CSS).
 function schnellNumberInput(opts) {
   opts = opts || {};
   var inp = el(
@@ -2813,15 +2746,11 @@ function schnellNumberInput(opts) {
   inp.min = "0";
   inp.step = "1";
   if (opts.width !== false) inp.style.width = opts.width || "95px";
-  // Click or tab in and the whole value is selected, so typing a digit
-  // overwrites it instead of inserting next to what's already there —
-  // matches Blatt/Teampunkte's number fields.
+  // Selects the whole value on focus, so typing overwrites instead of inserting.
   inp.addEventListener("focus", function () {
     inp.select();
   });
-  // type="number" still lets a user type e/+/-/. (they're valid in a
-  // float, just not a score) — strip anything but digits as they type,
-  // rather than only catching it once the field loses focus.
+  // Strips non-digits as you type (type=number still allows e/+/-/.).
   inp.addEventListener("input", function () {
     var digits = inp.value.replace(/[^0-9]/g, "");
     if (digits !== inp.value) inp.value = digits;
@@ -2836,7 +2765,7 @@ function schnellNumberInput(opts) {
   return inp;
 }
 
-// Speaker criteria (Spr/Auf/Kon/Sac/Urt) sit on the raw 0-20 Notenskala —
+// Speaker criteria (Spr/Auf/Kon/Sac/Urt) sit on the raw 0-20 Notenskala - 
 // typed value is written as-is, just clamped.
 function schnellSpeakerInput(s, c) {
   var v = sget(s, c);
@@ -2862,7 +2791,7 @@ function schnellSpeakerInput(s, c) {
 
 // Team categories are stored in their own point scale (e.g. 0-25), but
 // only the discrete bands the Jurierbogen's Umrechnungstabelle defines are
-// valid — the mobile keypad only ever writes a band's midpoint (pickTeam(),
+// valid - the mobile keypad only ever writes a band's midpoint (pickTeam(),
 // via katOf()/convert()/mid()). A typed number here gets snapped to that
 // same midpoint on commit, exactly as if the matching pad button had been
 // tapped, so free typing can never produce an invalid team score.
@@ -2880,9 +2809,7 @@ function schnellTeamInput(t, catIdx) {
       inp.value = v === null ? "" : String(v);
       return;
     }
-    // Only out-of-range values get corrected here — unlike the mobile
-    // keypad (which only ever offers grade midpoints), typed entry accepts
-    // any raw integer within the category's total range.
+    // Clamps to the category's range; the keypad instead snaps to a grade midpoint.
     n = Math.max(0, Math.min(cat.max, n));
     inp.value = String(n);
     v = n;
@@ -2965,10 +2892,7 @@ function schnellSpeakerRow(s, teamCls) {
   return tr;
 }
 
-// Grouped by speaking order (Eröffnungsreden, Ergänzungsreden,
-// Fraktionsfreie Reden, Schlussreden) rather than by team — matches how the
-// round is actually run, and `SPEAKERS` is already declared in that exact
-// order, so a single pass finding where the phase changes is enough.
+// Groups by speaking-order phase - matches SPEAKERS' own order, so one linear pass suffices.
 function schnellSpeakerPhase(label) {
   if (label.indexOf("Eröffnungsrede") !== -1) return "Eröffnungsreden";
   if (label.indexOf("Ergänzungsrede") !== -1) return "Ergänzungsreden";
@@ -3102,7 +3026,7 @@ function schnellPanel(title, table) {
 // A remote websocket event (someone else's score, judges list, ...) can
 // trigger render() while this judge is mid-edit in a desktop grid/sheet;
 // don't tear down the DOM under their cursor. Only blocks on an actual
-// input/textarea having focus — a button (e.g. Blatt's prev/next) should
+// input/textarea having focus - a button (e.g. Blatt's prev/next) should
 // still get its full rebuild on click even though it's inside `root`.
 function dashEditGuard(root) {
   if (!root.firstChild) return false;
@@ -3117,10 +3041,8 @@ function dashEditGuard(root) {
 function renderSchnell() {
   var root = document.getElementById("v-schnell");
   if (!root) return;
-  // Each input already patches its own row's totals directly
-  // (updateSchnellSpeakerRow/updateSchnellTeamRow), so skipping the
-  // rebuild costs nothing but a moment's staleness elsewhere on the page,
-  // which the next render() (e.g. on blur) clears up anyway.
+  // Each input already patches its own row directly - skipping the rebuild
+  // just risks a moment's staleness, cleared up by the next render().
   if (dashEditGuard(root)) return;
   root.innerHTML = "";
   var wrap = el("div", "dashcol");
@@ -3129,12 +3051,8 @@ function renderSchnell() {
   root.appendChild(wrap);
 }
 
-// Adjudikationsblatt — one speech at a time, four columns (Sprachkraft /
-// Auftreten / Kontaktfähigkeit / Sachverstand+Urteilskraft merged), each
-// with a score and free-text notes. Scores go through write()/mine like
-// everywhere else; notes are local-only (notes/getNote/setNote above).
-// Shares `cs` with the mobile Reden page, so switching views mid-speech
-// keeps the same speaker in focus.
+// Adjudikationsblatt: one speech at a time, 4 columns (Sac+Urt merged).
+// Shares cs with mobile Reden, so switching views keeps the same speaker.
 var BLATT_GROUPS = [
   { key: "spr", critIdx: [0], label: "Sprachkraft" },
   { key: "auf", critIdx: [1], label: "Auftreten" },
@@ -3225,7 +3143,7 @@ function blattScoreField(s, c, tabIdx) {
 
 function blattNotesField(s, group) {
   // tabIndex is assigned afterwards in renderBlatt(), once every score
-  // field's index is known — notes as a group come after all scores.
+  // field's index is known - notes as a group come after all scores.
   var ta = el("textarea", "blattnotes");
   ta.placeholder = "Notizen zu " + group.label + " …";
   ta.value = getNote(s, group.key);
@@ -3325,7 +3243,7 @@ function renderBlatt() {
     body.appendChild(blattColumn(cs, group, scoreTabStart));
   });
   root.appendChild(body);
-  // Notes come after every score field in tab order — reassign now that
+  // Notes come after every score field in tab order - reassign now that
   // the total number of score fields (`tab - 1`) is known.
   [].slice.call(body.querySelectorAll(".blattnotes")).forEach(function (ta, i) {
     ta.tabIndex = tab + i;
@@ -3351,9 +3269,7 @@ function renderBlatt() {
   }
 }
 
-// Teampunkte-Blatt — team-first sibling to Blatt: both teams' 7 category
-// scores plus per-group notes, all on one screen (no paging, unlike Blatt,
-// since a judge switching here mid-debate wants to see both teams at once).
+// Team-first sibling to Blatt - both teams' 7 categories + notes on one screen, no paging.
 function teamPointsHintText(v, max) {
   if (v === null) return "–";
   var m = markOf(katOf(v, max));
@@ -3404,9 +3320,7 @@ function teamPointsScoreField(t, catIdx, tabIdx) {
       updateTeamPointsScore(t, catIdx);
       return;
     }
-    // Only out-of-range values get corrected here — same as Schnelleingabe's
-    // team inputs, typed entry accepts any raw integer within the
-    // category's total range instead of snapping to a grade midpoint.
+    // Clamps to the category's range; the mobile keypad instead snaps to a grade midpoint.
     n = Math.max(0, Math.min(cat.max, n));
     write("t" + t, cat.key, n);
     updateTeamPointsScore(t, catIdx);
@@ -3678,11 +3592,8 @@ document.getElementById("nm").addEventListener("keydown", function (e) {
     else document.getElementById("btnCreate").click();
   }
 });
-// navigator.clipboard needs a secure context (https, or localhost) — this
-// app is typically reached over plain http on the local network (see
-// run.sh), where it's simply undefined, so every caller needs the
-// execCommand("copy") fallback. Centralized here rather than duplicated
-// per call site.
+// navigator.clipboard needs https/localhost; this app usually runs on plain
+// http (see run.sh), so execCommand("copy") is the fallback every caller needs.
 function copyText(text) {
   if (navigator.clipboard && window.isSecureContext) {
     return navigator.clipboard.writeText(text);

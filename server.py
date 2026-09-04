@@ -27,9 +27,7 @@ DB_PATH = os.environ.get("OPD_DB", "opd.sqlite3")
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(ROOT, "static")
 
-# Impressum fields are operator-specific (whoever runs this deployment is the
-# legally responsible "Anbieter"), so they're filled in from the environment
-# at request time rather than hardcoded into the page. See docker-compose.yml.
+# Impressum fields come from the environment (operator-specific "Anbieter"), not hardcoded - see docker-compose.yml.
 IMPRESSUM_DEFAULTS = {
     "IMPRESSUM_NAME": "[Vor- und Nachname bzw. Firmenname]",
     "IMPRESSUM_STREET": "[Straße und Hausnummer]",
@@ -351,8 +349,8 @@ async def join_room(code: str, body: JoinRoom):
         if room["closed_at"]:
             raise HTTPException(410, "room closed")
 
-        # Same device rejoining: hand back the existing identity rather than
-        # creating a duplicate judge. This is what makes a browser crash cheap.
+        # Same device rejoining hands back the existing identity, which is
+        # what makes a browser crash cheap.
         existing = con.execute(
             "SELECT * FROM judges WHERE room_code=? AND client_id=?",
             (code, body.client_id),
@@ -443,9 +441,7 @@ async def apply_patches(code: str, body: PatchBatch, token: str = Query(...)):
     con = db()
     try:
         me = auth(con, code, token)
-        # A hidden judge can still score — their points just stay excluded
-        # from /snapshot (see the WHERE j.hidden=0 there) until the chair
-        # reverses the removal, at which point their existing scores reappear.
+        # A hidden judge can still score - just excluded from /snapshot's aggregates until un-hidden.
         now = time.time()
         applied, stale = [], 0
         for p in body.patches:
@@ -499,10 +495,7 @@ async def set_hidden(
         )
         con.commit()
         await hub.broadcast(code, {"type": "judges", "judges": judge_list(con, code)})
-        # Tell them directly, either way, but never disconnect them — removal
-        # only excludes their points from the room's aggregate views (see the
-        # WHERE j.hidden=0 in /snapshot); it's reversible and they can keep
-        # using the app the whole time.
+        # Removal only hides their points from aggregates (reversible) - never disconnects them.
         notice = {"type": "removed" if hidden else "restored"}
         for ws in hub.sockets_for(code, judge_id):
             try:
