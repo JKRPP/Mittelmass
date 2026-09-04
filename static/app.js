@@ -342,6 +342,25 @@ if (!CLIENT_ID) {
   LS.set("opd.client_id", CLIENT_ID);
 }
 
+// Server room codes (server.py's new_code()) are always 4 chars drawn from
+// ACDEFGHJKMNPQRTUVWXY34679 - i.e. they never contain B/I/L/O/S/Z or
+// 0/1/2/5/8. Offline (not-yet-created) rooms draw only from that excluded
+// set, so an offline code can never collide with a real one, while still
+// matching urlCode()'s 4-char alphanumeric shape - no routing changes needed.
+var OFFLINE_CODE_ALPHABET = "BILOSZ01258";
+function genOfflineCode() {
+  var code;
+  do {
+    code = "";
+    for (var i = 0; i < 4; i++) {
+      code += OFFLINE_CODE_ALPHABET.charAt(
+        Math.floor(Math.random() * OFFLINE_CODE_ALPHABET.length),
+      );
+    }
+  } while (LS.get("opd.session." + code, null));
+  return code;
+}
+
 var ME = null; // {code, token, judge_id, name, is_chair}
 var mine = {}; // "target|criterion" -> points   (my own, authoritative locally)
 var peers = {}; // judge_id -> {name,is_chair,hidden,filled,online}
@@ -434,11 +453,12 @@ function flush() {
     paintBar();
     return;
   }
+  pending = keys.length;
+  paintBar();
+  if (ME.pendingCreate) return; // offline room - nothing to push to yet
   var batch = keys.slice(0, 200).map(function (k) {
     return queue[k];
   });
-  pending = keys.length;
-  paintBar();
   fetch(
     "/api/rooms/" + ME.code + "/patches?token=" + encodeURIComponent(ME.token),
     {
@@ -471,6 +491,7 @@ function flush() {
 
 function connect() {
   if (!ME) return;
+  if (ME.pendingCreate) return; // offline room - no server room to connect to yet
   if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
   var proto = location.protocol === "https:" ? "wss" : "ws";
   try {
@@ -564,6 +585,7 @@ function scheduleReconnect() {
 
 function resync() {
   if (!ME) return;
+  if (ME.pendingCreate) return; // offline room - no server room to sync with yet
   fetch(
     "/api/rooms/" + ME.code + "/snapshot?token=" + encodeURIComponent(ME.token),
   )
@@ -712,6 +734,10 @@ function cycleTheme() {
 // Resumes a session if a judge reconnects
 function resume() {
   if (!ME) return;
+  if (ME.pendingCreate) {
+    promoteOfflineRoom();
+    return;
+  }
   wsTries = 0;
   if (wsTimer) {
     clearTimeout(wsTimer);
@@ -735,6 +761,10 @@ window.addEventListener("resize", function () {
 });
 setInterval(function () {
   if (!ME) return;
+  if (ME.pendingCreate) {
+    promoteOfflineRoom();
+    return;
+  }
   if (ws && ws.readyState === 1) {
     try {
       ws.send("ping");
@@ -762,13 +792,16 @@ function paintBar() {
     s = document.getElementById("cstate");
   if (!d) return;
   d.className = "dot " + (online ? "on" : "off");
-  s.textContent = online
-    ? pending
-      ? pending + " ausstehend"
-      : "Synchronisiert"
-    : pending
-      ? "offline · " + pending + " gespeichert"
-      : "offline";
+  s.textContent =
+    ME && ME.pendingCreate
+      ? "Offline-Raum · wird erstellt, sobald Verbindung besteht"
+      : online
+        ? pending
+          ? pending + " ausstehend"
+          : "Synchronisiert"
+        : pending
+          ? "offline · " + pending + " gespeichert"
+          : "offline";
   document.getElementById("whoami").textContent = ME
     ? ME.name + (ME.is_chair ? " · Chair" : "") + " · " + ME.code
     : "";
@@ -2079,10 +2112,7 @@ document.addEventListener("keydown", function (e) {
   var wasNote =
     document.activeElement &&
     document.activeElement.classList.contains("blattnotes");
-  var n =
-    e.key === "."
-      ? nextActiveSpeaker(cs)
-      : prevActiveSpeaker(cs);
+  var n = e.key === "." ? nextActiveSpeaker(cs) : prevActiveSpeaker(cs);
   if (n === -1) return;
   e.preventDefault();
   commitActiveInput();
@@ -3732,8 +3762,179 @@ function startSession(s) {
   acquireWakeLock();
   render();
 }
+
+function closePromotionNotice() {
+  var m = document.getElementById("promotionNotice");
+  if (m) m.remove();
+  document.removeEventListener("keydown", promotionNoticeEscHandler);
+}
+function promotionNoticeEscHandler(e) {
+  if (e.key === "Escape") closePromotionNotice();
+}
+// Wings can't join an offline room (joining needs the server too), so once
+// promotion gets it a real code the chair needs to know, in order to
+// (re-)share the link - the status-bar text alone is too easy to miss.
+function showPromotionNotice(code) {
+  closePromotionNotice();
+
+  var backdrop = el("div", "modalbackdrop");
+  backdrop.id = "promotionNotice";
+  backdrop.addEventListener("click", function (e) {
+    if (e.target === backdrop) closePromotionNotice();
+  });
+
+  var box = el("div", "modalbox");
+  box.appendChild(el("h2", null, "Raum wurde online geschaltet"));
+  box.appendChild(el("p", "note", "Neuer Code: " + code + "."));
+
+  var actions = el("div", "modalactions");
+  var okBtn = el("button", "btn", "OK");
+  okBtn.type = "button";
+  okBtn.addEventListener("click", closePromotionNotice);
+  actions.appendChild(okBtn);
+  box.appendChild(actions);
+
+  backdrop.appendChild(box);
+  document.body.appendChild(backdrop);
+  document.addEventListener("keydown", promotionNoticeEscHandler);
+}
+
+// Tries to turn a pending offline room into a real server one, migrating
+// all locally-queued scores/notes across. Called from the same signals
+// that already drive reconnection (resume(), the 20s heartbeat) rather
+// than a dedicated poller.
+var promotingOffline = false;
+function promoteOfflineRoom() {
+  if (!ME || !ME.pendingCreate || promotingOffline) return;
+  promotingOffline = true;
+  fetch("/api/rooms", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: ME.name, client_id: CLIENT_ID }),
+  })
+    .then(function (r) {
+      if (!r.ok) throw new Error("http " + r.status);
+      return r.json();
+    })
+    .then(function (s) {
+      var oldCode = ME.code;
+      var oldJudgeId = ME.judge_id;
+
+      LS.del("opd.session." + oldCode);
+      LS.del("opd.scores." + oldCode);
+      LS.del("opd.queue." + oldCode);
+      LS.del("opd.notes." + oldCode);
+
+      remote[s.judge_id] = Object.assign({}, remote[oldJudgeId] || {}, mine);
+      delete remote[oldJudgeId];
+
+      ME = {
+        code: s.code,
+        token: s.token,
+        judge_id: s.judge_id,
+        name: s.name,
+        is_chair: s.is_chair,
+      };
+      LS.set("opd.session." + ME.code, ME);
+      saveLocal(); // re-persists mine/queue under the new code
+      LS.set("opd.notes." + ME.code, notes);
+      recordRecentRoom(ME.code, ME.name, ME.is_chair);
+
+      if (history.replaceState)
+        history.replaceState({ room: ME.code }, "", "/r/" + ME.code);
+
+      promotingOffline = false;
+      connect();
+      flush();
+      resync();
+      paintBar();
+      showPromotionNotice(ME.code);
+    })
+    .catch(function () {
+      promotingOffline = false; // still offline - retried on the next resume()/heartbeat
+    });
+}
 function lobbyErr(msg) {
   document.getElementById("lobbyErr").textContent = msg || "";
+}
+
+function closeOfflineRoomModal() {
+  var m = document.getElementById("offlineRoomModal");
+  if (m) m.remove();
+  document.removeEventListener("keydown", offlineRoomEscHandler);
+}
+function offlineRoomEscHandler(e) {
+  if (e.key === "Escape") closeOfflineRoomModal();
+}
+// Offered when POST /api/rooms fails at the network level (no connectivity) -
+// a reachable server that merely rejected the request should not offer this.
+function openOfflineRoomModal(name) {
+  closeOfflineRoomModal();
+
+  var backdrop = el("div", "modalbackdrop");
+  backdrop.id = "offlineRoomModal";
+  backdrop.addEventListener("click", function (e) {
+    if (e.target === backdrop) closeOfflineRoomModal();
+  });
+
+  var box = el("div", "modalbox");
+  box.appendChild(el("h2", null, "Server nicht erreichbar"));
+  box.appendChild(
+    el(
+      "p",
+      "note",
+      "Der Server kann aktuell nicht erreicht werden. Du kannst einen " +
+        "Offline-Raum erstellen, der automatisch zu einem Standard-Raum " +
+        "wird, wenn der Server wieder erreicht wird.",
+    ),
+  );
+
+  var actions = el("div", "modalactions");
+  var cancelBtn = el("button", "btn ghost", "Abbrechen");
+  cancelBtn.type = "button";
+  cancelBtn.addEventListener("click", closeOfflineRoomModal);
+  var confirmBtn = el("button", "btn", "Offline-Raum erstellen");
+  confirmBtn.type = "button";
+  confirmBtn.addEventListener("click", function () {
+    closeOfflineRoomModal();
+    createOfflineRoom(name);
+  });
+  actions.appendChild(cancelBtn);
+  actions.appendChild(confirmBtn);
+  box.appendChild(actions);
+
+  backdrop.appendChild(box);
+  document.body.appendChild(backdrop);
+  document.addEventListener("keydown", offlineRoomEscHandler);
+}
+
+// Fabricates a room/judge identity in the same shape POST /api/rooms
+// returns, so startSession() needs no special-casing. The code is drawn
+// only from characters the server's own code alphabet never uses (see
+// genOfflineCode()), so it can never collide with a real server code.
+function createOfflineRoom(name) {
+  startSession({
+    code: genOfflineCode(),
+    token: "offline:" + uuid(),
+    judge_id: "offline:" + uuid(),
+    name: name,
+    is_chair: true,
+  });
+  ME.pendingCreate = true;
+  LS.set("opd.session." + ME.code, ME);
+  // startSession() already called connect() before pendingCreate was set -
+  // stop that one attempt rather than let it dangle until it times out.
+  if (ws) {
+    try {
+      ws.close();
+    } catch (e) {}
+    ws = null;
+  }
+  if (wsTimer) {
+    clearTimeout(wsTimer);
+    wsTimer = null;
+  }
+  paintBar();
 }
 
 document.getElementById("btnCreate").addEventListener("click", function () {
@@ -3749,12 +3950,18 @@ document.getElementById("btnCreate").addEventListener("click", function () {
     body: JSON.stringify({ name: name, client_id: CLIENT_ID }),
   })
     .then(function (r) {
-      if (!r.ok) throw new Error(r.status);
+      if (!r.ok) {
+        lobbyErr("Raum konnte nicht erstellt werden (" + r.status + ").");
+        return null;
+      }
       return r.json();
     })
-    .then(startSession)
+    .then(function (data) {
+      if (data) startSession(data);
+    })
     .catch(function () {
-      lobbyErr("Raum konnte nicht erstellt werden. Verbindung prüfen.");
+      // fetch() itself rejected - no connectivity, not a server-side error.
+      openOfflineRoomModal(name);
     });
 });
 function doJoin(code) {
