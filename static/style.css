@@ -693,6 +693,9 @@ p.note {
   font-size: 12px;
   color: var(--ink-3);
 }
+.legallink + .legallink {
+  margin-left: 12px;
+}
 .hide {
   display: none !important;
 }

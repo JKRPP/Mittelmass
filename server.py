@@ -19,7 +19,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -683,6 +683,12 @@ async def impressum():
     for key, default in IMPRESSUM_DEFAULTS.items():
         html = html.replace("{{" + key + "}}", os.environ.get(key) or default)
     return HTMLResponse(html)
+
+
+@app.get("/license")
+async def license_text():
+    with open(os.path.join(ROOT, "LICENSE"), encoding="utf-8") as f:
+        return PlainTextResponse(f.read())
 
 
 @app.get("/")
