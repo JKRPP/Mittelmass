@@ -1,7 +1,9 @@
-# OPD Mittelmass — self-hosted judging app
+# OPD Mittelmass: An offline compatible OPD judging web app
 
-Rooms with share links, per-judge scoresheets, and a chair view that surfaces
-disagreement. FastAPI + SQLite on the server, one static HTML file on the client.
+A judging app for OPD (Offene Parlamentarische Debatte) rounds: share links,
+per-judge scoresheets, and a chair view that surfaces disagreement between
+judges. FastAPI + SQLite on the server, one static HTML/JS/CSS client — no
+build step, no framework.
 
 ## Run it
 
@@ -42,77 +44,72 @@ Caddy handles the certificate and proxies websockets without extra config.
 
 1. The chair opens the site, enters their name, taps **Raum erstellen**.
 2. They get a four-character code and a link at `/r/CODE`.
-3. Wings open the link, enter their name, and are in.
-4. Everyone judges on their own sheet. The chair judges too.
-5. After the round the chair opens **Vorsitz** to run the discussion.
+3. Wings and trainees (same access, just excluded from the average) open
+   the link, enter their name, and are in.
+4. Everyone judges on their own sheet.
+5. After the round the chair opens the **Chair** tab to run the discussion —
+   wings see the same view, read-only, labeled **Spreads**, once the chair
+   opts to share it.
+
+On a desktop-width screen the same room gets a wider chrome instead of the
+mobile tab bar: a chair-only **Dashboard** (spread overview, ballot
+comparison, judge management), plus **Einzelreden**/**Teampunkte** (score
+entry with per-criterion notes) and **Komplette Wertung** (a dense, all-in-
+one editable grid) available to every judge. The
+chair can also open the Dashboard itself to wings, minus the ballot-detail
+column. All of it writes through the same `write()`/sync path as mobile.
 
 ## The offline design
 
-This is the part that matters at a real tournament, and it is why the client is
-plain HTML rather than a server-rendered framework.
+The app is constructed to remain reliable, even if offline or connection is
+unsteady (improving from Mittelmaß 1.0)
 
-**Nothing in the input path touches the network.** Every tap writes to
+**No online requirement for single users.** Every tap writes to
 `localStorage` and re-renders locally. Scores compute in the browser. A judge
 with no signal at all has a fully working scoresheet.
 
-**Writes go over HTTP POST, not the websocket.** A POST with retry survives a
-half-dead socket; a socket send does not. The websocket only *delivers* other
-people's changes.
+**Stability on reconnection** `GET /snapshot` returns the whole
+room. Makes connection stable when one client reconnects after being offline
+(f.e. when using their device for Debatekeeper)
 
-**The outbound queue is keyed by cell, not by tap.** Editing the same criterion
-twenty times while offline leaves one queued entry, so an hour disconnected
-costs one entry per cell rather than one per tap.
-
-**Recovery is a full refetch, never a replay.** `GET /snapshot` returns the whole
-room. A client coming back from twenty minutes in a timing app does not try to
-work out what it missed — it just asks for everything. The whole room is a few
-kilobytes.
-
-**Everything that suggests "we're back" triggers the same routine.**
-`visibilitychange`, `online`, `pageshow`, `focus`, and a 20-second heartbeat all
-call `resume()`: reconnect, flush the queue, refetch, re-acquire the wake lock.
-iOS Safari kills websockets in backgrounded tabs, so the chair switching to a
-timing app for seven minutes is the expected case, not an error case.
-
-**`seq` is a per-judge counter.** The server drops any patch whose seq is not
-greater than what it already stored, which kills duplicates from a reconnect.
-Since no judge ever writes another judge's cells, last-write-wins per
-`(judge, target, criterion)` is correct and no merge logic is needed.
+**Stability for raceing updates** Updates to any judges score are marked in
+sequence, ensuring correct values even when single updates arrive late or
+are dropped.
 
 ## Identity
 
-Judges are keyed on a client-generated UUID in `localStorage`, not on the name
-they type. Same device rejoining gets its identity and scores back. Two judges
-called Ben are two judges. The room code is the only access control — anyone
-with the code is in the room. The chair can remove someone who joined the wrong
-room.
+Judges are keyed on a client-generated UUID in `localStorage`, ensuring
+double names don't overwrite each others scores.
 
 ## Data model
 
 ```
-rooms   (code PK, motion, created_at, closed_at)
-judges  (id PK, room_code, client_id, token, display_name, is_chair, hidden, joined_at)
-scores  (judge_id, target, criterion, points, seq, updated_at,
-         PRIMARY KEY (judge_id, target, criterion))
+rooms       (code PK, motion, spread_open, created_at, closed_at)
+judges      (id PK, room_code, client_id, token, display_name, is_chair, hidden, joined_at)
+scores      (judge_id, target, criterion, points, seq, updated_at,
+             PRIMARY KEY (judge_id, target, criterion))
+deductions  (room_code, speaker_idx, level, updated_at, PRIMARY KEY (room_code, speaker_idx))
+exclusions  (judge_id, target, updated_at, PRIMARY KEY (judge_id, target))
 ```
 
 `target` is `s0`–`s8` for speakers and `t0`/`t1` for teams. `criterion` is a
-rubric key (`spr`, `zfrag`, …) or `abz` for deductions. The chair view is a
-`GROUP BY target, criterion` — nothing more.
+rubric key (`spr`, `zfrag`, …). Deductions and exclusions each have their
+own table. The chair view is a `GROUP BY target, criterion`.
 
 ## Rubric
 
 Everything format-specific is in `RUBRIC`-style constants at the top of
 `static/app.js`: speakers, criteria, team categories, the Notenskala, and the
-Umrechnungstabelle from Jurierbogen V15.1. A rubric revision is an edit to
-those constants.
-
-Points are stored; grades are derived. Team categories accept any value in their
-full range, with the grade label recomputed from the number.
+Umrechnungstabelle from the OPD adjudication sheet. A rubric revision is an edit to
+those constants. Points are stored, translation to grades is calculated locally.
 
 ## Known limits
 
 - **Round setup is manual.** No draw, no speaker assignment, no cross-room tab.
-  Importing from tab software is the obvious later step.
+  Future work could automatically generate these from Opentab.
+- **Ballot export is one-way and manual.** The desktop Dashboard can copy a
+  ballot to the clipboard, and a bookmarklet (dragged in once) fills the
+  matching fields on the tabbing site's own entry page. This is not ideal as
+  it does not work on mobile.
 - **SQLite calls run inline in async handlers.** Could become an issue if the
   app is too widely used.
