@@ -667,7 +667,6 @@ function resetRoomState() {
     wsTimer = null;
   }
   ME = null;
-  LS.del("opd.lastroom");
   peers = {};
   remote = {};
   mine = {};
@@ -686,6 +685,7 @@ function resetRoomState() {
 }
 function leaveRoom() {
   if (!ME) return;
+  recordRecentRoom(ME.code, ME.name, ME.is_chair); // capture the final filled count
   resetRoomState();
   // history.pushState keeps a back-button escape hatch: a stray tap on
   // "Verlassen" is recoverable since opd.session.<code> stays around.
@@ -2765,7 +2765,7 @@ function schnellNumberInput(opts) {
   return inp;
 }
 
-// Speaker criteria (Spr/Auf/Kon/Sac/Urt) sit on the raw 0-20 Notenskala - 
+// Speaker criteria (Spr/Auf/Kon/Sac/Urt) sit on the raw 0-20 Notenskala -
 // typed value is written as-is, just clamped.
 function schnellSpeakerInput(s, c) {
   var v = sget(s, c);
@@ -3483,11 +3483,83 @@ function urlCode() {
   var m = location.pathname.match(/^\/r\/([A-Za-z0-9]{4})$/);
   return m ? m[1].toUpperCase() : null;
 }
+// A small most-recent-first index of past rooms (code/name/filled count/
+// timestamp), separate from the per-room opd.session.<code> blob each one
+// still keeps (leaveRoom() never deletes those) - lets the lobby list
+// rejoinable rooms without scanning all of localStorage. Called both on
+// join (so the room shows up even if the tab closes without an explicit
+// "Verlassen") and again on leave (to capture the final filled count), so
+// it always reads whatever `mine` currently holds rather than the target
+// room's own cache - correct at both call sites, since both run only while
+// `mine` actually belongs to that room.
+function recordRecentRoom(code, name, isChair) {
+  var list = LS.get("opd.recent", []) || [];
+  list = list.filter(function (r) {
+    return r.code !== code;
+  });
+  list.unshift({
+    code: code,
+    name: name,
+    is_chair: isChair,
+    filled: Object.keys(mine).length,
+    ts: Date.now(),
+  });
+  LS.set("opd.recent", list.slice(0, 8));
+}
+function renderRecentRooms() {
+  var wrap = document.getElementById("lobbyRecent");
+  var list = document.getElementById("lobbyRecentList");
+  var here = urlCode();
+  var rooms = (LS.get("opd.recent", []) || []).filter(function (r) {
+    return r.code !== here;
+  });
+  wrap.classList.toggle("hide", rooms.length === 0);
+  list.innerHTML = "";
+  rooms.forEach(function (r) {
+    var btn = el("button", "recentroom");
+    btn.type = "button";
+    btn.appendChild(el("span", "code", r.code));
+    var who = el("div", "info");
+    who.appendChild(el("div", "who", r.name));
+    who.appendChild(el("div", "who", r.is_chair ? "Chair" : "Wing"));
+    btn.appendChild(who);
+    var meta = el("div", "info");
+    meta.appendChild(
+      el("div", "meta", (r.filled || 0) + " Punkte eingetragen"),
+    );
+    meta.appendChild(
+      el("div", "meta", new Date(r.ts).toLocaleDateString("de-DE")),
+    );
+    btn.appendChild(meta);
+    btn.addEventListener("click", function () {
+      rejoinRecentRoom(r.code);
+    });
+    list.appendChild(btn);
+  });
+}
+function rejoinRecentRoom(code) {
+  var sess = LS.get("opd.session." + code, null);
+  if (!sess || !sess.token) {
+    document.getElementById("rc").value = code;
+    lobbyErr(
+      "Sitzung für diesen Raum ist abgelaufen — bitte erneut beitreten.",
+    );
+    return;
+  }
+  startSession(sess);
+  resync();
+}
 function showLobby() {
   var code = urlCode();
   document.getElementById("v-lobby").classList.remove("hide");
   document.getElementById("main").classList.add("hide");
   document.getElementById("dock").classList.add("hide");
+  // render()/applyLayoutMode() never run again once ME is null (leaveRoom's
+  // resetRoomState clears it), so the desktop chrome classes from before
+  // leaving would otherwise stay stuck on #app, stretching the lobby card.
+  document
+    .getElementById("app")
+    .classList.remove("dashboard-mode", "dashboard-subview");
   if (code) {
     document.getElementById("lobbyCode").textContent = code;
     document.getElementById("lobbyJoin").classList.remove("hide");
@@ -3496,6 +3568,7 @@ function showLobby() {
   }
   var last = LS.get("opd.lastname", "");
   if (last) document.getElementById("nm").value = last;
+  renderRecentRooms();
   setTimeout(function () {
     document.getElementById("nm").focus();
   }, 100);
@@ -3509,9 +3582,9 @@ function startSession(s) {
     is_chair: s.is_chair,
   };
   LS.set("opd.session." + s.code, ME);
-  LS.set("opd.lastroom", s.code);
   LS.set("opd.lastname", s.name);
   loadLocal();
+  recordRecentRoom(s.code, s.name, s.is_chair);
   if (!remote[ME.judge_id]) remote[ME.judge_id] = {};
   Object.assign(remote[ME.judge_id], mine);
   document.getElementById("v-lobby").classList.add("hide");
@@ -3845,9 +3918,12 @@ document.getElementById("tundoBtn").addEventListener("click", function () {
 // boot function
 (function () {
   applyTheme(LS.get("opd.theme", "light"));
-  var code = urlCode() || LS.get("opd.lastroom", null);
+  // Only an explicit /r/CODE link auto-resumes a session - landing on the
+  // bare app URL always shows the lobby (with the recent-rooms list to
+  // rejoin from), even if a session for some room is still cached.
+  var code = urlCode();
   var sess = code ? LS.get("opd.session." + code, null) : null;
-  if (sess && sess.token && (!urlCode() || urlCode() === sess.code)) {
+  if (sess && sess.token) {
     startSession(sess);
     resync();
   } else {
