@@ -701,7 +701,8 @@ p.note {
 }
 button:focus-visible,
 .crit:focus-visible,
-input:focus-visible {
+input:focus-visible,
+textarea:focus-visible {
   outline: 2px solid var(--live);
   outline-offset: 2px;
 }
@@ -1354,6 +1355,9 @@ body {
   gap: 14px;
   padding: 14px 18px 10px;
   border-bottom: 1px solid var(--line);
+  /* Notes sit before scores in the DOM (for keyboard tab order); this
+     restores the usual scores-on-top-notes-below visual layout. */
+  order: 1;
 }
 .blattscore {
   flex: 1;
@@ -1414,6 +1418,15 @@ body {
   color: var(--ink-2);
   background: transparent;
   outline: none;
+  /* Precedes .blattscores in the DOM (see blattColumn) - order:2 keeps it
+     visually below the scores. */
+  order: 2;
+}
+/* Notes fill their column/block edge-to-edge, so the shared positive
+   outline-offset (see the :focus-visible rule above) gets clipped by
+   overflow:hidden or painted over by the next column - draw it inset. */
+.blattnotes:focus-visible {
+  outline-offset: -2px;
 }
 #v-blatt .dedu {
   flex: 0 0 auto;
@@ -1529,6 +1542,9 @@ body {
   flex: 0 0 auto;
   padding: 14px 18px 10px;
   border-bottom: 1px solid var(--line);
+  /* Notes precede the score in the DOM (see teamPointsCategoryBlock); this
+     keeps the score visually on top. */
+  order: 1;
 }
 
 /* Ballot export modal */

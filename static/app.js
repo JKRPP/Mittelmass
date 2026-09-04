@@ -1846,6 +1846,9 @@ function renderChair() {
 var dashboardSelected = { kind: "speaker", s: 0 };
 var dashboardView = "blatt";
 var DASH_WIDE_VIEWS = ["dashboard", "schnell", "blatt", "teampoints"];
+// Remembers the last-focused field id per view ("blatt"/"teampoints"), so
+// Alt+Space can swap between the two and land back where you were.
+var lastFocusByView = {};
 
 function isDesktopWidth() {
   return !!(ME && window.matchMedia("(min-width: 1024px)").matches);
@@ -2035,6 +2038,98 @@ document.addEventListener("keydown", function (e) {
   e.preventDefault();
   dashboardView = btns[nextIdx].dataset.dv;
   render();
+});
+
+// Commits an in-flight score edit (schnellinput only fires its write() on
+// change/blur, unlike notes which save on every keystroke) before a
+// keyboard shortcut jumps away from it, and blurs a focused notes textarea
+// too - otherwise it stays the activeElement across the render() call
+// below and dashEditGuard() (meant to protect an in-progress edit from a
+// remote update) mistakes our own deliberate navigation for that and
+// skips the rebuild.
+function commitActiveInput() {
+  var ae = document.activeElement;
+  if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA")) ae.blur();
+}
+
+// Alt+1..4 jump straight to a chrome tab, by position among the visible
+// #dashNav buttons - laptop-friendly alternative to PageUp/PageDown that
+// doesn't need cycling through intermediate tabs.
+document.addEventListener("keydown", function (e) {
+  if (!ME || !isDesktopWidth()) return;
+  if (!e.altKey || !/^[1-4]$/.test(e.key)) return;
+  var btns = [].slice.call(
+    document.querySelectorAll("#dashNav button[data-dv]:not(.hide)"),
+  );
+  var idx = Number(e.key) - 1;
+  if (idx >= btns.length) return;
+  e.preventDefault();
+  commitActiveInput();
+  dashboardView = btns[idx].dataset.dv;
+  render();
+});
+
+// Alt+, / Alt+. step to the previous/next speech on Blatt, mirroring the
+// header's mouse-only ‹/› buttons. Refocuses the same *kind* of field
+// (note vs. score) the user was in, so the keyboard flow isn't interrupted.
+document.addEventListener("keydown", function (e) {
+  if (!ME || !isDesktopWidth()) return;
+  if (!e.altKey || (e.key !== "," && e.key !== ".")) return;
+  if (effectiveDashboardView() !== "blatt") return;
+  var wasNote =
+    document.activeElement &&
+    document.activeElement.classList.contains("blattnotes");
+  var n =
+    e.key === "."
+      ? nextActiveSpeaker(cs)
+      : prevActiveSpeaker(cs);
+  if (n === -1) return;
+  e.preventDefault();
+  commitActiveInput();
+  cs = n;
+  render();
+  var first = document.querySelector(
+    "#v-blatt " + (wasNote ? ".blattnotes" : ".blattinput"),
+  );
+  if (first) first.focus();
+});
+
+// Alt+I swaps between Blatt and Teampunkte ("I" for Interaktion, the
+// TEAMGROUPS_INFO group covering Zwischenreden/-fragen/-rufe) - the fast
+// path for jotting an interjection note mid-speech and returning to
+// exactly the speech note field you left, without touching the mouse.
+document.addEventListener("keydown", function (e) {
+  if (!ME || !isDesktopWidth()) return;
+  if (!e.altKey || e.key.toLowerCase() !== "i") return;
+  var ev = effectiveDashboardView();
+  if (ev !== "blatt" && ev !== "teampoints") return;
+  e.preventDefault();
+  commitActiveInput();
+  var ae = document.activeElement;
+  if (ae && ae.id) lastFocusByView[ev] = ae.id;
+  var target = ev === "blatt" ? "teampoints" : "blatt";
+  dashboardView = target;
+  render();
+  var restoreId = lastFocusByView[target];
+  // Jumping into Teampunkte mid-speech snaps straight to the *opposing*
+  // team's Zwischenfragen note - that's almost always what an interjection
+  // during a team speech needs to be logged against - instead of wherever
+  // was last focused there. Free speakers (team index 2) have no opposing
+  // side, so fall through to the normal remembered/first-field behavior.
+  if (ev === "blatt" && target === "teampoints") {
+    var spTeam = SPEAKERS[cs].team;
+    if (spTeam === 0 || spTeam === 1) {
+      var oppId = "teampoints-note-t" + (1 - spTeam) + "-zfrag";
+      if (document.getElementById(oppId)) {
+        restoreId = oppId;
+        lastFocusByView.teampoints = oppId;
+      }
+    }
+  }
+  var restored = restoreId && document.getElementById(restoreId);
+  var first =
+    restored || document.querySelector("#v-" + target + " .blattnotes");
+  if (first) first.focus();
 });
 
 function dashSpreadBadge(spread) {
@@ -2759,7 +2854,8 @@ function schnellNumberInput(opts) {
     if (e.key === "Enter") {
       e.preventDefault();
       inp.blur(); // commits the value (fires "change") before moving on
-      focusNextNumberInput(inp);
+      if (opts.onEnter) opts.onEnter(inp);
+      else focusNextNumberInput(inp);
     }
   });
   return inp;
@@ -3087,11 +3183,37 @@ function nudgeSpeakerCriterion(s, c, d) {
   updateBlattScore(s, c);
 }
 
+// True once every speaker criterion has a score - used to jump straight to
+// the next speech on Enter instead of stopping at the last score field.
+function allSpeakerScoresFilled(s) {
+  return CRITERIA.every(function (_, c) {
+    return sget(s, c) !== null;
+  });
+}
+
+// Moves the room to the next active speech and refocuses its first score
+// field, so Enter can keep going without the hands leaving the keyboard.
+function advanceToNextSpeech() {
+  var n = nextActiveSpeaker(cs);
+  if (n === -1) return;
+  cs = n;
+  render();
+  var first = document.querySelector("#v-blatt .blattinput");
+  if (first) first.focus();
+}
+
 function blattScoreField(s, c, tabIdx) {
   var wrap = el("div", "blattscore");
   wrap.appendChild(el("div", "blattlbl", CRITERIA[c].label));
 
-  var inp = schnellNumberInput({ extraClass: "blattinput", width: false });
+  var inp = schnellNumberInput({
+    extraClass: "blattinput",
+    width: false,
+    onEnter: function (inp) {
+      if (allSpeakerScoresFilled(s)) advanceToNextSpeech();
+      else focusNextNumberInput(inp);
+    },
+  });
   inp.max = "20";
   inp.id = "blatt-val-" + s + "-" + c;
   inp.tabIndex = tabIdx;
@@ -3141,27 +3263,32 @@ function blattScoreField(s, c, tabIdx) {
   return wrap;
 }
 
-function blattNotesField(s, group) {
-  // tabIndex is assigned afterwards in renderBlatt(), once every score
-  // field's index is known - notes as a group come after all scores.
+function blattNotesField(s, group, tabIdx) {
   var ta = el("textarea", "blattnotes");
   ta.placeholder = "Notizen zu " + group.label + " …";
   ta.value = getNote(s, group.key);
+  ta.tabIndex = tabIdx;
+  ta.id = "blatt-note-" + s + "-" + group.key;
   ta.addEventListener("input", function () {
     setNote(s, group.key, ta.value);
   });
   return ta;
 }
 
-function blattColumn(s, group, scoreTabStart) {
+// Notes come before scores in tab order. tabIndex alone isn't enough:
+// focus resting on a tabindex=-1 chrome button (nav switch, prev/next)
+// makes the browser fall back to plain DOM order for "next focusable", so
+// notes must also come first in the DOM - CSS `order` restores the usual
+// scores-on-top-notes-below layout.
+function blattColumn(s, group, scoreTabStart, noteTabIdx) {
   var col = el("div", "blattcol");
   if (group.critIdx.length > 1) col.classList.add("blattcol-wide");
+  col.appendChild(blattNotesField(s, group, noteTabIdx));
   var scores = el("div", "blattscores");
   group.critIdx.forEach(function (c, i) {
     scores.appendChild(blattScoreField(s, c, scoreTabStart + i));
   });
   col.appendChild(scores);
-  col.appendChild(blattNotesField(s, group));
   return col;
 }
 
@@ -3236,18 +3363,16 @@ function renderBlatt() {
   root.appendChild(head);
 
   var body = el("div", "blattbody");
-  var tab = 1;
+  // Notes get the first BLATT_GROUPS.length tab stops, scores follow.
+  var noteTab = 1;
+  var scoreTab = 1 + BLATT_GROUPS.length;
   BLATT_GROUPS.forEach(function (group) {
-    var scoreTabStart = tab;
-    tab += group.critIdx.length;
-    body.appendChild(blattColumn(cs, group, scoreTabStart));
+    var scoreTabStart = scoreTab;
+    scoreTab += group.critIdx.length;
+    body.appendChild(blattColumn(cs, group, scoreTabStart, noteTab));
+    noteTab++;
   });
   root.appendChild(body);
-  // Notes come after every score field in tab order - reassign now that
-  // the total number of score fields (`tab - 1`) is known.
-  [].slice.call(body.querySelectorAll(".blattnotes")).forEach(function (ta, i) {
-    ta.tabIndex = tab + i;
-  });
 
   if (ME.is_chair) {
     var dedu = el("div", "dedu");
@@ -3357,37 +3482,48 @@ function teamPointsScoreField(t, catIdx, tabIdx) {
   return wrap;
 }
 
-function teamPointsNotesField(t, cat) {
+function teamPointsNotesField(t, cat, tabIdx) {
   var ta = el("textarea", "blattnotes");
   ta.placeholder = "Notizen zu " + cat.label + " …";
   ta.value = getTeamNote(t, cat.key);
+  ta.tabIndex = tabIdx;
+  ta.id = "teampoints-note-t" + t + "-" + cat.key;
   ta.addEventListener("input", function () {
     setTeamNote(t, cat.key, ta.value);
   });
   return ta;
 }
 
-function teamPointsCategoryBlock(t, catIdx, tabIdx) {
+// Notes precede the score in the DOM (see blattColumn's comment for why);
+// .teampointscatscore{order:1} / .blattnotes{order:2} keep the score
+// visually on top.
+function teamPointsCategoryBlock(t, catIdx, tabIdx, noteTabIdx) {
   var cat = TEAMCATS[catIdx];
   var block = el("div", "teampointscatblock");
+  block.appendChild(teamPointsNotesField(t, cat, noteTabIdx));
   var scoreWrap = el("div", "teampointscatscore");
   scoreWrap.appendChild(teamPointsScoreField(t, catIdx, tabIdx));
   block.appendChild(scoreWrap);
-  block.appendChild(teamPointsNotesField(t, cat));
   return block;
 }
 
-function teamPointsColumn(t, group, scoreTabStart) {
+// Notes come before scores in tab order, same as Blatt.
+function teamPointsColumn(t, group, scoreTabStart, noteTabStart) {
   var col = el("div", "blattcol teampointscol-" + group.cats.length);
   var row = el("div", "teampointscatrow");
   group.cats.forEach(function (catIdx, i) {
-    row.appendChild(teamPointsCategoryBlock(t, catIdx, scoreTabStart + i));
+    row.appendChild(
+      teamPointsCategoryBlock(t, catIdx, scoreTabStart + i, noteTabStart + i),
+    );
   });
   col.appendChild(row);
   return col;
 }
 
-function teamPointsSection(t, tabStart) {
+// noteTabStart/scoreTabStart are shared counters across both team sections,
+// so tab order goes through every note field (both teams) before any score
+// field - see renderTeamPoints.
+function teamPointsSection(t, noteTabStart, scoreTabStart) {
   var teamCls = t === 0 ? "team-gov" : "team-opp";
   var sec = el("div", "teampointssec " + teamCls);
 
@@ -3420,15 +3556,20 @@ function teamPointsSection(t, tabStart) {
   sec.appendChild(head);
 
   var body = el("div", "blattbody teampointsbody");
-  var tab = tabStart;
+  var noteTab = noteTabStart;
+  var scoreTab = scoreTabStart;
   TEAMGROUPS_INFO.forEach(function (group) {
-    var scoreTabStart = tab;
-    tab += group.cats.length;
-    body.appendChild(teamPointsColumn(t, group, scoreTabStart));
+    var scoreTabStartForGroup = scoreTab;
+    scoreTab += group.cats.length;
+    var noteTabStartForGroup = noteTab;
+    noteTab += group.cats.length;
+    body.appendChild(
+      teamPointsColumn(t, group, scoreTabStartForGroup, noteTabStartForGroup),
+    );
   });
   sec.appendChild(body);
 
-  return { el: sec, nextTab: tab, body: body };
+  return { el: sec, nextNoteTab: noteTab, nextScoreTab: scoreTab, body: body };
 }
 
 function renderTeamPoints() {
@@ -3438,22 +3579,16 @@ function renderTeamPoints() {
   root.innerHTML = "";
 
   var wrap = el("div", "teampointswrap");
-  var tab = 1;
-  var sections = [];
+  // Both teams' notes (1..2*TEAMCATS.length) come before either team's
+  // scores, same idea as Blatt's notes-before-scores tab order.
+  var noteTab = 1;
+  var scoreTab = 1 + 2 * TEAMCATS.length;
   for (var t = 0; t < 2; t++) {
-    var sec = teamPointsSection(t, tab);
-    tab = sec.nextTab;
-    sections.push(sec);
+    var sec = teamPointsSection(t, noteTab, scoreTab);
+    noteTab = sec.nextNoteTab;
+    scoreTab = sec.nextScoreTab;
     wrap.appendChild(sec.el);
   }
-  // Notes come after every score field in tab order, within each section.
-  sections.forEach(function (sec) {
-    var notesEls = [].slice.call(sec.body.querySelectorAll(".blattnotes"));
-    notesEls.forEach(function (ta, i) {
-      ta.tabIndex = tab + i;
-    });
-    tab += notesEls.length;
-  });
   root.appendChild(wrap);
 }
 
