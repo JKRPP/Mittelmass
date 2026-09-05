@@ -3,7 +3,7 @@
   "host": "opd.krapp.io",
   "name": "Mittelmaß",
   "launcherName": "Mittelmaß",
-  "display": "fullscreen-sticky",
+  "display": "standalone",
   "themeColor": "#F5F5F5",
   "themeColorDark": "#000000",
   "navigationColor": "#000000",
