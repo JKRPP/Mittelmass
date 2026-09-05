@@ -102,9 +102,9 @@ body {
 .dock.hide {
   display: none;
 }
-.dockpad {
-  padding: 0 12px;
-}
+/* No rule of its own for .dockpad's horizontal inset - it now lives inside
+   .viewport, which already insets everything else in the scroll area by
+   the same amount. */
 .dockpad.hide {
   display: none;
 }
@@ -661,13 +661,31 @@ p.note {
   margin: 12px 0 0;
 }
 .tabs {
-  position: sticky;
-  bottom: 0;
   z-index: 20;
   background: var(--paper);
   border-top: 1px solid var(--line);
   display: flex;
-  padding: 4px 8px calc(4px + env(safe-area-inset-bottom));
+  padding: 4px 8px calc(6px + env(safe-area-inset-bottom));
+}
+/* Fixed rather than in-flow/sticky, so the tab bar stays reachable even on
+   views taller than one screen (e.g. the chair tab) instead of only
+   appearing once scrolled all the way down. The trade-off, accepted
+   deliberately: on Firefox Android this keeps the document itself
+   scrolling (rather than moving that responsibility to an inner scroll
+   container), so the browser's own toolbar can still auto-hide on scroll -
+   at the cost of the tab bar briefly jittering into place while that
+   toolbar's show/hide animates and the layout viewport resizes underneath
+   it. Desktop hides .tabs entirely (see applyLayoutMode), so this is scoped
+   to mobile only. syncDockSpacer() keeps .viewport's bottom padding matched
+   to the bar's actual height so it doesn't cover the last row of content
+   (.dockpad included, since that now lives inside .viewport too). */
+#app:not(.dashboard-mode) .tabs {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-width: 440px;
+  margin: 0 auto;
 }
 .tabs button {
   flex: 1;
@@ -676,7 +694,7 @@ p.note {
   color: var(--ink-3);
   font: inherit;
   font-size: 12px;
-  padding: 6px 2px;
+  padding: 7px 2px;
   border-radius: 8px;
   cursor: pointer;
 }
@@ -859,6 +877,8 @@ body {
 #app.dashboard-mode.dashboard-subview #v-sheet,
 #app.dashboard-mode.dashboard-subview #v-team,
 #app.dashboard-mode.dashboard-subview #v-matrix,
+#app.dashboard-mode.dashboard-subview #dockSheet,
+#app.dashboard-mode.dashboard-subview #dockTeam,
 #app.dashboard-mode.dashboard-subview .dock {
   max-width: 440px;
   margin: 0 auto;

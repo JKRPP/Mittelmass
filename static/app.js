@@ -1944,6 +1944,8 @@ function applyLayoutMode() {
       document.getElementById(id).classList.add("hide");
     });
     document.getElementById("dock").classList.add("hide");
+    document.getElementById("dockSheet").classList.add("hide");
+    document.getElementById("dockTeam").classList.add("hide");
   } else if (subview) {
     document.getElementById("v-chair").classList.add("hide");
     document.getElementById("v-matrix").classList.add("hide");
@@ -1962,8 +1964,25 @@ function applyLayoutMode() {
     // shrinking down from desktop leaves no way to score.
     document.getElementById("dock").classList.remove("hide");
     showView(view);
+    syncDockSpacer();
   }
   return changed;
+}
+
+// .tabs is fixed to the screen bottom on mobile (see style.css) and so sits
+// outside document flow, on top of whatever the page happens to be
+// scrolled to - without this, it would cover the last row of .dockpad (or
+// of the current view's last card, on views with no dockpad). Re-run
+// whenever .tabs's height or visibility can have changed (view switch,
+// resize, etc.).
+function syncDockSpacer() {
+  var vp = document.getElementById("viewport");
+  var tabs = document.getElementById("tabs");
+  if (!vp || !tabs) return;
+  vp.style.paddingBottom =
+    isDesktopWidth() || tabs.classList.contains("hide")
+      ? ""
+      : tabs.offsetHeight + 14 + "px";
 }
 
 function renderDashChrome() {
