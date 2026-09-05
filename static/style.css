@@ -1266,15 +1266,6 @@ tr.deducted td.l {
   background: var(--card);
   color: var(--ink);
 }
-.schnellinput::-webkit-inner-spin-button,
-.schnellinput::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-.schnellinput {
-  -moz-appearance: textfield;
-  appearance: textfield;
-}
 .schnellgrp {
   padding: 8px 10px 4px;
   font-size: 10px;

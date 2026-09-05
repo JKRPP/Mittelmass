@@ -294,6 +294,38 @@ function katOf(pts, max) {
   }
   return null;
 }
+// Reverse of markOf() - grade mark (e.g. "2+") -> its 0-20 value, for the
+// optional grade-typing input mode on Blatt/Teampunkte.
+var GRADE_TO_POINTS = (function () {
+  var map = {};
+  NOTEN.forEach(function (n) {
+    n.cells.forEach(function (v, j) {
+      var mark = n.marks[j];
+      if (mark && mark.trim()) map[mark] = v;
+    });
+  });
+  return map;
+})();
+// Grade mark to show in a grade-mode input. max=20 (Blatt) uses v
+// directly; a team category (max!=20) goes through katOf first, same as
+// its existing read-only hint does. Falls back to the raw number for the
+// ungraded top bands (blank mark).
+function gradeMarkFor(v, max) {
+  if (v === null) return "";
+  var kat = max && max !== 20 ? katOf(v, max) : v;
+  var mk = markOf(kat).mark;
+  return mk && mk.trim() ? mk : String(v);
+}
+// Typed grade mark -> raw points to write. undefined = not a recognized
+// mark (caller reverts the field, same as an unparsable number today).
+function pointsFromGrade(mark, max) {
+  var v = GRADE_TO_POINTS[mark];
+  if (v === undefined) return undefined;
+  return max && max !== 20 ? mid(convert(v, max)) : v;
+}
+function gradeHintText(v) {
+  return v === null ? "–" : v + " Punkte";
+}
 function labelOf(target, criterion) {
   if (target[0] === "s") {
     var s = speakerLabel(+target.slice(1));
@@ -754,6 +786,23 @@ function cycleTheme() {
   applyTheme(next);
 }
 
+// Personal, per-device preference: type a school grade (e.g. "2+") instead
+// of raw points on Blatt/Teampunkte, seeing the resulting points below
+// instead of the usual points->grade hint.
+function gradeInputMode() {
+  return !!LS.get("opd.gradeInput", false);
+}
+function applyGradeInputLabel() {
+  var b = document.getElementById("menuGradeInput");
+  if (b)
+    b.textContent = "Eingabemodus: " + (gradeInputMode() ? "Noten" : "Punkte");
+}
+function toggleGradeInput() {
+  LS.set("opd.gradeInput", !gradeInputMode());
+  applyGradeInputLabel();
+  render();
+}
+
 // Resumes a session if a judge reconnects
 function resume() {
   if (!ME) return;
@@ -831,6 +880,9 @@ function paintBar() {
   document
     .getElementById("menuFreeSpeakers")
     .classList.toggle("hide", !ME || !ME.is_chair);
+  document
+    .getElementById("menuGradeInput")
+    .classList.toggle("hide", !isDesktopWidth());
 }
 
 // Scoring state for local judge
@@ -3009,16 +3061,20 @@ function schnellNumberInput(opts) {
     "input",
     "schnellinput" + (opts.extraClass ? " " + opts.extraClass : ""),
   );
-  inp.type = "number";
+  // type=text, not number: a native number input reports its .value as ""
+  // for anything it can't parse (pasted text, a trailing space, "1 2"),
+  // which silently defeated the digit-filter below - the field kept
+  // showing that stray text while .value (and so the write on commit) was
+  // just an empty string, leaving a cell that looked filled in but never
+  // actually contributed to the score. inputMode keeps the numeric keypad
+  // on mobile/tablet; the filter below does the actual digit restriction.
+  inp.type = "text";
   inp.inputMode = "numeric";
-  inp.min = "0";
-  inp.step = "1";
   if (opts.width !== false) inp.style.width = opts.width || "95px";
   // Selects the whole value on focus, so typing overwrites instead of inserting.
   inp.addEventListener("focus", function () {
     inp.select();
   });
-  // Strips non-digits as you type (type=number still allows e/+/-/.).
   inp.addEventListener("input", function () {
     var digits = inp.value.replace(/[^0-9]/g, "");
     if (digits !== inp.value) inp.value = digits;
@@ -3034,23 +3090,68 @@ function schnellNumberInput(opts) {
   return inp;
 }
 
+// Grade-mode counterpart to schnellNumberInput - same opts shape
+// ({width, extraClass, onEnter}) and select-on-focus/Enter-to-next
+// behavior, but a free-text field restricted to grade characters instead
+// of a number spinner. Used wherever schnellNumberInput is, whenever
+// gradeInputMode() is on.
+function gradeTextInput(opts) {
+  opts = opts || {};
+  var inp = el(
+    "input",
+    "schnellinput" + (opts.extraClass ? " " + opts.extraClass : ""),
+  );
+  inp.type = "text";
+  inp.inputMode = "text";
+  inp.autocomplete = "off";
+  if (opts.width !== false) inp.style.width = opts.width || "95px";
+  inp.addEventListener("focus", function () {
+    inp.select();
+  });
+  inp.addEventListener("input", function () {
+    var clean = inp.value.replace(/[^1-6+-]/g, "").slice(0, 2);
+    if (clean !== inp.value) inp.value = clean;
+  });
+  inp.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      inp.blur();
+      if (opts.onEnter) opts.onEnter(inp);
+      else focusNextNumberInput(inp);
+    }
+  });
+  return inp;
+}
+
 // Speaker criteria (Spr/Auf/Kon/Sac/Urt) sit on the raw 0-20 Notenskala -
-// typed value is written as-is, just clamped.
+// typed value is written as-is, just clamped. In grade mode the cell
+// itself holds the grade mark rather than the point number (there's no
+// separate hint slot in this grid, unlike Blatt) - fine-tuning a value
+// happens on Blatt/Teampunkte, or by switching back to points mode here.
 function schnellSpeakerInput(s, c) {
   var v = sget(s, c);
-  var inp = schnellNumberInput();
-  inp.max = "20";
-  if (v !== null) inp.value = String(v);
+  var grade = gradeInputMode();
+  var inp = grade ? gradeTextInput() : schnellNumberInput();
+  if (v !== null) inp.value = grade ? gradeMarkFor(v) : String(v);
   inp.addEventListener("change", function () {
     var raw = inp.value.trim();
     if (raw === "") return;
-    var n = Math.round(Number(raw));
-    if (!isFinite(n)) {
-      inp.value = v === null ? "" : String(v);
-      return;
+    var n;
+    if (grade) {
+      n = pointsFromGrade(raw);
+      if (n === undefined) {
+        inp.value = v === null ? "" : gradeMarkFor(v);
+        return;
+      }
+    } else {
+      n = Math.round(Number(raw));
+      if (!isFinite(n)) {
+        inp.value = v === null ? "" : String(v);
+        return;
+      }
+      n = Math.max(0, Math.min(20, n));
     }
-    n = Math.max(0, Math.min(20, n));
-    inp.value = String(n);
+    inp.value = grade ? gradeMarkFor(n) : String(n);
     v = n;
     write("s" + s, CRITERIA[c].key, n);
     updateSchnellSpeakerRow(s);
@@ -3063,24 +3164,35 @@ function schnellSpeakerInput(s, c) {
 // valid - the mobile keypad only ever writes a band's midpoint (pickTeam(),
 // via katOf()/convert()/mid()). A typed number here gets snapped to that
 // same midpoint on commit, exactly as if the matching pad button had been
-// tapped, so free typing can never produce an invalid team score.
+// tapped, so free typing can never produce an invalid team score. Grade
+// mode goes through the same conversion (pointsFromGrade), so a typed
+// grade snaps to the identical midpoint too.
 function schnellTeamInput(t, catIdx) {
   var cat = TEAMCATS[catIdx];
   var v = tget(t, catIdx);
-  var inp = schnellNumberInput();
-  inp.max = String(cat.max);
-  if (v !== null) inp.value = String(v);
+  var grade = gradeInputMode();
+  var inp = grade ? gradeTextInput() : schnellNumberInput();
+  if (v !== null) inp.value = grade ? gradeMarkFor(v, cat.max) : String(v);
   inp.addEventListener("change", function () {
     var raw = inp.value.trim();
     if (raw === "") return;
-    var n = Math.round(Number(raw));
-    if (!isFinite(n)) {
-      inp.value = v === null ? "" : String(v);
-      return;
+    var n;
+    if (grade) {
+      n = pointsFromGrade(raw, cat.max);
+      if (n === undefined) {
+        inp.value = v === null ? "" : gradeMarkFor(v, cat.max);
+        return;
+      }
+    } else {
+      n = Math.round(Number(raw));
+      if (!isFinite(n)) {
+        inp.value = v === null ? "" : String(v);
+        return;
+      }
+      // Clamps to the category's range; the keypad instead snaps to a grade midpoint.
+      n = Math.max(0, Math.min(cat.max, n));
     }
-    // Clamps to the category's range; the keypad instead snaps to a grade midpoint.
-    n = Math.max(0, Math.min(cat.max, n));
-    inp.value = String(n);
+    inp.value = grade ? gradeMarkFor(n, cat.max) : String(n);
     v = n;
     write("t" + t, cat.key, n);
     updateSchnellTeamRow(t);
@@ -3337,12 +3449,14 @@ function blattHintText(v) {
 
 function updateBlattScore(s, c) {
   var v = sget(s, c);
+  var grade = gradeInputMode();
   var valEl = document.getElementById("blatt-val-" + s + "-" + c);
   var hintEl = document.getElementById("blatt-hint-" + s + "-" + c);
   var minusEl = document.getElementById("blatt-minus-" + s + "-" + c);
   var plusEl = document.getElementById("blatt-plus-" + s + "-" + c);
-  if (valEl) valEl.value = v === null ? "" : String(v);
-  if (hintEl) hintEl.textContent = blattHintText(v);
+  if (valEl)
+    valEl.value = v === null ? "" : grade ? gradeMarkFor(v) : String(v);
+  if (hintEl) hintEl.textContent = grade ? gradeHintText(v) : blattHintText(v);
   if (minusEl) minusEl.disabled = v === null || v <= 0;
   if (plusEl) plusEl.disabled = v === null || v >= 20;
   var totEl = document.getElementById("blattTot");
@@ -3379,28 +3493,35 @@ function blattScoreField(s, c, tabIdx) {
   var wrap = el("div", "blattscore");
   wrap.appendChild(el("div", "blattlbl", CRITERIA[c].label));
 
-  var inp = schnellNumberInput({
-    extraClass: "blattinput",
-    width: false,
-    onEnter: function (inp) {
-      if (allSpeakerScoresFilled(s)) advanceToNextSpeech();
-      else focusNextNumberInput(inp);
-    },
-  });
-  inp.max = "20";
+  var grade = gradeInputMode();
+  var onEnter = function (inp) {
+    if (allSpeakerScoresFilled(s)) advanceToNextSpeech();
+    else focusNextNumberInput(inp);
+  };
+  var fieldOpts = { extraClass: "blattinput", width: false, onEnter: onEnter };
+  var inp = grade ? gradeTextInput(fieldOpts) : schnellNumberInput(fieldOpts);
   inp.id = "blatt-val-" + s + "-" + c;
   inp.tabIndex = tabIdx;
   var v = sget(s, c);
-  if (v !== null) inp.value = String(v);
+  if (v !== null) inp.value = grade ? gradeMarkFor(v) : String(v);
   inp.addEventListener("change", function () {
     var raw = inp.value.trim();
     if (raw === "") return;
-    var n = Math.round(Number(raw));
-    if (!isFinite(n)) {
-      updateBlattScore(s, c);
-      return;
+    var n;
+    if (grade) {
+      n = pointsFromGrade(raw);
+      if (n === undefined) {
+        updateBlattScore(s, c);
+        return;
+      }
+    } else {
+      n = Math.round(Number(raw));
+      if (!isFinite(n)) {
+        updateBlattScore(s, c);
+        return;
+      }
+      n = Math.max(0, Math.min(20, n));
     }
-    n = Math.max(0, Math.min(20, n));
     write("s" + s, CRITERIA[c].key, n);
     updateBlattScore(s, c);
   });
@@ -3416,7 +3537,11 @@ function blattScoreField(s, c, tabIdx) {
   });
   hintRow.appendChild(minus);
 
-  var hint = el("div", "blatthint", blattHintText(v));
+  var hint = el(
+    "div",
+    "blatthint",
+    grade ? gradeHintText(v) : blattHintText(v),
+  );
   hint.id = "blatt-hint-" + s + "-" + c;
   hintRow.appendChild(hint);
 
@@ -3582,14 +3707,20 @@ function teamPointsHintText(v, max) {
 function updateTeamPointsScore(t, catIdx) {
   var cat = TEAMCATS[catIdx];
   var v = tget(t, catIdx);
+  var grade = gradeInputMode();
   var valEl = document.getElementById("teampoints-val-t" + t + "-c" + catIdx);
   var hintEl = document.getElementById("teampoints-hint-t" + t + "-c" + catIdx);
   var minusEl = document.getElementById(
     "teampoints-minus-t" + t + "-c" + catIdx,
   );
   var plusEl = document.getElementById("teampoints-plus-t" + t + "-c" + catIdx);
-  if (valEl) valEl.value = v === null ? "" : String(v);
-  if (hintEl) hintEl.textContent = teamPointsHintText(v, cat.max);
+  if (valEl)
+    valEl.value =
+      v === null ? "" : grade ? gradeMarkFor(v, cat.max) : String(v);
+  if (hintEl)
+    hintEl.textContent = grade
+      ? gradeHintText(v)
+      : teamPointsHintText(v, cat.max);
   if (minusEl) minusEl.disabled = v === null || v <= 0;
   if (plusEl) plusEl.disabled = v === null || v >= cat.max;
   var totEl = document.getElementById("teampointsTot-t" + t);
@@ -3609,22 +3740,32 @@ function teamPointsScoreField(t, catIdx, tabIdx) {
   var wrap = el("div", "blattscore");
   wrap.appendChild(el("div", "blattlbl", cat.label + " (max " + cat.max + ")"));
 
-  var inp = schnellNumberInput({ extraClass: "blattinput", width: false });
-  inp.max = String(cat.max);
+  var grade = gradeInputMode();
+  var fieldOpts = { extraClass: "blattinput", width: false };
+  var inp = grade ? gradeTextInput(fieldOpts) : schnellNumberInput(fieldOpts);
   inp.id = "teampoints-val-t" + t + "-c" + catIdx;
   inp.tabIndex = tabIdx;
   var v = tget(t, catIdx);
-  if (v !== null) inp.value = String(v);
+  if (v !== null) inp.value = grade ? gradeMarkFor(v, cat.max) : String(v);
   inp.addEventListener("change", function () {
     var raw = inp.value.trim();
     if (raw === "") return;
-    var n = Math.round(Number(raw));
-    if (!isFinite(n)) {
-      updateTeamPointsScore(t, catIdx);
-      return;
+    var n;
+    if (grade) {
+      n = pointsFromGrade(raw, cat.max);
+      if (n === undefined) {
+        updateTeamPointsScore(t, catIdx);
+        return;
+      }
+    } else {
+      n = Math.round(Number(raw));
+      if (!isFinite(n)) {
+        updateTeamPointsScore(t, catIdx);
+        return;
+      }
+      // Clamps to the category's range; the mobile keypad instead snaps to a grade midpoint.
+      n = Math.max(0, Math.min(cat.max, n));
     }
-    // Clamps to the category's range; the mobile keypad instead snaps to a grade midpoint.
-    n = Math.max(0, Math.min(cat.max, n));
     write("t" + t, cat.key, n);
     updateTeamPointsScore(t, catIdx);
   });
@@ -3640,7 +3781,11 @@ function teamPointsScoreField(t, catIdx, tabIdx) {
   });
   hintRow.appendChild(minus);
 
-  var hint = el("div", "blatthint", teamPointsHintText(v, cat.max));
+  var hint = el(
+    "div",
+    "blatthint",
+    grade ? gradeHintText(v) : teamPointsHintText(v, cat.max),
+  );
   hint.id = "teampoints-hint-t" + t + "-c" + catIdx;
   hintRow.appendChild(hint);
 
@@ -4454,6 +4599,9 @@ document.getElementById("btnBallot").addEventListener("click", function () {
   render();
 });
 document.getElementById("themeBtn").addEventListener("click", cycleTheme);
+document
+  .getElementById("menuGradeInput")
+  .addEventListener("click", toggleGradeInput);
 document.getElementById("undoBtn").addEventListener("click", function () {
   var h = hist.pop();
   if (!h) return;
@@ -4524,6 +4672,7 @@ window.addEventListener("appinstalled", function () {
     document.getElementById("btnInstall").classList.remove("hide");
   }
   applyTheme(LS.get("opd.theme", "light"));
+  applyGradeInputLabel();
   // Only an explicit /r/CODE link auto-resumes a session - landing on the
   // bare app URL always shows the lobby (with the recent-rooms list to
   // rejoin from), even if a session for some room is still cached.
