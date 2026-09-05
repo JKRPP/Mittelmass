@@ -11,3 +11,22 @@ theme-picker.html
 # Database
 
 *.sqlite3
+
+# Bubblewrap/Gradle project — regenerated from twa-manifest.json by
+# `bubblewrap update` (which `build` also runs when it detects the
+# manifest changed), so none of this needs to be committed.
+
+.gradle/
+/build/
+/app/
+/gradle/
+gradlew
+gradlew.bat
+build.gradle
+settings.gradle
+gradle.properties
+manifest-checksum.txt
+store_icon.png
+*.apk
+*.apk.idsig
+*.aab

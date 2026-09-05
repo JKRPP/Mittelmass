@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.krapp.opd.twa",
+      "sha256_cert_fingerprints": ["AC:5F:2C:C1:97:56:AA:79:17:08:FE:59:59:2B:C5:B7:8B:F8:9B:60:43:96:04:0D:76:76:AE:FD:94:EE:A2:AE"]
+    }
+  }
+]

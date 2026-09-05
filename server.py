@@ -690,6 +690,11 @@ async def license_text():
         return PlainTextResponse(f.read())
 
 
+@app.get("/.well-known/assetlinks.json")
+async def assetlinks():
+    return FileResponse(os.path.join(STATIC, "assetlinks.json"))
+
+
 @app.get("/")
 @app.get("/r/{code}")
 async def index(code: str = ""):
