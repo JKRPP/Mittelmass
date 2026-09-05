@@ -20,8 +20,15 @@ jobs:
         with:
           node-version: "20"
 
+      - uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: true
+
       - name: Install Bubblewrap
         run: npm install -g @bubblewrap/cli
+
+      - name: Point Bubblewrap at the JDK/SDK from the steps above
+        run: bubblewrap updateConfig --jdkPath="$JAVA_HOME" --androidSdkPath="$ANDROID_SDK_ROOT"
 
       - name: Generate Android project from twa-manifest.json
         run: bubblewrap update
