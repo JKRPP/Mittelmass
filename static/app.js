@@ -2197,12 +2197,12 @@ function commitActiveInput() {
   if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA")) ae.blur();
 }
 
-// Alt+1..4 jump straight to a chrome tab, by position among the visible
+// Alt+1..9 jump straight to a chrome tab, by position among the visible
 // #dashNav buttons - laptop-friendly alternative to PageUp/PageDown that
 // doesn't need cycling through intermediate tabs.
 document.addEventListener("keydown", function (e) {
   if (!ME || !isDesktopWidth()) return;
-  if (!e.altKey || !/^[1-4]$/.test(e.key)) return;
+  if (!e.altKey || !/^[1-9]$/.test(e.key)) return;
   var btns = [].slice.call(
     document.querySelectorAll("#dashNav button[data-dv]:not(.hide)"),
   );
