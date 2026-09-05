@@ -52,17 +52,17 @@ jobs:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
 
       - name: Build signed APK/AAB
+        # --signingKeyPassword/--signingKeyStorePassword are not real bubblewrap
+        # flags; the only non-interactive path is these two env vars.
         run: |
           bubblewrap build \
             --skipPwaValidation \
             --signingKeyPath android-keystore/upload.jks \
-            --signingKeyAlias "$ANDROID_KEY_ALIAS" \
-            --signingKeyPassword "$ANDROID_KEY_PASSWORD" \
-            --signingKeyStorePassword "$ANDROID_KEYSTORE_PASSWORD"
+            --signingKeyAlias "$ANDROID_KEY_ALIAS"
         env:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          BUBBLEWRAP_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
