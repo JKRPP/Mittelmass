@@ -1513,7 +1513,9 @@ function finalResultHTML(summary) {
     if (!isActiveSpeaker(s)) return;
     var isBest = r.avg !== null && r.avg === summary.bestSpeakerAvg;
     fh.push(
-      '<tr><td class="l' +
+      '<tr class="' +
+        (deductionPoints(s) ? "deducted" : "") +
+        '"><td class="l' +
         (isBest ? " best" : "") +
         '">' +
         r.label +
@@ -2419,7 +2421,6 @@ function dashBallotTable(summary, s) {
     return x.key === "s" + s;
   })[0];
   totTr.appendChild(dashSpreadCell(totCell ? totCell.spread : null));
-  table.appendChild(totTr);
   if (deductionPoints(s) > 0) {
     var dedTr = el("tr", "deducted");
     dedTr.appendChild(el("td", "l", "Abzug"));
@@ -2428,6 +2429,7 @@ function dashBallotTable(summary, s) {
     dedTr.appendChild(dedTd);
     table.appendChild(dedTr);
   }
+  table.appendChild(totTr);
   return table;
 }
 
