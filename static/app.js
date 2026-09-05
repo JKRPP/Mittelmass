@@ -227,44 +227,44 @@ var NOTEN = [
   {
     a: "Perfekt",
     b: "Internationale Spitzenleistung",
-    cells: [20, 19],
+    cells: [19, 20],
     marks: [" ", " "],
   },
   {
     a: "Exzellent",
     b: "Nationale Spitzenleistung",
-    cells: [18, 17, 16],
+    cells: [16, 17, 18],
     marks: [" ", " ", " "],
   },
   {
     a: "Sehr gut",
     b: "Schwächen kaum erkennbar",
-    cells: [15, 14, 13],
-    marks: ["1+", "1", "1-"],
+    cells: [13, 14, 15],
+    marks: ["1-", "1", "1+"],
   },
   {
     a: "Gut",
     b: "Stärken überwiegen",
-    cells: [12, 11, 10],
-    marks: ["2+", "2", "2-"],
+    cells: [10, 11, 12],
+    marks: ["2-", "2", "2+"],
   },
   {
     a: "Solide",
     b: "ausgewogen",
-    cells: [9, 8, 7],
-    marks: ["3+", "3", "3-"],
+    cells: [7, 8, 9],
+    marks: ["3-", "3", "3+"],
   },
   {
     a: "Ausreichend",
     b: "Schwächen überwiegen",
-    cells: [6, 5, 4],
-    marks: ["4+", "4", "4-"],
+    cells: [4, 5, 6],
+    marks: ["4-", "4", "4+"],
   },
   {
     a: "Mangelhaft",
     b: "deutliche Schwächen",
-    cells: [3, 2, 1],
-    marks: ["5+", "5", "5-"],
+    cells: [1, 2, 3],
+    marks: ["5-", "5", "5+"],
   },
   { a: "Keine Leistung", b: "", cells: [0], marks: ["6"] },
 ];
@@ -924,7 +924,12 @@ function buildPad(host, scaleMax, onPick) {
       lbl.appendChild(el("div", "a", n.a));
       if (n.b) lbl.appendChild(el("div", "b", n.b));
       row.appendChild(lbl);
-      var keys = el("div", "notekeys");
+      // Fewer than 3 cells (top/bottom rows) - stretch them to fill the
+      // row's width instead of leaving blank filler columns.
+      var keys = el(
+        "div",
+        "notekeys" + (n.cells.length < 3 ? " notekeys-fill" : ""),
+      );
       n.cells.forEach(function (v, j) {
         var b = el("button", "key");
         b.appendChild(el("div", "n", String(mid(convert(v, scaleMax)))));
@@ -934,8 +939,6 @@ function buildPad(host, scaleMax, onPick) {
         });
         keys.appendChild(b);
       });
-      for (var f = n.cells.length; f < 3; f++)
-        keys.appendChild(el("div", "key blank"));
       row.appendChild(keys);
       host.appendChild(row);
     },

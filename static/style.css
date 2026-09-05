@@ -464,6 +464,12 @@ hr.sep {
   grid-template-columns: repeat(3, 1fr);
   gap: 5px;
 }
+.notekeys.notekeys-fill {
+  display: flex;
+}
+.notekeys-fill .key {
+  flex: 1;
+}
 .key {
   border: 1px solid var(--line-2);
   background: var(--card);
@@ -494,11 +500,6 @@ hr.sep {
 .key:active .n,
 .key:active .m {
   color: var(--live);
-}
-.key.blank {
-  border: 0;
-  background: transparent;
-  cursor: default;
 }
 .wide {
   border: 1px solid var(--line-2);
