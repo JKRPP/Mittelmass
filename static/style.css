@@ -230,20 +230,30 @@ body {
   letter-spacing: -0.01em;
 }
 #v-sheet .card,
-#v-team .card {
+#v-team .card,
+#v-namen .card {
   border-top: 3px solid transparent;
 }
 #v-sheet .card.team-gov,
-#v-team .card.team-gov {
+#v-team .card.team-gov,
+#v-namen .card.team-gov {
   border-top-color: var(--team-gov);
 }
 #v-sheet .card.team-opp,
-#v-team .card.team-opp {
+#v-team .card.team-opp,
+#v-namen .card.team-opp {
   border-top-color: var(--team-opp);
 }
 #v-sheet .card.team-free,
-#v-team .card.team-free {
+#v-team .card.team-free,
+#v-namen .card.team-free {
   border-top-color: var(--team-free);
+}
+/* Namen (mobile) */
+.namelbl {
+  font-size: 12px;
+  color: var(--ink-2);
+  margin-bottom: 6px;
 }
 .team-gov .hd h1 {
   color: var(--team-gov);
@@ -1596,6 +1606,116 @@ tr.deducted td.l {
   /* Notes precede the score in the DOM (see teamPointsCategoryBlock); this
      keeps the score visually on top. */
   order: 1;
+}
+
+/* Namen (desktop room view) */
+#v-namenroom {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--paper);
+}
+#v-namenroom.hide {
+  display: none;
+}
+.roomview {
+  padding: 20px 28px 40px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+.roomview > .sub {
+  text-align: center;
+  margin-bottom: 20px;
+}
+.roomstage {
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+}
+.facingrow,
+.lowerrow {
+  display: flex;
+  justify-content: center;
+  gap: 60px;
+}
+.roomtable {
+  width: 240px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--line-2);
+  border-radius: 4px;
+  padding: 12px;
+}
+.roomtable.team-gov {
+  border-top-color: var(--team-gov);
+}
+.roomtable.team-opp {
+  border-top-color: var(--team-opp);
+}
+.roomtable.team-free {
+  border-top-color: var(--team-free);
+}
+.roomtable.jury {
+  border-top-color: var(--line-2);
+}
+.roomtable .tname {
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 9px;
+}
+.roomtable.team-gov .tname {
+  color: var(--team-gov);
+}
+.roomtable.team-opp .tname {
+  color: var(--team-opp);
+}
+.roomtable.team-free .tname {
+  color: var(--team-free);
+}
+.roomtable.jury .tname {
+  color: var(--ink-3);
+  font-weight: 400;
+}
+.seat + .seat {
+  margin-top: 8px;
+}
+.seat .slbl {
+  font-size: 10.5px;
+  color: var(--ink-3);
+  margin-bottom: 3px;
+}
+.juryrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+.juryrow:last-child {
+  border-bottom: 0;
+}
+.juryname {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.juryab {
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  flex: 0 0 auto;
+}
+.juryab:hover {
+  color: var(--live);
+}
+.jseatname:last-child {
+  border-bottom: 0;
 }
 
 /* Ballot export modal */

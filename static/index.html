@@ -202,6 +202,9 @@
             <span class="dot" id="cdot"></span>
             <span id="cstate">verbinde …</span>
             <div class="dashnav hide" id="dashNav">
+              <button data-dv="namen" aria-pressed="true" tabindex="-1">
+                Namen
+              </button>
               <button
                 data-dv="sheet"
                 aria-pressed="false"
@@ -219,7 +222,7 @@
                 Team
               </button>
 
-              <button data-dv="blatt" aria-pressed="true" tabindex="-1">
+              <button data-dv="blatt" aria-pressed="false" tabindex="-1">
                 Einzelreden
               </button>
               <button data-dv="teampoints" aria-pressed="false" tabindex="-1">
@@ -264,7 +267,14 @@
             </div>
           </div>
 
-          <section id="v-sheet">
+          <section id="v-namen">
+            <p class="sub">
+              Namen werden nur lokal gespeichert und nicht synchronisiert
+            </p>
+            <div id="namenList"></div>
+          </section>
+
+          <section id="v-sheet" class="hide">
             <div class="card">
               <div class="hd">
                 <button class="navbtn" id="prev">&#8249;</button>
@@ -280,7 +290,10 @@
                 <button class="dedopt" data-lvl="big">Groß (−15)</button>
               </div>
               <div class="sum">
-                <span>Gesamtpunkte</span><span><b id="spkTot">0</b> <b id="spkDed" class="dedbadge hide"></b></span>
+                <span>Gesamtpunkte</span
+                ><span
+                  ><b id="spkTot">0</b> <b id="spkDed" class="dedbadge hide"></b
+                ></span>
               </div>
               <div class="exclrow">
                 <button class="exclbtn" id="exclBtn"></button>
@@ -346,7 +359,7 @@
             </div>
           </section>
 
-          <div class="dockpad" id="dockSheet">
+          <div class="dockpad hide" id="dockSheet">
             <hr class="sep" />
             <div id="padHost"></div>
           </div>
@@ -358,7 +371,8 @@
 
         <div class="dock hide" id="dock">
           <nav class="tabs" id="tabs">
-            <button data-t="sheet" aria-pressed="true">Reden</button>
+            <button data-t="namen" aria-pressed="true">Namen</button>
+            <button data-t="sheet" aria-pressed="false">Reden</button>
             <button data-t="team" aria-pressed="false">Team</button>
             <button data-t="matrix" aria-pressed="false">Übersicht</button>
             <button data-t="chair" aria-pressed="false" id="tabChair">
@@ -367,6 +381,7 @@
           </nav>
         </div>
 
+        <div id="v-namenroom" class="hide"></div>
         <div id="v-dashboard" class="hide"></div>
         <div id="v-schnell" class="hide"></div>
         <div id="v-blatt" class="hide"></div>

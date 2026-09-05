@@ -296,7 +296,7 @@ function katOf(pts, max) {
 }
 function labelOf(target, criterion) {
   if (target[0] === "s") {
-    var s = SPEAKERS[+target.slice(1)].label;
+    var s = speakerLabel(+target.slice(1));
     if (criterion === "abz") return s + " · Abzüge";
     for (var i = 0; i < CRITERIA.length; i++)
       if (CRITERIA[i].key === criterion) return s + " · " + CRITERIA[i].label;
@@ -370,6 +370,11 @@ var seq = 0;
 // Blatt's free-text notes - local-only, keyed "s{s}|{groupKey}" (Sac+Urt share one).
 var notes = {};
 var notesSaveTimer = null;
+// Speaker names - local-only like notes, keyed "s{s}", one name per speaker
+// slot. Named speakerNames (not "names") since a couple of chair-summary
+// functions already use a local `names` array for judge-name lists.
+var speakerNames = {};
+var namesSaveTimer = null;
 var ws = null,
   wsTries = 0,
   wsTimer = null,
@@ -391,6 +396,22 @@ function loadLocal() {
   queue = LS.get("opd.queue." + ME.code, {}) || {};
   seq = LS.get("opd.seq", 0) || 0;
   notes = LS.get("opd.notes." + ME.code, {}) || {};
+  speakerNames = LS.get("opd.names." + ME.code, {}) || {};
+}
+function getName(s) {
+  return speakerNames["s" + s] || "";
+}
+function setName(s, text) {
+  speakerNames["s" + s] = text;
+  clearTimeout(namesSaveTimer);
+  namesSaveTimer = setTimeout(function () {
+    if (ME) LS.set("opd.names." + ME.code, speakerNames);
+  }, 300);
+}
+// SPEAKERS[s].label suffixed with "(name)" wherever a judge has typed one in
+function speakerLabel(s) {
+  var nm = getName(s);
+  return SPEAKERS[s].label + (nm ? " (" + nm + ")" : "");
 }
 function noteKey(s, groupKey) {
   return "s" + s + "|" + groupKey;
@@ -695,6 +716,7 @@ function resetRoomState() {
   mine = {};
   queue = {};
   notes = {};
+  speakerNames = {};
   deductions = {};
   myExclusions = {};
   remoteExclusions = {};
@@ -704,7 +726,7 @@ function resetRoomState() {
   cc = 0;
   ct = 0;
   ctc = 0;
-  showView("sheet");
+  showView("namen");
 }
 function leaveRoom() {
   if (!ME) return;
@@ -814,7 +836,7 @@ function paintBar() {
 // Scoring state for local judge
 var NC = CRITERIA.length,
   NT = TEAMCATS.length;
-var view = "sheet",
+var view = "namen",
   cs = 0,
   cc = 0,
   ct = 0,
@@ -973,7 +995,7 @@ function pickSpeaker(v) {
   render();
 }
 function renderSheet() {
-  document.getElementById("spkName").textContent = SPEAKERS[cs].label;
+  document.getElementById("spkName").textContent = speakerLabel(cs);
   setTeamAccent(document.querySelector("#v-sheet .card"), teamOf(cs));
   var z = zwischensumme(cs);
   document.getElementById("spkSub").textContent =
@@ -1138,6 +1160,8 @@ function renderMatrix() {
       .replace("Fraktionsfreie Rede", "FFR")
       .replace("Regierung", "Reg")
       .replace("Opposition", "Opp");
+    var nm = getName(s);
+    if (nm) lbl += " (" + nm + ")";
     h.push(
       '<tr class="' +
         (deductionPoints(s) ? "deducted" : "") +
@@ -1385,7 +1409,6 @@ function computeChairSummary() {
   // Display by total score
   var totals = [];
   activeSpeakerIndices().forEach(function (s) {
-    var sp = SPEAKERS[s];
     var vals = [],
       names = [],
       judges = [];
@@ -1406,7 +1429,7 @@ function computeChairSummary() {
         return a + b;
       }, 0) / vals.length;
     totals.push({
-      label: sp.label,
+      label: speakerLabel(s),
       spread: mx - mn,
       avg: avg,
       n: vals.length,
@@ -1420,7 +1443,7 @@ function computeChairSummary() {
   });
 
   // Full result overview, in speaking order
-  var speakerRows = SPEAKERS.map(function (sp, s) {
+  var speakerRows = SPEAKERS.map(function (_, s) {
     var vals = [];
     ids.forEach(function (id) {
       if (!includedFor(id, "s" + s)) return;
@@ -1432,7 +1455,7 @@ function computeChairSummary() {
           return a + b;
         }, 0) / vals.length
       : null;
-    return { label: sp.label, avg: avg, n: vals.length };
+    return { label: speakerLabel(s), avg: avg, n: vals.length };
   });
   // speakerRows stays positional (summary.speakerRows[s] is looked up by
   // raw index elsewhere) - but a hidden free speaker's stale avg must not
@@ -1595,9 +1618,8 @@ function fullBallotTable(summary) {
   // {vals, avg, tds, avgTd} per row, so best-speech/best-team can be marked once every row is built.
   var speakerMeta = [];
   activeSpeakerIndices().forEach(function (s) {
-    var sp = SPEAKERS[s];
     var tr = el("tr", deductionLevel(s) ? "deducted" : null);
-    tr.appendChild(el("td", "l", sp.label));
+    tr.appendChild(el("td", "l", speakerLabel(s)));
     var vals = [],
       tds = [];
     chairFirst.forEach(function (id) {
@@ -1900,8 +1922,8 @@ function renderChair() {
 // reuse the existing mobile pages, just re-centered; "dashboard", "schnell"
 // and "blatt" are wide, desktop-only views with no mobile equivalent.
 var dashboardSelected = { kind: "speaker", s: 0 };
-var dashboardView = "blatt";
-var DASH_WIDE_VIEWS = ["dashboard", "schnell", "blatt", "teampoints"];
+var dashboardView = "namen";
+var DASH_WIDE_VIEWS = ["dashboard", "schnell", "blatt", "teampoints", "namen"];
 // Remembers the last-focused field id per view ("blatt"/"teampoints"), so
 // Alt+Space can swap between the two and land back where you were.
 var lastFocusByView = {};
@@ -1941,6 +1963,9 @@ function applyLayoutMode() {
 
   app.classList.toggle("dashboard-subview", subview);
   document
+    .getElementById("v-namenroom")
+    .classList.toggle("hide", !dash || ev !== "namen");
+  document
     .getElementById("v-dashboard")
     .classList.toggle("hide", !dash || ev !== "dashboard");
   document
@@ -1954,9 +1979,11 @@ function applyLayoutMode() {
     .classList.toggle("hide", !dash || ev !== "teampoints");
 
   if (wide) {
-    ["v-sheet", "v-team", "v-matrix", "v-chair"].forEach(function (id) {
-      document.getElementById(id).classList.add("hide");
-    });
+    ["v-namen", "v-sheet", "v-team", "v-matrix", "v-chair"].forEach(
+      function (id) {
+        document.getElementById(id).classList.add("hide");
+      },
+    );
     document.getElementById("dock").classList.add("hide");
     document.getElementById("dockSheet").classList.add("hide");
     document.getElementById("dockTeam").classList.add("hide");
@@ -2217,12 +2244,11 @@ function dashSpeakerGroup(label, teamVal, summary) {
   if (!rows.length) return wrap;
   wrap.appendChild(el("div", "dashgrp", label));
   rows.forEach(function (s) {
-    var sp = SPEAKERS[s];
     var teamCls =
       teamVal === 0 ? "team-gov" : teamVal === 1 ? "team-opp" : "team-free";
     var sel = dashboardSelected.kind === "speaker" && dashboardSelected.s === s;
     var row = el("div", "dashspk " + teamCls + (sel ? " sel" : ""));
-    row.appendChild(el("span", "lb", sp.label));
+    row.appendChild(el("span", "lb", speakerLabel(s)));
     var avg = summary.speakerRows[s].avg;
     row.appendChild(el("span", "vl", avg === null ? "·" : avg.toFixed(1)));
     var tot = summary.totals.filter(function (t) {
@@ -2501,7 +2527,7 @@ function dashSpeakerBallotPanel(summary, s) {
     sp.team === 0 ? "team-gov" : sp.team === 1 ? "team-opp" : "team-free",
   );
   var head = el("div", "dashpanelhead");
-  head.appendChild(el("h2", null, sp.label));
+  head.appendChild(el("h2", null, speakerLabel(s)));
   head.appendChild(el("div", "sub", "Ballotvergleich"));
   panel.appendChild(head);
   var body = el("div", "dashpanelbody dashpanelbody-table");
@@ -3096,7 +3122,7 @@ function updateSchnellTeamRow(t) {
 
 function schnellSpeakerRow(s, teamCls) {
   var tr = el("tr", deductionLevel(s) ? "deducted" : null);
-  var lbl = el("td", "l", SPEAKERS[s].label);
+  var lbl = el("td", "l", speakerLabel(s));
   if (teamCls) lbl.classList.add(teamCls);
   tr.appendChild(lbl);
   tr.appendChild(el("td", "schnellspacer"));
@@ -3463,7 +3489,7 @@ function renderBlatt() {
   head.appendChild(prev);
 
   var mid = el("div", "blattheadmid");
-  mid.appendChild(el("h1", "blatttitle", sp.label));
+  mid.appendChild(el("h1", "blatttitle", speakerLabel(cs)));
   mid.appendChild(
     el(
       "div",
@@ -3744,19 +3770,143 @@ function renderTeamPoints() {
   root.appendChild(wrap);
 }
 
+// Mobile "Namen" tab - a stacked list of name inputs in speaking order.
+function renderNamen() {
+  var list = document.getElementById("namenList");
+  if (!list) return;
+  if (dashEditGuard(list)) return;
+  list.innerHTML = "";
+  activeSpeakerIndices().forEach(function (s) {
+    var card = el("div", "card");
+    setTeamAccent(card, teamOf(s));
+    card.appendChild(el("div", "namelbl", SPEAKERS[s].label));
+    var input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "Name eingeben";
+    input.value = getName(s);
+    input.addEventListener("input", function () {
+      setName(s, input.value);
+    });
+    card.appendChild(input);
+    list.appendChild(card);
+  });
+}
+
+// Builds one seat: a label plus a name input bound to getName/setName.
+// tabIndex follows speaking order (activeOrdinal)
+function namenSeat(s, label) {
+  var seat = el("div", "seat");
+  seat.appendChild(el("div", "slbl", label));
+  var input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "Name eingeben";
+  input.value = getName(s);
+  input.tabIndex = activeOrdinal(s);
+  input.addEventListener("input", function () {
+    setName(s, input.value);
+  });
+  seat.appendChild(input);
+  return seat;
+}
+
+// Desktop "Namen" view - the room shape (Gov/Opp facing tables, Fraktionsfrei
+// and Jury below), matching where each role actually sits during a debate.
+function renderNamenRoom() {
+  var root = document.getElementById("v-namenroom");
+  if (!root) return;
+  if (dashEditGuard(root)) return;
+  root.innerHTML = "";
+
+  var wrap = el("div", "roomview");
+  wrap.appendChild(
+    el(
+      "p",
+      "sub",
+      "Namen werden nur lokal gespeichert und nicht synchronisiert.",
+    ),
+  );
+
+  var stage = el("div", "roomstage");
+  var facing = el("div", "facingrow");
+  var gov = el("div", "roomtable team-gov");
+  gov.appendChild(el("div", "tname", "Regierung"));
+  gov.appendChild(namenSeat(0, "Eröffnungsrede"));
+  gov.appendChild(namenSeat(2, "Ergänzungsrede"));
+  gov.appendChild(namenSeat(15, "Schlussrede"));
+  facing.appendChild(gov);
+  var opp = el("div", "roomtable team-opp");
+  opp.appendChild(el("div", "tname", "Opposition"));
+  opp.appendChild(namenSeat(1, "Eröffnungsrede"));
+  opp.appendChild(namenSeat(3, "Ergänzungsrede"));
+  opp.appendChild(namenSeat(14, "Schlussrede"));
+  facing.appendChild(opp);
+  stage.appendChild(facing);
+
+  var lower = el("div", "lowerrow");
+  var free = el("div", "roomtable team-free");
+  free.appendChild(el("div", "tname", "Fraktionsfrei"));
+  var freeIdx = activeSpeakerIndices().filter(function (s) {
+    return teamOf(s) === null;
+  });
+  if (freeIdx.length === 0) {
+    free.appendChild(
+      el("div", "slbl", "Keine fraktionsfreien Reden in dieser Runde"),
+    );
+  } else {
+    freeIdx.forEach(function (s, i) {
+      free.appendChild(namenSeat(s, i + 1 + ". Rede"));
+    });
+  }
+  lower.appendChild(free);
+
+  var jury = el("div", "roomtable jury");
+  jury.appendChild(el("div", "tname", "Jury"));
+  Object.keys(peers).forEach(function (id) {
+    var j = peers[id];
+    var row = el("div", "juryrow");
+    row.appendChild(el("span", "dot " + (j.online ? "on" : "off")));
+    row.appendChild(
+      el(
+        "span",
+        "juryname",
+        j.name + (j.is_chair ? " · Chair" : j.hidden ? " · Trainee" : ""),
+      ),
+    );
+    // Only the chair can flip a wing to trainee (and back) - the server
+    // enforces this too, this just avoids showing a button that 403s.
+    if (ME.is_chair && !j.is_chair) {
+      var btn = el("button", "juryab", j.hidden ? "Zu Wing" : "Zu Trainee");
+      btn.type = "button";
+      btn.tabIndex = -1;
+      btn.addEventListener("click", function () {
+        confirmHiddenToggle(id, j.name, !j.hidden);
+      });
+      row.appendChild(btn);
+    }
+    jury.appendChild(row);
+  });
+  lower.appendChild(jury);
+  stage.appendChild(lower);
+
+  wrap.appendChild(stage);
+  root.appendChild(wrap);
+}
+
 function render() {
   if (!ME) return;
   applyLayoutMode();
   if (isDesktopWidth()) {
     renderDashChrome();
     var ev = effectiveDashboardView();
-    if (ev === "sheet") renderSheet();
+    if (ev === "namen") renderNamenRoom();
+    else if (ev === "sheet") renderSheet();
     else if (ev === "team") renderTeam();
     else if (ev === "schnell") renderSchnell();
     else if (ev === "blatt") renderBlatt();
     else if (ev === "teampoints") renderTeamPoints();
     else renderDashboard();
   } else {
+    if (view === "namen") renderNamen();
     if (view === "sheet") renderSheet();
     if (view === "team") renderTeam();
     if (view === "matrix") renderMatrix();
@@ -3922,6 +4072,7 @@ function promoteOfflineRoom() {
       LS.del("opd.scores." + oldCode);
       LS.del("opd.queue." + oldCode);
       LS.del("opd.notes." + oldCode);
+      LS.del("opd.names." + oldCode);
 
       remote[s.judge_id] = Object.assign({}, remote[oldJudgeId] || {}, mine);
       delete remote[oldJudgeId];
@@ -3936,6 +4087,7 @@ function promoteOfflineRoom() {
       LS.set("opd.session." + ME.code, ME);
       saveLocal(); // re-persists mine/queue under the new code
       LS.set("opd.notes." + ME.code, notes);
+      LS.set("opd.names." + ME.code, speakerNames);
       recordRecentRoom(ME.code, ME.name, ME.is_chair);
 
       if (history.replaceState)
@@ -4146,7 +4298,7 @@ function showView(v) {
       x.setAttribute("aria-pressed", String(x.dataset.t === view));
     },
   );
-  ["sheet", "team", "matrix", "chair"].forEach(function (vv) {
+  ["namen", "sheet", "team", "matrix", "chair"].forEach(function (vv) {
     document.getElementById("v-" + vv).classList.toggle("hide", vv !== view);
   });
   document
