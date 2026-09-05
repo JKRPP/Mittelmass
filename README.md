@@ -3,6 +3,8 @@
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)
 ![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg?logo=docker&logoColor=white)
+[![Android release](https://github.com/JKRPP/Mittelmass/actions/workflows/android-release.yml/badge.svg)](https://github.com/JKRPP/Mittelmass/actions/workflows/android-release.yml)
+[![Latest release](https://img.shields.io/github/v/release/JKRPP/Mittelmass)](https://github.com/JKRPP/Mittelmass/releases/latest)
 
 A judging app for OPD (Offene Parlamentarische Debatte) rounds: share links,
 per-judge scoresheets, and a chair view that surfaces disagreement between
