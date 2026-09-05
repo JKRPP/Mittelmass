@@ -11,6 +11,8 @@
   --live-line: #a5a5a5;
   --warn: #8a4a1a;
   --warn-bg: #f6ebe1;
+  --danger: #b3261e;
+  --danger-bg: #fbe9e7;
   --radius: 0px;
   --team-gov: #2f8f3c;
   --team-opp: #c23b3b;
@@ -31,6 +33,8 @@
   --dark-live-line: #2f6a60;
   --dark-warn: #d8a273;
   --dark-warn-bg: #33251a;
+  --dark-danger: #f2938c;
+  --dark-danger-bg: #3a1f1d;
 }
 
 :root:not([data-theme="light"]) {
@@ -47,6 +51,8 @@
     --live-line: var(--dark-live-line);
     --warn: var(--dark-warn);
     --warn-bg: var(--dark-warn-bg);
+    --danger: var(--dark-danger);
+    --danger-bg: var(--dark-danger-bg);
   }
 }
 :root[data-theme="dark"] {
@@ -62,6 +68,8 @@
   --live-line: var(--dark-live-line);
   --warn: var(--dark-warn);
   --warn-bg: var(--dark-warn-bg);
+  --danger: var(--dark-danger);
+  --danger-bg: var(--dark-danger-bg);
 }
 * {
   box-sizing: border-box;
@@ -1189,6 +1197,22 @@ body {
 }
 #v-dashboard .ballottable tr.rowbest:hover td {
   background: color-mix(in srgb, var(--ink) 10%, var(--live-bg));
+}
+
+/* Deductions - shared by Übersicht/Schnelleingabe rows and the ballot tables. */
+tr.deducted td {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+tr.deducted td.l {
+  font-weight: 500;
+}
+#v-dashboard .ballottable tr.deducted:hover td {
+  background: color-mix(in srgb, var(--ink) 10%, var(--danger-bg));
+}
+.dedbadge {
+  color: var(--danger);
+  font-weight: 500;
 }
 
 /* Schnelleingabe */

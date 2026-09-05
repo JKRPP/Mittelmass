@@ -1010,6 +1010,9 @@ function renderSheet() {
     b.classList.toggle("on", b.dataset.lvl === lvl);
   });
   document.getElementById("spkTot").textContent = String(personPunkte(cs));
+  var spkDed = document.getElementById("spkDed");
+  spkDed.textContent = lvl ? "(−" + deductionPoints(cs) + ")" : "";
+  spkDed.classList.toggle("hide", !lvl);
 
   var excluded = !!myExclusions["s" + cs];
   var eb = document.getElementById("exclBtn");
@@ -1132,7 +1135,13 @@ function renderMatrix() {
       .replace("Fraktionsfreie Rede", "FFR")
       .replace("Regierung", "Reg")
       .replace("Opposition", "Opp");
-    h.push('<tr><td class="l">' + lbl + "</td>");
+    h.push(
+      '<tr class="' +
+        (deductionPoints(s) ? "deducted" : "") +
+        '"><td class="l">' +
+        lbl +
+        "</td>",
+    );
     for (var c = 0; c < NC; c++) {
       var v = sget(s, c);
       h.push(
@@ -1582,7 +1591,7 @@ function fullBallotTable(summary) {
   var speakerMeta = [];
   activeSpeakerIndices().forEach(function (s) {
     var sp = SPEAKERS[s];
-    var tr = el("tr");
+    var tr = el("tr", deductionLevel(s) ? "deducted" : null);
     tr.appendChild(el("td", "l", sp.label));
     var vals = [],
       tds = [];
@@ -2411,6 +2420,14 @@ function dashBallotTable(summary, s) {
   })[0];
   totTr.appendChild(dashSpreadCell(totCell ? totCell.spread : null));
   table.appendChild(totTr);
+  if (deductionPoints(s) > 0) {
+    var dedTr = el("tr", "deducted");
+    dedTr.appendChild(el("td", "l", "Abzug"));
+    var dedTd = el("td", "tot", "−" + deductionPoints(s));
+    dedTd.setAttribute("colspan", String(chairFirst.length + 2));
+    dedTr.appendChild(dedTd);
+    table.appendChild(dedTr);
+  }
   return table;
 }
 
@@ -3073,7 +3090,7 @@ function updateSchnellTeamRow(t) {
 }
 
 function schnellSpeakerRow(s, teamCls) {
-  var tr = el("tr");
+  var tr = el("tr", deductionLevel(s) ? "deducted" : null);
   var lbl = el("td", "l", SPEAKERS[s].label);
   if (teamCls) lbl.classList.add(teamCls);
   tr.appendChild(lbl);
@@ -3469,6 +3486,11 @@ function renderBlatt() {
   var totVal = el("span", "blatttotval", String(personPunkte(cs)));
   totVal.id = "blattTot";
   totWrap.appendChild(totVal);
+  var dedLvl = deductionLevel(cs);
+  if (dedLvl)
+    totWrap.appendChild(
+      el("span", "dedbadge", "(−" + deductionPoints(cs) + ")"),
+    );
   stat.appendChild(totWrap);
 
   var excluded = !!myExclusions["s" + cs];
