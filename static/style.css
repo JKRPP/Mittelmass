@@ -686,6 +686,12 @@ p.note {
   bottom: 0;
   max-width: 440px;
   margin: 0 auto;
+  /* Promotes the bar to its own compositor layer - without this, some
+     mobile browsers (seen in the installed/standalone PWA) fail to repaint
+     a fixed element after a sibling's content height changes (e.g.
+     renderMatrix() rebuilding #matrix for the Übersicht tab), leaving it
+     invisible-but-still-clickable until something else forces a repaint. */
+  transform: translateZ(0);
 }
 .tabs button {
   flex: 1;
