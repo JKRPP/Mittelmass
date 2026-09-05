@@ -28,7 +28,18 @@ jobs:
         run: npm install -g @bubblewrap/cli
 
       - name: Point Bubblewrap at the JDK/SDK from the steps above
-        run: bubblewrap updateConfig --jdkPath="$JAVA_HOME" --androidSdkPath="$ANDROID_SDK_ROOT"
+        # Writing the config file directly (rather than `bubblewrap updateConfig`)
+        # because Bubblewrap's first-run wizard prompts before *any* subcommand's
+        # own logic runs when this file doesn't exist yet — including updateConfig
+        # itself, so invoking the CLI here would hit the same interactive prompt.
+        run: |
+          mkdir -p ~/.bubblewrap
+          cat > ~/.bubblewrap/config.json <<EOF
+          {
+            "jdkPath": "$JAVA_HOME",
+            "androidSdkPath": "$ANDROID_SDK_ROOT"
+          }
+          EOF
 
       - name: Generate Android project from twa-manifest.json
         run: bubblewrap update
