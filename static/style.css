@@ -1138,6 +1138,17 @@ body {
   color: var(--paper);
   border-color: var(--live);
 }
+/* Same green-when-active look as .dashjbtn.on, but without that class's
+   margin-top: 0 - reusing .dashjbtn here made this button margin-less
+   while its "Testton" sibling kept .btn's default 10px margin-top, so the
+   two ended up different heights within their shared flex row. Must stay
+   after .btn.ghost in source order - same specificity, so an earlier
+   declaration here would just lose the cascade tie-break to it. */
+.timermute.on {
+  background: var(--live);
+  color: var(--paper);
+  border-color: var(--live);
+}
 
 .dashbody {
   flex: 1;
@@ -1976,6 +1987,11 @@ tr.deducted td.l {
 }
 .modalactions .btn {
   flex: 1;
+  /* Without this, a flex item's minimum width defaults to its content's
+     min-content size - so a much longer label (e.g. "Ton: an (Glocke)")
+     wins more than its equal share and its shorter sibling ends up
+     visibly smaller, even though both have flex: 1. */
+  min-width: 0;
 }
 .modalinput {
   width: 100%;

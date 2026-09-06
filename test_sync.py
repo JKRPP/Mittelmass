@@ -274,6 +274,16 @@ with TestClient(server.app) as c:
         r.text,
     )
 
+    # updated_at is what lets a client tell a stale snapshot from its own
+    # newer (possibly offline) action - it has to move on every action.
+    before = r.json()["timer"]["updated_at"]
+    r = timer_action(chair["token"], {"action": "pause"})
+    check(
+        "each timer action advances updated_at",
+        r.status_code == 200 and r.json()["timer"]["updated_at"] > before,
+        (before, r.text),
+    )
+
 print()
 print("ALL PASS" if ok else "FAILURES ABOVE")
 sys.exit(0 if ok else 1)

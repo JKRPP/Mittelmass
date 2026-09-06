@@ -418,6 +418,23 @@ if (!CLIENT_ID) {
   LS.set("opd.client_id", CLIENT_ID);
 }
 
+// pushState/replaceState throw a SecurityError when the page is running
+// from a file:// URL - a browser's "Seite speichern unter" copy opened
+// straight off disk - because the target path isn't same-origin there.
+// Feature-detecting the method isn't enough: it exists, it just throws.
+// The URL is a nicety (a shareable /r/CODE link, a back-button escape
+// hatch out of "Verlassen"), so it must never take the caller down with
+// it - startSession() in particular calls this immediately before its
+// render(), so an unguarded throw left the app half-started: #main
+// visible, but stuck on the untouched mobile markup until a tab click
+// happened to call render() again.
+function setHistoryUrl(method, state, url) {
+  if (!history[method]) return;
+  try {
+    history[method](state, "", url);
+  } catch (e) {}
+}
+
 // Server room codes (server.py's new_code()) are always 4 chars drawn from
 // ACDEFGHJKMNPQRTUVWXY34679 - i.e. they never contain B/I/L/O/S/Z or
 // 0/1/2/5/8. Offline (not-yet-created) rooms draw only from that excluded
@@ -463,19 +480,25 @@ var online = false,
 // seconds timestamp (or null while paused/idle); serverTimeOffsetMs lets the
 // client compute "now" on the server's clock without trusting its own.
 var timer = {
-  type: null, // null | "team" | "ffr" | "reply"
-  label: "",
+  type: null, // null | "team" | "ffr" | "reply" | "discussion"
   status: "idle", // idle | running | paused
   durationMs: 0,
   elapsedMs: 0,
   startedAt: null,
+  updatedAt: 0, // server clock; see applyTimerState's snapshot guard
 };
 var serverTimeOffsetMs = 0;
+// Server-clock time of the last timer action taken on this device that the
+// server has not confirmed yet (0 once any broadcast arrives). Guards a
+// reconnect's snapshot from winding back a timer started while offline.
+var timerLocalAt = 0;
 // Which signal thresholds (ms into the current speech) have already rung,
 // so a repaint or a pause/resume doesn't re-fire a bell. Cleared whenever
 // the banked elapsed time returns to 0 (a fresh start or a reset).
 var timerFired = {};
 var timerAudioCtx = null;
+// Cached .bar widget children, so the 250ms repaint only rewrites text.
+var timerWidgetParts = null;
 
 function kk(t, c) {
   return t + "|" + c;
@@ -770,25 +793,96 @@ function timerBarMax(type) {
 // elapsed_ms stays 0 for a running timer until its first pause, so a naive
 // "elapsed is 0 -> clear" wiped already-rung thresholds on every such
 // resync and made the bell re-ring minutes into an unpaused speech.
-function applyTimerState(t) {
+function applyTimerState(t, fromSnapshot) {
+  // A snapshot is a point-in-time read that can be *older* than what this
+  // device just did - most obviously after acting while offline, which the
+  // server never heard about. Applying it then would wind the clock back,
+  // so a pending local action wins. Live broadcasts are always current (and
+  // prove the server has our state), so they always win and clear the flag.
+  if (fromSnapshot) {
+    if (timerLocalAt && (t.updated_at || 0) < timerLocalAt) return;
+  } else {
+    timerLocalAt = 0;
+  }
   timer = {
     type: t.type || null,
     status: t.status || "idle",
     durationMs: t.duration_ms || 0,
     elapsedMs: t.elapsed_ms || 0,
     startedAt: t.started_at || null,
+    updatedAt: t.updated_at || 0,
   };
-  timerFired = {};
-  if (timer.type) {
-    var elapsed = timerElapsedMs();
-    timerSignalPoints(timer.type).forEach(function (sig) {
-      if (elapsed >= sig.ms) timerFired[sig.ms] = true;
-    });
-  }
+  rebuildTimerFired();
   paintTimer();
+  refreshTimerModalControls();
 }
+// Marks every signal instant already in the past as rung, so a state change
+// never re-rings a bell the speech is past - and, conversely, a threshold
+// nudged back into the future by -5s correctly rings again when reached.
+function rebuildTimerFired() {
+  timerFired = {};
+  if (!timer.type) return;
+  var elapsed = timerElapsedMs();
+  timerSignalPoints(timer.type).forEach(function (sig) {
+    if (elapsed >= sig.ms) timerFired[sig.ms] = true;
+  });
+}
+// Mirrors server.py's set_timer branches so an action takes effect without
+// waiting on a round trip - and keeps working with no connection at all.
+// Deliberately kept in step with that function: change one, change both.
+function applyTimerActionLocally(action, extra) {
+  var nowServer = (Date.now() + serverTimeOffsetMs) / 1000;
+  if (action === "start") {
+    if (!TIMER_TYPES[extra.type]) return;
+    timer = {
+      type: extra.type,
+      status: "running",
+      durationMs: TIMER_TYPES[extra.type].durationMs,
+      elapsedMs: 0,
+      startedAt: nowServer,
+      updatedAt: nowServer,
+    };
+  } else if (action === "pause") {
+    if (timer.status !== "running") return;
+    timer.elapsedMs = timerElapsedMs(); // before startedAt is cleared
+    timer.startedAt = null;
+    timer.status = "paused";
+  } else if (action === "resume") {
+    if (timer.status !== "paused") return;
+    timer.startedAt = nowServer;
+    timer.status = "running";
+  } else if (action === "reset") {
+    timer.elapsedMs = 0;
+    timer.startedAt = null;
+    timer.status = "idle";
+  } else if (action === "adjust") {
+    if (!timer.type) return;
+    if (timer.status === "running") {
+      // Moving startedAt earlier adds to the live elapsed, later subtracts
+      // from it; the cap keeps a -5s tap from pushing it below zero.
+      timer.startedAt = Math.min(
+        timer.startedAt - extra.delta_ms / 1000,
+        nowServer + timer.elapsedMs / 1000,
+      );
+    } else {
+      timer.elapsedMs = Math.max(0, timer.elapsedMs + extra.delta_ms);
+    }
+  } else {
+    return;
+  }
+  timer.updatedAt = nowServer;
+  timerLocalAt = nowServer;
+  rebuildTimerFired();
+  paintTimer();
+  refreshTimerModalControls();
+}
+// Local-first, like write() for scores: apply now, push after. The server's
+// broadcast (carrying a newer updated_at) then replaces this with the
+// authoritative state, which also re-converges every other judge.
 function timerActionRequest(action, extra) {
   if (!ME) return;
+  applyTimerActionLocally(action, extra);
+  if (ME.pendingCreate) return; // offline room - no server room to push to yet
   var body = { action: action };
   if (extra) for (var k in extra) body[k] = extra[k];
   fetch(
@@ -818,23 +912,61 @@ function adjustTimer(deltaMs) {
   timerActionRequest("adjust", { delta_ms: deltaMs });
 }
 
+// Everything below repaints four times a second, so it only ever touches
+// the DOM when a value actually changed - writing the same text/class every
+// tick is what made the digits visibly stutter.
+function setText(node, text) {
+  if (node && node.textContent !== text) node.textContent = text;
+}
+function setCls(node, cls) {
+  if (node && node.className !== cls) node.className = cls;
+}
+
 // Live-updates the expanded modal's big clock and signal bar, if it's open
-// (the modal's static parts - label, marks, buttons - only need building
-// once at openTimerModal(); only the clock text and fill width move).
+// (the modal's static parts - label, marks, buttons - only get built once
+// in openTimerModal(); only the clock text and fill width move).
 function refreshTimerModal() {
   var clock = document.getElementById("timerBigClock");
   if (!clock || !timer.type) return;
   var elapsed = timerElapsedMs();
   var cls = timerStateClass(timer.type, elapsed);
-  clock.className = "timerbigclock " + cls;
-  clock.textContent = fmtTimerClock(timerDisplayMs(elapsed, timer.durationMs));
+  setCls(clock, "timerbigclock " + cls);
+  setText(clock, fmtTimerClock(timerDisplayMs(elapsed, timer.durationMs)));
   var fill = document.getElementById("timerBarFill");
   if (fill) {
-    fill.className = "timerbarfill " + cls;
-    fill.style.width =
+    setCls(fill, "timerbarfill " + cls);
+    var w =
       Math.max(0, Math.min(100, (elapsed / timerBarMax(timer.type)) * 100)) +
       "%";
+    if (fill.style.width !== w) fill.style.width = w;
   }
+}
+
+// The modal's *structure* only depends on these two things; everything else
+// (button labels, the clock, the bar, whether the Zwischenrede button is
+// showing) is updated in place below. Rebuilding the whole modal on every
+// state change - which is what this replaced - tore down and recreated
+// every button on each -5s/+5s tap, which is the stutter that caused.
+function timerModalShape() {
+  return (!timer.type || timer.status === "idle" ? "pick" : "run") + "|" + timer.type;
+}
+function refreshTimerModalControls() {
+  var m = document.getElementById("timerModal");
+  if (!m) return;
+  if (m.dataset.shape !== timerModalShape()) {
+    openTimerModal(true); // genuinely different controls - rebuild once
+    return;
+  }
+  var pr = document.getElementById("timerPauseResume");
+  setText(pr, timer.status === "running" ? "Pause" : "Weiter");
+  var nb = document.getElementById("timerNextReply");
+  if (nb) {
+    nb.classList.toggle(
+      "hide",
+      !(timer.type === "ffr" && timerElapsedMs() >= TIMER_TYPES.ffr.durationMs),
+    );
+  }
+  refreshTimerModal();
 }
 
 // Ticks every 250ms (started at app init, below) - repaints the widget and
@@ -842,7 +974,7 @@ function refreshTimerModal() {
 function tickTimer() {
   if (!ME || !timer.type) return;
   paintTimer();
-  refreshTimerModal();
+  refreshTimerModalControls();
   if (timer.status !== "running") return;
   var elapsed = timerElapsedMs();
   timerSignalPoints(timer.type).forEach(function (sig) {
@@ -862,12 +994,32 @@ function closeTimerModal() {
 function timerModalEscHandler(e) {
   if (e.key === "Escape") closeTimerModal();
 }
+// Every visible, non-disabled focusable element in the modal - used both to
+// trap Tab inside it and to focus the first control when it opens.
+function timerModalFocusables() {
+  var m = document.getElementById("timerModal");
+  if (!m) return [];
+  return [].slice
+    .call(
+      m.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      ),
+    )
+    .filter(function (e) {
+      return !e.disabled && e.offsetParent !== null;
+    });
+}
 // Tap target for the .bar widget - lets a judge pick a speech type and
 // start/pause/resume/reset the shared clock, or mute their own device.
-function openTimerModal() {
+// `isRefresh` is set only when applyTimerState() rebuilds an already-open
+// modal in place after a server-confirmed change - that must not steal
+// focus back to the first button every time, unlike a genuine fresh open
+// (a click, or the Alt+T shortcut).
+function openTimerModal(isRefresh) {
   closeTimerModal();
   var backdrop = el("div", "modalbackdrop");
   backdrop.id = "timerModal";
+  backdrop.dataset.shape = timerModalShape();
   backdrop.addEventListener("click", function (e) {
     if (e.target === backdrop) closeTimerModal();
   });
@@ -928,60 +1080,57 @@ function openTimerModal() {
     adjustRow.appendChild(plusBtn);
     box.appendChild(adjustRow);
 
+    // Pause/Weiter/Reset stay on the modal instead of closing it - the
+    // point of watching the big clock/bar is to correct a mistimed start,
+    // which usually takes a few taps. One handler that dispatches on the
+    // current status (rather than two differently-wired buttons) keeps
+    // pause<->resume a label change instead of a structural rebuild.
     var actions = el("div", "modalactions");
-    if (timer.status === "running") {
-      var pb = el("button", "btn", "Pause");
-      pb.type = "button";
-      pb.addEventListener("click", function () {
-        pauseTimer();
-        closeTimerModal();
-      });
-      actions.appendChild(pb);
-    } else {
-      var rb = el("button", "btn", "Weiter");
-      rb.type = "button";
-      rb.addEventListener("click", function () {
-        resumeTimer();
-        closeTimerModal();
-      });
-      actions.appendChild(rb);
-    }
+    var pb = el("button", "btn", timer.status === "running" ? "Pause" : "Weiter");
+    pb.id = "timerPauseResume";
+    pb.type = "button";
+    pb.addEventListener("click", function () {
+      if (timer.status === "running") pauseTimer();
+      else resumeTimer();
+    });
+    actions.appendChild(pb);
     var xb = el("button", "btn ghost", "Zurücksetzen");
     xb.type = "button";
     xb.addEventListener("click", function () {
       resetTimer();
-      closeTimerModal();
     });
     actions.appendChild(xb);
     box.appendChild(actions);
 
     // Every Fraktionsfreie Rede is always followed by a Zwischenrede - not
-    // a suggestion, so this is always offered once the FFR is up, not just
-    // once it's finished/reset.
-    if (
-      timer.type === "ffr" &&
-      timerElapsedMs() >= TIMER_TYPES.ffr.durationMs
-    ) {
-      var nb = el("button", "btn", "Zwischenrede starten");
-      nb.type = "button";
-      nb.addEventListener("click", function () {
-        closeTimerModal();
-        startTimer("reply");
-      });
-      box.appendChild(nb);
-    }
+    // a suggestion, so this is always offered once the FFR is up. Built
+    // once and shown/hidden by refreshTimerModalControls(), so crossing
+    // that threshold mid-speech doesn't rebuild the modal under the judge.
+    var nb = el("button", "btn", "Zwischenrede starten");
+    nb.id = "timerNextReply";
+    nb.type = "button";
+    nb.classList.toggle(
+      "hide",
+      !(timer.type === "ffr" && timerElapsedMs() >= TIMER_TYPES.ffr.durationMs),
+    );
+    nb.addEventListener("click", function () {
+      closeTimerModal();
+      startTimer("reply");
+    });
+    box.appendChild(nb);
   }
 
   var soundRow = el("div", "modalactions");
   var muteBtn = el(
     "button",
-    "btn ghost",
+    "btn ghost timermute" + (timerMuted() ? "" : " on"),
     timerMuted() ? "Ton: stumm" : "Ton: an (Glocke)",
   );
   muteBtn.type = "button";
   muteBtn.addEventListener("click", function () {
     toggleTimerMuted();
     muteBtn.textContent = timerMuted() ? "Ton: stumm" : "Ton: an (Glocke)";
+    muteBtn.classList.toggle("on", !timerMuted());
   });
   soundRow.appendChild(muteBtn);
   var testBtn = el("button", "btn ghost", "Testton");
@@ -1002,6 +1151,10 @@ function openTimerModal() {
   backdrop.appendChild(box);
   document.body.appendChild(backdrop);
   document.addEventListener("keydown", timerModalEscHandler);
+  if (!isRefresh) {
+    var focusables = timerModalFocusables();
+    if (focusables.length) focusables[0].focus();
+  }
 }
 
 // Repaints the compact .bar widget (shared markup for mobile top bar and
@@ -1009,45 +1162,60 @@ function openTimerModal() {
 function paintTimer() {
   var host = document.getElementById("timerWidget");
   if (!host) return;
-  host.textContent = "";
-  host.onclick = null;
   if (!ME) {
     host.classList.add("hide");
     return;
   }
   host.classList.remove("hide");
-  host.onclick = openTimerModal;
+
+  // Built once, then only its text and classes change. This runs on every
+  // 250ms tick, and wiping/rebuilding the children each time made the
+  // digits stutter (and threw away an in-progress tap on → Zwischenrede).
+  if (!timerWidgetParts || timerWidgetParts.host !== host) {
+    host.textContent = "";
+    var clock = el("span", "timerclock");
+    var label = el("span", "timerlabel");
+    var next = el("button", "timernext", "→ Zwischenrede");
+    next.type = "button";
+    next.addEventListener("click", function (e) {
+      e.stopPropagation();
+      startTimer("reply");
+    });
+    host.appendChild(clock);
+    host.appendChild(label);
+    host.appendChild(next);
+    host.onclick = function () {
+      openTimerModal();
+    };
+    timerWidgetParts = { host: host, clock: clock, label: label, next: next };
+  }
+  var p = timerWidgetParts;
 
   if (!timer.type) {
-    host.className = "timerwidget idle";
-    host.appendChild(el("span", "timerclock", "Timer"));
+    setCls(host, "timerwidget idle");
+    setText(p.clock, "Timer");
+    p.label.classList.add("hide");
+    p.next.classList.add("hide");
     return;
   }
 
   var elapsed = timerElapsedMs();
-  var cls = timerStateClass(timer.type, elapsed);
-  host.className =
-    "timerwidget " + cls + (timer.status !== "running" ? " paused" : "");
-  host.appendChild(
-    el(
-      "span",
-      "timerclock",
-      fmtTimerClock(
-        timerDisplayMs(elapsed, TIMER_TYPES[timer.type].durationMs),
-      ),
-    ),
+  setCls(
+    host,
+    "timerwidget " +
+      timerStateClass(timer.type, elapsed) +
+      (timer.status !== "running" ? " paused" : ""),
   );
-  host.appendChild(el("span", "timerlabel", TIMER_TYPES[timer.type].label));
-
-  if (timer.type === "ffr" && elapsed >= TIMER_TYPES.ffr.durationMs) {
-    var nb = el("button", "timernext", "→ Zwischenrede");
-    nb.type = "button";
-    nb.addEventListener("click", function (e) {
-      e.stopPropagation();
-      startTimer("reply");
-    });
-    host.appendChild(nb);
-  }
+  setText(
+    p.clock,
+    fmtTimerClock(timerDisplayMs(elapsed, TIMER_TYPES[timer.type].durationMs)),
+  );
+  setText(p.label, TIMER_TYPES[timer.type].label);
+  p.label.classList.remove("hide");
+  p.next.classList.toggle(
+    "hide",
+    !(timer.type === "ffr" && elapsed >= TIMER_TYPES.ffr.durationMs),
+  );
 }
 
 function connect() {
@@ -1174,7 +1342,7 @@ function resync() {
       snapToActiveSpeaker();
       updateChairTab();
       serverTimeOffsetMs = s.server_time * 1000 - Date.now();
-      applyTimerState(s.timer || {});
+      applyTimerState(s.timer || {}, true);
 
       deductions = {};
       (s.deductions || []).forEach(function (d) {
@@ -1272,13 +1440,14 @@ function resetRoomState() {
   ctc = 0;
   timer = {
     type: null,
-    label: "",
     status: "idle",
     durationMs: 0,
     elapsedMs: 0,
     startedAt: null,
+    updatedAt: 0,
   };
   timerFired = {};
+  timerLocalAt = 0;
   paintTimer();
   showView("namen");
 }
@@ -1288,7 +1457,7 @@ function leaveRoom() {
   resetRoomState();
   // history.pushState keeps a back-button escape hatch: a stray tap on
   // "Verlassen" is recoverable since opd.session.<code> stays around.
-  if (history.pushState) history.pushState({ left: true }, "", "/");
+  setHistoryUrl("pushState", { left: true }, "/");
   showLobby();
 }
 
@@ -2832,6 +3001,42 @@ document.addEventListener("keydown", function (e) {
   render();
 });
 
+// Alt+T opens/closes the timer, matching the other Alt+ shortcuts above -
+// grouped here mostly for hardware-keyboard desktop use, like them.
+document.addEventListener("keydown", function (e) {
+  if (!ME || !isDesktopWidth()) return;
+  if (!e.altKey || e.key.toLowerCase() !== "t") return;
+  e.preventDefault();
+  if (document.getElementById("timerModal")) closeTimerModal();
+  else openTimerModal();
+});
+// Traps Tab/Shift+Tab inside the timer modal while it's open, instead of
+// letting focus wander into the (still-live) view underneath it - the
+// modal has no real backdrop-dimming to make that boundary obvious
+// otherwise.
+document.addEventListener("keydown", function (e) {
+  if (e.key !== "Tab") return;
+  var m = document.getElementById("timerModal");
+  if (!m) return;
+  var f = timerModalFocusables();
+  if (!f.length) {
+    e.preventDefault();
+    return;
+  }
+  var first = f[0],
+    last = f[f.length - 1],
+    active = document.activeElement;
+  if (e.shiftKey) {
+    if (active === first || !m.contains(active)) {
+      e.preventDefault();
+      last.focus();
+    }
+  } else if (active === last || !m.contains(active)) {
+    e.preventDefault();
+    first.focus();
+  }
+});
+
 // Alt+, / Alt+. step to the previous/next speech on Blatt, mirroring the
 // header's mouse-only ‹/› buttons. Refocuses the same *kind* of field
 // (note vs. score) the user was in, so the keyboard flow isn't interrupted.
@@ -3551,6 +3756,7 @@ var SHORTCUTS = [
   ["Alt + 1 – 5", "Tabs direkt anzeigen"],
   ["Alt + , / Alt + .", "Vorherige / nächste Rede (Einzelreden)"],
   ["Alt + I", "Wechsel von Einzelrede zu Interaktionen der Gegenseite"],
+  ["Alt + T", "Timer öffnen/schließen"],
 ];
 // Features that exist but aren't announced by a visible label - a plain "·"
 // in a table cell, a menu entry easy to skim past, etc. Same audience as
@@ -5020,8 +5226,7 @@ function startSession(s) {
   document.getElementById("main").classList.remove("hide");
   document.getElementById("dock").classList.remove("hide");
   updateChairTab();
-  if (history.replaceState)
-    history.replaceState({ room: ME.code }, "", "/r/" + ME.code);
+  setHistoryUrl("replaceState", { room: ME.code }, "/r/" + ME.code);
   connect();
   acquireWakeLock();
   render();
@@ -5082,8 +5287,7 @@ function promoteOfflineRoom() {
       LS.set("opd.names." + ME.code, speakerNames);
       recordRecentRoom(ME.code, ME.name, ME.is_chair);
 
-      if (history.replaceState)
-        history.replaceState({ room: ME.code }, "", "/r/" + ME.code);
+      setHistoryUrl("replaceState", { room: ME.code }, "/r/" + ME.code);
 
       promotingOffline = false;
       connect();
@@ -5520,7 +5724,10 @@ window.addEventListener("appinstalled", function () {
 // boot function
 (function () {
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/static/sw.js");
+    // Rejects for a copy of the app served from anywhere it can't scope a
+    // worker (a saved-to-disk file:// copy being the obvious one) - that's
+    // just no offline caching, not a reason to leave a rejection dangling.
+    navigator.serviceWorker.register("/static/sw.js").catch(function () {});
   }
   if (isMobileViewport() && !isStandalone()) {
     document.getElementById("btnInstall").classList.remove("hide");

@@ -119,6 +119,7 @@ async def lifespan(app: FastAPI):
         "ALTER TABLE rooms ADD COLUMN timer_duration_ms INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE rooms ADD COLUMN timer_elapsed_ms INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE rooms ADD COLUMN timer_started_at REAL",
+        "ALTER TABLE rooms ADD COLUMN timer_updated_at REAL NOT NULL DEFAULT 0",
     ):
         try:
             con.execute(ddl)
@@ -340,6 +341,11 @@ class TimerAction(BaseModel):
 
 def timer_payload(room: sqlite3.Row) -> dict:
     return {
+        # updated_at lets a client tell whether a snapshot it just pulled is
+        # older than a timer action it took itself (most obviously one taken
+        # while offline, which the server never heard about) - see
+        # applyTimerState() in app.js.
+        "updated_at": room["timer_updated_at"],
         "type": room["timer_type"],
         "status": room["timer_status"],
         "duration_ms": room["timer_duration_ms"],
@@ -721,6 +727,9 @@ async def set_timer(code: str, body: TimerAction, token: str = Query(...)):
                     (new_elapsed, code),
                 )
 
+        # Every branch above either changed the timer or raised, so this is
+        # unconditional - it stamps when this room's timer last moved.
+        con.execute("UPDATE rooms SET timer_updated_at=? WHERE code=?", (now, code))
         con.commit()
         room = con.execute("SELECT * FROM rooms WHERE code=?", (code,)).fetchone()
         payload = timer_payload(room)
