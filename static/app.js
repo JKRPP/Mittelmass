@@ -47,6 +47,50 @@ function snapToActiveSpeaker() {
   var p = prevActiveSpeaker(cs);
   cs = p !== -1 ? p : nextActiveSpeaker(cs);
 }
+
+// Timer rubric: nominal duration + protected (no-interjection) windows, in
+// ms from the start of the speech. "protected" ranges are [from, to) pairs;
+// everything outside them is the open/non-protected window judges can ask
+// questions or interject in. The server is authoritative for durationMs
+// (TIMER_DURATIONS_MS in server.py) - this table only needs to match it so
+// the client can compute signal instants locally, without a round trip.
+var TIMER_TYPES = {
+  team: {
+    label: "Teamrede",
+    durationMs: 7 * 60 * 1000,
+    protected: [
+      [0, 60 * 1000],
+      [6 * 60 * 1000, 7 * 60 * 1000],
+    ],
+  },
+  ffr: {
+    label: "Fraktionsfreie Rede",
+    durationMs: 3 * 60 * 1000 + 30 * 1000,
+    protected: [
+      [0, 60 * 1000],
+      [3 * 60 * 1000, 3 * 60 * 1000 + 30 * 1000],
+    ],
+  },
+  reply: {
+    label: "Zwischenrede",
+    durationMs: 60 * 1000,
+    protected: [[0, 60 * 1000]],
+  },
+  // Judges' deliberation, not a speech - no protected/open windows or
+  // overdraw grace, just two flat cues: 1x as a wrap-up notice, 2x once
+  // discussion has run long. `signals` overrides the protected-window-
+  // derived pattern the speech types use (see timerSignalPoints below).
+  discussion: {
+    label: "Jurierdiskussion",
+    durationMs: 20 * 60 * 1000,
+    protected: [],
+    signals: [
+      { ms: 15 * 60 * 1000, times: 1 },
+      { ms: 20 * 60 * 1000, times: 2 },
+    ],
+  },
+};
+var OVERDRAW_GRACE_MS = 15 * 1000;
 function teamOf(s) {
   return SPEAKERS[s].team;
 }
@@ -414,6 +458,25 @@ var ws = null,
 var online = false,
   pending = 0;
 
+// Debate timer - room-wide, server-anchored (like spreadOpen/freeSpeakerCount
+// above): every judge sees the same clock. startedAt is a server epoch-
+// seconds timestamp (or null while paused/idle); serverTimeOffsetMs lets the
+// client compute "now" on the server's clock without trusting its own.
+var timer = {
+  type: null, // null | "team" | "ffr" | "reply"
+  label: "",
+  status: "idle", // idle | running | paused
+  durationMs: 0,
+  elapsedMs: 0,
+  startedAt: null,
+};
+var serverTimeOffsetMs = 0;
+// Which signal thresholds (ms into the current speech) have already rung,
+// so a repaint or a pause/resume doesn't re-fire a bell. Cleared whenever
+// the banked elapsed time returns to 0 (a fresh start or a reset).
+var timerFired = {};
+var timerAudioCtx = null;
+
 function kk(t, c) {
   return t + "|" + c;
 }
@@ -542,6 +605,451 @@ function flush() {
     });
 }
 
+// --- Debate timer -----------------------------------------------------
+
+// Personal, per-device preference (like gradeInputMode above) - only one
+// device in the room should actually sound the bell, so this is never sent
+// to the server.
+function timerMuted() {
+  return !!LS.get("opd.timerMuted", false);
+}
+function toggleTimerMuted() {
+  LS.set("opd.timerMuted", !timerMuted());
+  paintTimer();
+}
+
+// Also per-device: whether the displayed clock counts up from 0 (default)
+// or down from the nominal duration. Purely a display choice - the shared
+// elapsed/duration state and the bell signals are unaffected either way.
+function timerCountUp() {
+  return LS.get("opd.timerCountUp", true) !== false;
+}
+// The ms value to actually render, given the display-mode preference above.
+function timerDisplayMs(elapsedMs, durationMs) {
+  return timerCountUp() ? elapsedMs : durationMs - elapsedMs;
+}
+
+// Lazily created (and resumed) from inside a user gesture - start/resume
+// button handlers call this - so autoplay policies don't block the bell.
+function timerAudioCtx_() {
+  if (!timerAudioCtx) {
+    try {
+      timerAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch (e) {
+      return null;
+    }
+  }
+  if (timerAudioCtx.state === "suspended") {
+    timerAudioCtx.resume().catch(function () {});
+  }
+  return timerAudioCtx;
+}
+// Bell tone tuned in the Bell Tuner - a struck-idiophone approximation:
+// a few inharmonic sine partials over a fast-attack/exponential-decay
+// envelope, plus a short noise burst for the strike transient, so it
+// reads as a bell rather than a beep and cuts through a talking room.
+function playBellTones(times) {
+  var ctx = timerAudioCtx_();
+  if (!ctx) return;
+  var PARTIALS = [
+    { ratio: 1, gain: 1 },
+    { ratio: 2, gain: 0.37 },
+    { ratio: 3, gain: 0.24 },
+  ];
+  for (var i = 0; i < times; i++) {
+    var t0 = ctx.currentTime + i * 0.38;
+    var end = t0 + 0.005 + 0.9 + 0.05;
+
+    var master = ctx.createGain();
+    master.gain.setValueAtTime(0.0001, t0);
+    master.gain.exponentialRampToValueAtTime(0.9, t0 + 0.005);
+    master.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.005 + 0.9);
+    master.connect(ctx.destination);
+
+    PARTIALS.forEach(function (p) {
+      var osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = 1630 * p.ratio;
+      var g = ctx.createGain();
+      g.gain.value = p.gain;
+      osc.connect(g);
+      g.connect(master);
+      osc.start(t0);
+      osc.stop(end);
+    });
+
+    var noiseSec = 0.012;
+    var bufferSize = Math.round(ctx.sampleRate * noiseSec);
+    var buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    var data = buffer.getChannelData(0);
+    for (var n = 0; n < bufferSize; n++) data[n] = Math.random() * 2 - 1;
+    var noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    var noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.19, t0);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, t0 + noiseSec);
+    noise.connect(noiseGain);
+    noiseGain.connect(master);
+    noise.start(t0);
+  }
+}
+// Rings `times` short bell tones in a row. Muted devices stay silent so a
+// room with several judges' phones open doesn't sound the bell N times.
+function ringBell(times) {
+  if (timerMuted()) return;
+  playBellTones(times);
+}
+function testBell() {
+  playBellTones(1);
+}
+
+// Elapsed time (ms) into the current speech, computed from the last
+// server-broadcast state plus the server-clock offset - never from a local
+// "remaining time" that would drift across reconnects.
+function timerElapsedMs() {
+  if (!timer.type) return 0;
+  var e = timer.elapsedMs || 0;
+  if (timer.status === "running" && timer.startedAt) {
+    e += Date.now() + serverTimeOffsetMs - timer.startedAt * 1000;
+  }
+  return e;
+}
+// Signal instants (ms into the speech) and how many times the bell rings at
+// each, derived from TIMER_TYPES/OVERDRAW_GRACE_MS. Zwischenrede has no
+// non-protected window, so it only gets the 2x/3x signals.
+function timerSignalPoints(type) {
+  var t = TIMER_TYPES[type];
+  if (!t) return [];
+  // An explicit `signals` list (Jurierdiskussion) overrides the speech
+  // pattern below entirely - it has no protected/open windows or overdraw.
+  if (t.signals) return t.signals;
+  var pts = [];
+  if (t.protected.length === 2) {
+    pts.push({ ms: t.protected[0][1], times: 1 }); // open window starts
+    pts.push({ ms: t.protected[1][0], times: 1 }); // open window ends
+  }
+  pts.push({ ms: t.durationMs, times: 2 }); // nominal time ends
+  pts.push({ ms: t.durationMs + OVERDRAW_GRACE_MS, times: 3 }); // grace ends
+  return pts;
+}
+function timerStateClass(type, elapsedMs) {
+  var d = TIMER_TYPES[type].durationMs;
+  if (elapsedMs >= d + OVERDRAW_GRACE_MS) return "danger";
+  if (elapsedMs >= d - 30000) return "warn";
+  return "live";
+}
+function fmtTimerClock(ms) {
+  var neg = ms < 0;
+  var s = Math.floor(Math.abs(ms) / 1000);
+  var m = Math.floor(s / 60);
+  s = s % 60;
+  return (neg ? "+" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+}
+// The signal rail in the expanded modal spans 0 up to the end of the
+// overdraw grace, so every mark (including the final 3x signal) is visible.
+function timerBarMax(type) {
+  var t = TIMER_TYPES[type];
+  var max = t.durationMs + OVERDRAW_GRACE_MS;
+  timerSignalPoints(type).forEach(function (sig) {
+    if (sig.ms > max) max = sig.ms;
+  });
+  return max;
+}
+
+// Applies a {type,status,duration_ms,elapsed_ms,started_at} payload from
+// the server (snapshot or a "timer" ws broadcast) as the new shared state.
+// The widget only ever shows the speech kind (Teamrede/FFR/Zwischenrede),
+// never a speaker name or ordinal - which speech is being timed is picked
+// by the judge each time via the type buttons below, not carried
+// automatically.
+//
+// This is also where the fired-signals bookkeeping gets rebuilt - and it
+// must be rebuilt from the actual elapsed time, not just cleared, because
+// this runs on every resync() too (tab focus, visibility change, a ws
+// reconnect), not only on a real start/reset. The server's *banked*
+// elapsed_ms stays 0 for a running timer until its first pause, so a naive
+// "elapsed is 0 -> clear" wiped already-rung thresholds on every such
+// resync and made the bell re-ring minutes into an unpaused speech.
+function applyTimerState(t) {
+  timer = {
+    type: t.type || null,
+    status: t.status || "idle",
+    durationMs: t.duration_ms || 0,
+    elapsedMs: t.elapsed_ms || 0,
+    startedAt: t.started_at || null,
+  };
+  timerFired = {};
+  if (timer.type) {
+    var elapsed = timerElapsedMs();
+    timerSignalPoints(timer.type).forEach(function (sig) {
+      if (elapsed >= sig.ms) timerFired[sig.ms] = true;
+    });
+  }
+  paintTimer();
+}
+function timerActionRequest(action, extra) {
+  if (!ME) return;
+  var body = { action: action };
+  if (extra) for (var k in extra) body[k] = extra[k];
+  fetch(
+    "/api/rooms/" + ME.code + "/timer?token=" + encodeURIComponent(ME.token),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  ).catch(function () {});
+}
+function startTimer(type) {
+  timerAudioCtx_();
+  timerActionRequest("start", { type: type });
+}
+function pauseTimer() {
+  timerActionRequest("pause");
+}
+function resumeTimer() {
+  timerAudioCtx_();
+  timerActionRequest("resume");
+}
+function resetTimer() {
+  timerActionRequest("reset");
+}
+function adjustTimer(deltaMs) {
+  timerActionRequest("adjust", { delta_ms: deltaMs });
+}
+
+// Live-updates the expanded modal's big clock and signal bar, if it's open
+// (the modal's static parts - label, marks, buttons - only need building
+// once at openTimerModal(); only the clock text and fill width move).
+function refreshTimerModal() {
+  var clock = document.getElementById("timerBigClock");
+  if (!clock || !timer.type) return;
+  var elapsed = timerElapsedMs();
+  var cls = timerStateClass(timer.type, elapsed);
+  clock.className = "timerbigclock " + cls;
+  clock.textContent = fmtTimerClock(timerDisplayMs(elapsed, timer.durationMs));
+  var fill = document.getElementById("timerBarFill");
+  if (fill) {
+    fill.className = "timerbarfill " + cls;
+    fill.style.width =
+      Math.max(0, Math.min(100, (elapsed / timerBarMax(timer.type)) * 100)) +
+      "%";
+  }
+}
+
+// Ticks every 250ms (started at app init, below) - repaints the widget and
+// rings the bell at any signal instant crossed since the last tick.
+function tickTimer() {
+  if (!ME || !timer.type) return;
+  paintTimer();
+  refreshTimerModal();
+  if (timer.status !== "running") return;
+  var elapsed = timerElapsedMs();
+  timerSignalPoints(timer.type).forEach(function (sig) {
+    if (elapsed >= sig.ms && !timerFired[sig.ms]) {
+      timerFired[sig.ms] = true;
+      ringBell(sig.times);
+    }
+  });
+}
+setInterval(tickTimer, 250);
+
+function closeTimerModal() {
+  var m = document.getElementById("timerModal");
+  if (m) m.remove();
+  document.removeEventListener("keydown", timerModalEscHandler);
+}
+function timerModalEscHandler(e) {
+  if (e.key === "Escape") closeTimerModal();
+}
+// Tap target for the .bar widget - lets a judge pick a speech type and
+// start/pause/resume/reset the shared clock, or mute their own device.
+function openTimerModal() {
+  closeTimerModal();
+  var backdrop = el("div", "modalbackdrop");
+  backdrop.id = "timerModal";
+  backdrop.addEventListener("click", function (e) {
+    if (e.target === backdrop) closeTimerModal();
+  });
+
+  var box = el("div", "modalbox");
+  box.appendChild(el("h2", null, "Timer"));
+
+  if (!timer.type || timer.status === "idle") {
+    box.appendChild(el("p", "note", "Redeart wählen, um die Uhr zu starten."));
+    var typeRow = el("div", "timertypes");
+    ["team", "ffr", "reply", "discussion"].forEach(function (ty) {
+      var b = el("button", "btn ghost", TIMER_TYPES[ty].label);
+      b.type = "button";
+      b.addEventListener("click", function () {
+        closeTimerModal();
+        startTimer(ty);
+      });
+      typeRow.appendChild(b);
+    });
+    box.appendChild(typeRow);
+  } else {
+    box.appendChild(el("p", "note", TIMER_TYPES[timer.type].label));
+
+    var bigClock = el("div", "timerbigclock");
+    bigClock.id = "timerBigClock";
+    box.appendChild(bigClock);
+
+    var bar = el("div", "timerbar");
+    var fill = el("div", "timerbarfill");
+    fill.id = "timerBarFill";
+    bar.appendChild(fill);
+    timerSignalPoints(timer.type).forEach(function (sig) {
+      var mark = el("div", "timerbarmark");
+      mark.style.left = (sig.ms / timerBarMax(timer.type)) * 100 + "%";
+      bar.appendChild(mark);
+    });
+    box.appendChild(bar);
+    refreshTimerModal();
+
+    // For a speech timed a bit too early or too late - nudges the shared
+    // clock without closing the modal, so a judge can tap it a few times
+    // while watching the big clock/bar update. Doesn't touch the bell's
+    // fired-signals bookkeeping directly - applyTimerState() recomputes
+    // that from the corrected elapsed time on the broadcast this triggers,
+    // so a signal moved back into the future correctly rings again later.
+    var adjustRow = el("div", "modalactions");
+    var minusBtn = el("button", "btn ghost", "−5s");
+    minusBtn.type = "button";
+    minusBtn.addEventListener("click", function () {
+      adjustTimer(-5000);
+    });
+    adjustRow.appendChild(minusBtn);
+    var plusBtn = el("button", "btn ghost", "+5s");
+    plusBtn.type = "button";
+    plusBtn.addEventListener("click", function () {
+      adjustTimer(5000);
+    });
+    adjustRow.appendChild(plusBtn);
+    box.appendChild(adjustRow);
+
+    var actions = el("div", "modalactions");
+    if (timer.status === "running") {
+      var pb = el("button", "btn", "Pause");
+      pb.type = "button";
+      pb.addEventListener("click", function () {
+        pauseTimer();
+        closeTimerModal();
+      });
+      actions.appendChild(pb);
+    } else {
+      var rb = el("button", "btn", "Weiter");
+      rb.type = "button";
+      rb.addEventListener("click", function () {
+        resumeTimer();
+        closeTimerModal();
+      });
+      actions.appendChild(rb);
+    }
+    var xb = el("button", "btn ghost", "Zurücksetzen");
+    xb.type = "button";
+    xb.addEventListener("click", function () {
+      resetTimer();
+      closeTimerModal();
+    });
+    actions.appendChild(xb);
+    box.appendChild(actions);
+
+    // Every Fraktionsfreie Rede is always followed by a Zwischenrede - not
+    // a suggestion, so this is always offered once the FFR is up, not just
+    // once it's finished/reset.
+    if (
+      timer.type === "ffr" &&
+      timerElapsedMs() >= TIMER_TYPES.ffr.durationMs
+    ) {
+      var nb = el("button", "btn", "Zwischenrede starten");
+      nb.type = "button";
+      nb.addEventListener("click", function () {
+        closeTimerModal();
+        startTimer("reply");
+      });
+      box.appendChild(nb);
+    }
+  }
+
+  var soundRow = el("div", "modalactions");
+  var muteBtn = el(
+    "button",
+    "btn ghost",
+    timerMuted() ? "Ton: stumm" : "Ton: an (Glocke)",
+  );
+  muteBtn.type = "button";
+  muteBtn.addEventListener("click", function () {
+    toggleTimerMuted();
+    muteBtn.textContent = timerMuted() ? "Ton: stumm" : "Ton: an (Glocke)";
+  });
+  soundRow.appendChild(muteBtn);
+  var testBtn = el("button", "btn ghost", "Testton");
+  testBtn.type = "button";
+  testBtn.title =
+    "Spielt einen Ton ab, um zu prüfen, ob dieses Gerät hörbar ist.";
+  testBtn.addEventListener("click", testBell);
+  soundRow.appendChild(testBtn);
+  box.appendChild(soundRow);
+
+  var close = el("div", "modalactions");
+  var okBtn = el("button", "btn ghost", "Schließen");
+  okBtn.type = "button";
+  okBtn.addEventListener("click", closeTimerModal);
+  close.appendChild(okBtn);
+  box.appendChild(close);
+
+  backdrop.appendChild(box);
+  document.body.appendChild(backdrop);
+  document.addEventListener("keydown", timerModalEscHandler);
+}
+
+// Repaints the compact .bar widget (shared markup for mobile top bar and
+// the desktop docked header - see index.html's .bar).
+function paintTimer() {
+  var host = document.getElementById("timerWidget");
+  if (!host) return;
+  host.textContent = "";
+  host.onclick = null;
+  if (!ME) {
+    host.classList.add("hide");
+    return;
+  }
+  host.classList.remove("hide");
+  host.onclick = openTimerModal;
+
+  if (!timer.type) {
+    host.className = "timerwidget idle";
+    host.appendChild(el("span", "timerclock", "Timer"));
+    return;
+  }
+
+  var elapsed = timerElapsedMs();
+  var cls = timerStateClass(timer.type, elapsed);
+  host.className =
+    "timerwidget " + cls + (timer.status !== "running" ? " paused" : "");
+  host.appendChild(
+    el(
+      "span",
+      "timerclock",
+      fmtTimerClock(
+        timerDisplayMs(elapsed, TIMER_TYPES[timer.type].durationMs),
+      ),
+    ),
+  );
+  host.appendChild(el("span", "timerlabel", TIMER_TYPES[timer.type].label));
+
+  if (timer.type === "ffr" && elapsed >= TIMER_TYPES.ffr.durationMs) {
+    var nb = el("button", "timernext", "→ Zwischenrede");
+    nb.type = "button";
+    nb.addEventListener("click", function (e) {
+      e.stopPropagation();
+      startTimer("reply");
+    });
+    host.appendChild(nb);
+  }
+}
+
 function connect() {
   if (!ME) return;
   if (ME.pendingCreate) return; // offline room - no server room to connect to yet
@@ -612,6 +1120,8 @@ function connect() {
       freeSpeakerCount = m.count;
       snapToActiveSpeaker();
       render();
+    } else if (m.type === "timer") {
+      applyTimerState(m.timer);
     }
   };
   ws.onclose = function () {
@@ -663,6 +1173,8 @@ function resync() {
       freeSpeakerCount = s.free_speakers || 3;
       snapToActiveSpeaker();
       updateChairTab();
+      serverTimeOffsetMs = s.server_time * 1000 - Date.now();
+      applyTimerState(s.timer || {});
 
       deductions = {};
       (s.deductions || []).forEach(function (d) {
@@ -758,6 +1270,16 @@ function resetRoomState() {
   cc = 0;
   ct = 0;
   ctc = 0;
+  timer = {
+    type: null,
+    label: "",
+    status: "idle",
+    durationMs: 0,
+    elapsedMs: 0,
+    startedAt: null,
+  };
+  timerFired = {};
+  paintTimer();
   showView("namen");
 }
 function leaveRoom() {
@@ -796,6 +1318,19 @@ function applyGradeInputLabel() {
   var b = document.getElementById("menuGradeInput");
   if (b)
     b.textContent = "Eingabemodus: " + (gradeInputMode() ? "Noten" : "Punkte");
+}
+
+function applyTimerDisplayLabel() {
+  var b = document.getElementById("menuTimerDisplay");
+  if (b)
+    b.textContent =
+      "Timeranzeige: " + (timerCountUp() ? "hochzählen" : "herunterzählen");
+}
+function toggleTimerCountUp() {
+  LS.set("opd.timerCountUp", !timerCountUp());
+  applyTimerDisplayLabel();
+  paintTimer();
+  refreshTimerModal();
 }
 function toggleGradeInput() {
   LS.set("opd.gradeInput", !gradeInputMode());
@@ -886,6 +1421,7 @@ function paintBar() {
   document
     .getElementById("shortcutsBtn")
     .classList.toggle("hide", !isDesktopWidth());
+  paintTimer();
 }
 
 // Scoring state for local judge
@@ -4844,6 +5380,9 @@ document.getElementById("themeBtn").addEventListener("click", cycleTheme);
 document
   .getElementById("menuGradeInput")
   .addEventListener("click", toggleGradeInput);
+document
+  .getElementById("menuTimerDisplay")
+  .addEventListener("click", toggleTimerCountUp);
 document.getElementById("undoBtn").addEventListener("click", function () {
   var h = hist.pop();
   if (!h) return;
@@ -4915,6 +5454,7 @@ window.addEventListener("appinstalled", function () {
   }
   applyTheme(LS.get("opd.theme", "light"));
   applyGradeInputLabel();
+  applyTimerDisplayLabel();
   // Only an explicit /r/CODE link auto-resumes a session - landing on the
   // bare app URL always shows the lobby (with the recent-rooms list to
   // rejoin from), even if a session for some room is still cached.

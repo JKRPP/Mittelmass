@@ -113,6 +113,17 @@ async def lifespan(app: FastAPI):
         )
     except sqlite3.OperationalError:
         pass  # already there
+    for ddl in (
+        "ALTER TABLE rooms ADD COLUMN timer_type TEXT",
+        "ALTER TABLE rooms ADD COLUMN timer_status TEXT NOT NULL DEFAULT 'idle'",
+        "ALTER TABLE rooms ADD COLUMN timer_duration_ms INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE rooms ADD COLUMN timer_elapsed_ms INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE rooms ADD COLUMN timer_started_at REAL",
+    ):
+        try:
+            con.execute(ddl)
+        except sqlite3.OperationalError:
+            pass  # already there
     con.commit()
     con.close()
     yield
@@ -304,6 +315,39 @@ class ExclusionSet(BaseModel):
     excluded: bool = True
 
 
+# Nominal duration per timer type, in milliseconds - the server is the
+# source of truth (mirrors how free_speakers bounds are server-validated),
+# the client only ever sends which type it wants to start. "discussion" is
+# the judges' deliberation clock, not a speech - its "duration" is really
+# just the later of its two flat cues (see TIMER_TYPES.discussion in
+# app.js), used here only to size the room for a fresh start.
+TIMER_DURATIONS_MS = {
+    "team": 7 * 60 * 1000,
+    "ffr": 3 * 60 * 1000 + 30 * 1000,
+    "reply": 60 * 1000,
+    "discussion": 20 * 60 * 1000,
+}
+
+
+class TimerAction(BaseModel):
+    action: str = Field(pattern="^(start|pause|resume|reset|adjust)$")
+    type: Optional[str] = Field(default=None, pattern="^(team|ffr|reply|discussion)$")
+    # For "adjust" only - nudges the clock when timing started a bit too
+    # early/late. Bounded well past the buttons' +-5s so a client can't push
+    # the room's clock arbitrarily far in one call.
+    delta_ms: Optional[int] = Field(default=None, ge=-60_000, le=60_000)
+
+
+def timer_payload(room: sqlite3.Row) -> dict:
+    return {
+        "type": room["timer_type"],
+        "status": room["timer_status"],
+        "duration_ms": room["timer_duration_ms"],
+        "elapsed_ms": room["timer_elapsed_ms"],
+        "started_at": room["timer_started_at"],
+    }
+
+
 # Routes
 
 
@@ -422,6 +466,7 @@ async def snapshot(code: str, token: str = Query(...)):
             "closed": bool(room["closed_at"]),
             "spread_open": bool(room["spread_open"]),
             "free_speakers": room["free_speakers"],
+            "timer": timer_payload(room),
             "me": {
                 "judge_id": me["id"],
                 "name": me["display_name"],
@@ -607,6 +652,80 @@ async def set_free_speakers(
         con.commit()
         await hub.broadcast(code, {"type": "free_speakers", "count": count})
         return {"ok": True}
+    finally:
+        con.close()
+
+
+@app.post("/api/rooms/{code}/timer")
+async def set_timer(code: str, body: TimerAction, token: str = Query(...)):
+    code = code.upper()
+    con = db()
+    try:
+        auth(con, code, token)
+        room = con.execute("SELECT * FROM rooms WHERE code=?", (code,)).fetchone()
+        now = time.time()
+
+        if body.action == "start":
+            if body.type is None:
+                raise HTTPException(400, "type is required to start a timer")
+            con.execute(
+                """UPDATE rooms SET timer_type=?, timer_status='running',
+                       timer_duration_ms=?, timer_elapsed_ms=0, timer_started_at=?
+                   WHERE code=?""",
+                (body.type, TIMER_DURATIONS_MS[body.type], now, code),
+            )
+        elif body.action == "pause":
+            if room["timer_status"] != "running":
+                raise HTTPException(400, "timer is not running")
+            elapsed = room["timer_elapsed_ms"] + (now - room["timer_started_at"]) * 1000
+            con.execute(
+                """UPDATE rooms SET timer_status='paused', timer_elapsed_ms=?,
+                       timer_started_at=NULL WHERE code=?""",
+                (int(elapsed), code),
+            )
+        elif body.action == "resume":
+            if room["timer_status"] != "paused":
+                raise HTTPException(400, "timer is not paused")
+            con.execute(
+                "UPDATE rooms SET timer_status='running', timer_started_at=? WHERE code=?",
+                (now, code),
+            )
+        elif body.action == "reset":
+            con.execute(
+                """UPDATE rooms SET timer_status='idle', timer_elapsed_ms=0,
+                       timer_started_at=NULL WHERE code=?""",
+                (code,),
+            )
+        elif body.action == "adjust":
+            if room["timer_type"] is None:
+                raise HTTPException(400, "no timer to adjust")
+            if body.delta_ms is None:
+                raise HTTPException(400, "delta_ms is required to adjust")
+            if room["timer_status"] == "running":
+                # Live elapsed = timer_elapsed_ms (banked) + (now - started_at)
+                # * 1000 - so moving started_at earlier by delta_ms increases
+                # the live elapsed by delta_ms, later decreases it. Clamp so
+                # a large -5s tap right after starting can't push it negative.
+                new_started_at = room["timer_started_at"] - body.delta_ms / 1000.0
+                max_started_at = now + room["timer_elapsed_ms"] / 1000.0
+                if new_started_at > max_started_at:
+                    new_started_at = max_started_at
+                con.execute(
+                    "UPDATE rooms SET timer_started_at=? WHERE code=?",
+                    (new_started_at, code),
+                )
+            else:
+                new_elapsed = max(0, room["timer_elapsed_ms"] + body.delta_ms)
+                con.execute(
+                    "UPDATE rooms SET timer_elapsed_ms=? WHERE code=?",
+                    (new_elapsed, code),
+                )
+
+        con.commit()
+        room = con.execute("SELECT * FROM rooms WHERE code=?", (code,)).fetchone()
+        payload = timer_payload(room)
+        await hub.broadcast(code, {"type": "timer", "timer": payload})
+        return {"ok": True, "timer": payload}
     finally:
         con.close()
 

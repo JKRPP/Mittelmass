@@ -156,6 +156,117 @@ body {
   padding: 4px 8px;
   border-radius: 8px;
 }
+/* Debate timer widget - lives in .bar (shared by the mobile top bar and the
+   desktop docked header), so it costs no extra layout height of its own. */
+.timerwidget {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  max-width: 46vw;
+  overflow: hidden;
+}
+.timerwidget.idle {
+  color: var(--ink-3);
+}
+.timerwidget.live {
+  border-color: var(--live-line);
+  background: var(--live-bg);
+  color: var(--live);
+}
+.timerwidget.warn {
+  border-color: var(--line-2);
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.timerwidget.danger {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.timerwidget.paused {
+  opacity: 0.6;
+}
+.timerclock {
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.timerlabel {
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.timernext {
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.timertypes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+.timerbigclock {
+  font-size: 46px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  line-height: 1.1;
+  margin: 6px 0 12px;
+  color: var(--ink);
+}
+.timerbigclock.warn {
+  color: var(--warn);
+}
+.timerbigclock.danger {
+  color: var(--danger);
+}
+/* Signal rail: a thin bar spanning 0 up to the end of the overdraw grace,
+   with a tick at each bell instant (open window start/end, nominal end,
+   grace end) so a judge can see what's coming, not just the current time. */
+.timerbar {
+  position: relative;
+  height: 3px;
+  background: var(--line);
+  margin: 0 0 20px;
+}
+.timerbarfill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  background: var(--live);
+}
+.timerbarfill.warn {
+  background: var(--warn);
+}
+.timerbarfill.danger {
+  background: var(--danger);
+}
+.timerbarmark {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: var(--ink-3);
+}
 .menubtn[aria-expanded="true"] {
   background: var(--live-bg);
   color: var(--live);

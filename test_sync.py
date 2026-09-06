@@ -181,6 +181,99 @@ with TestClient(server.app) as c:
         refused = True
     check("websocket refuses a bogus token", refused)
 
+    # Debate timer: any judge can start it, it broadcasts to everyone, and
+    # pause/resume/reset behave server-side like the other room settings.
+    def timer_action(tok, body):
+        return c.post(f"/api/rooms/{code}/timer?token={tok}", json=body)
+
+    with c.websocket_connect(f"/ws/{code}?token={w1['token']}") as sock:
+        sock.receive_json()  # presence broadcast on connect
+        r = timer_action(w1["token"], {"action": "start", "type": "ffr"})
+        check("wing can start the timer", r.status_code == 200, r.text)
+        started = r.json()["timer"]
+        check(
+            "start sets ffr duration (3:30)",
+            started["duration_ms"] == 210_000,
+            started,
+        )
+        check("start is running", started["status"] == "running")
+
+        msg = None
+        for _ in range(5):
+            m = sock.receive_json()
+            if m.get("type") == "timer":
+                msg = m
+                break
+        check(
+            "timer start is broadcast over ws",
+            msg is not None and msg["timer"]["type"] == "ffr",
+            msg,
+        )
+
+    r = timer_action(chair["token"], {"action": "pause"})
+    check("chair can pause a wing-started timer", r.status_code == 200, r.text)
+    paused = r.json()["timer"]
+    check(
+        "pause banks elapsed time and clears started_at",
+        paused["status"] == "paused"
+        and paused["elapsed_ms"] > 0
+        and paused["started_at"] is None,
+        paused,
+    )
+    r = timer_action(chair["token"], {"action": "pause"})
+    check("pausing an already-paused timer is rejected", r.status_code == 400)
+
+    r = timer_action(chair["token"], {"action": "adjust", "delta_ms": 5000})
+    check(
+        "adjust +5s while paused increases banked elapsed by 5s",
+        r.status_code == 200 and r.json()["timer"]["elapsed_ms"] == paused["elapsed_ms"] + 5000,
+        r.text,
+    )
+    r = timer_action(chair["token"], {"action": "adjust", "delta_ms": -60_000})
+    check(
+        "adjust clamps paused elapsed at 0, never negative",
+        r.status_code == 200 and r.json()["timer"]["elapsed_ms"] == 0,
+        r.text,
+    )
+
+    r = timer_action(chair["token"], {"action": "resume"})
+    check("resume restarts the running clock", r.status_code == 200 and r.json()["timer"]["status"] == "running")
+    running_before = r.json()["timer"]
+
+    r = timer_action(chair["token"], {"action": "adjust", "delta_ms": 5000})
+    running_after = r.json()["timer"]
+    check(
+        "adjust +5s while running moves started_at 5s earlier",
+        running_after["status"] == "running"
+        and abs((running_before["started_at"] - running_after["started_at"]) - 5.0) < 0.5,
+        (running_before, running_after),
+    )
+    r = timer_action(chair["token"], {"action": "adjust", "delta_ms": -60_000})
+    check(
+        "adjust clamps a running timer instead of going negative",
+        r.status_code == 200 and r.json()["timer"]["status"] == "running",
+        r.text,
+    )
+
+    r = timer_action(chair["token"], {"action": "reset"})
+    reset = r.json()["timer"]
+    check(
+        "reset zeroes elapsed but keeps the last type",
+        reset["status"] == "idle" and reset["elapsed_ms"] == 0 and reset["type"] == "ffr",
+        reset,
+    )
+
+    snap = c.get(f"/api/rooms/{code}/snapshot?token={chair['token']}").json()
+    check("snapshot carries timer state for late joiners", snap["timer"]["type"] == "ffr", snap["timer"])
+
+    # Jurierdiskussion is a room-level deliberation clock, not a speech.
+    r = timer_action(chair["token"], {"action": "start", "type": "discussion"})
+    check(
+        "discussion timer starts with a 20-minute nominal duration",
+        r.status_code == 200 and r.json()["timer"]["duration_ms"] == 20 * 60 * 1000,
+        r.text,
+    )
+
 print()
 print("ALL PASS" if ok else "FAILURES ABOVE")
 sys.exit(0 if ok else 1)
