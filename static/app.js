@@ -883,6 +883,9 @@ function paintBar() {
   document
     .getElementById("menuGradeInput")
     .classList.toggle("hide", !isDesktopWidth());
+  document
+    .getElementById("shortcutsBtn")
+    .classList.toggle("hide", !isDesktopWidth());
 }
 
 // Scoring state for local judge
@@ -2111,6 +2114,9 @@ function renderDashChrome() {
     spreadOpen ? "Dashboard sperren" : "Dashboard freigeben",
   );
   dob.tabIndex = -1;
+  dob.title = spreadOpen
+    ? "Wings verlieren wieder den Zugriff auf das Dashboard"
+    : "Wings erhalten Lesezugriff auf eine reduzierte Ansicht des Dashboards (Spreads)";
   dob.addEventListener("click", function () {
     var next = !spreadOpen;
     fetch(
@@ -2143,15 +2149,6 @@ function renderDashChrome() {
           "/59",
       ),
     );
-    if (!j.is_chair) {
-      var x = el("button", "dashjbtn", j.hidden ? "Zu Wing" : "Zu Trainee");
-      x.tabIndex = -1;
-      x.addEventListener("click", function (e) {
-        e.stopPropagation();
-        confirmHiddenToggle(id, j.name, !j.hidden);
-      });
-      chip.appendChild(x);
-    }
     chips.appendChild(chip);
   });
 }
@@ -2809,6 +2806,111 @@ function openInfoModal(title, text) {
   document.body.appendChild(backdrop);
   document.addEventListener("keydown", infoModalEscHandler);
 }
+
+// Desktop-only cheat sheet for the Alt/Page keyboard shortcuts wired up
+// further down (dashNav cycling, Blatt speech stepping, Blatt<->Teampunkte
+// swap). Reuses the info-modal look but lists rows instead of one paragraph.
+var SHORTCUTS = [
+  ["Bild ↑ / Bild ↓", "Nächsten / vorherigen Tab auswählen"],
+  ["Alt + 1 – 5", "Tabs direkt anzeigen"],
+  ["Alt + , / Alt + .", "Vorherige / nächste Rede (Einzelreden)"],
+  ["Alt + I", "Wechsel von Einzelrede zu Interaktionen der Gegenseite"],
+];
+// Features that exist but aren't announced by a visible label - a plain "·"
+// in a table cell, a menu entry easy to skim past, etc. Same audience as
+// SHORTCUTS: someone who knows OPD but not this particular tool.
+var MORE_FEATURES = [
+  [
+    "Eingabemodus: Noten/Punkte",
+    "Im Menü (oben Rechts) kannst du den Eingabe Modus von Punkten (9,12,15 etc.) auf Noten (3+, 1-, 1+ etc.) umschalten. Bereits eingegebene Werte werden automatisch umgerechnet.",
+  ],
+  [
+    "Abzüge",
+    "Chairs können durch die Knöpfe bei Einzelreden oder das Anklicken der 'Abz.' Spalte im 'Komplette Wertung' Tab zwischen Keinen, Kleinen (-3) und Großen (-15) Abzügen hin- und herschalten.",
+  ],
+  [
+    "Aus Wertung nehmen",
+    "Der Knopf 'aus Wertung nehmen' in Einzelreden / Teamkategorien lässt eure Punkte nicht mit in die Finalwertung einfließen.",
+  ],
+  [
+    "Zu Trainee",
+    "Chairs können auf dem Namen-Tab Wings zu Trainees machen. Sie können dann Punkte wie alle Jurierenden vergeben, fließen aber nicht in den Durchschnitt ein.",
+  ],
+  [
+    "Dashboard freigeben",
+    "Der Button 'Dashboard Freigeben' erlaubt es Chairs, Wings und Trainees die Ansicht der Abweichungen freizugeben",
+  ],
+  [
+    "Anzahl FFRs",
+    "Chairs können im Menü oben Rechts mehr freie Reden einstellen (min. 3, max. 10)",
+  ],
+  [
+    "Link kopieren",
+    "Menü: Einladungslink für diesen Raum in die Zwischenablage kopieren",
+  ],
+];
+function closeShortcutsModal() {
+  var m = document.getElementById("shortcutsModal");
+  if (m) m.remove();
+  document.removeEventListener("keydown", shortcutsModalEscHandler);
+}
+function shortcutsModalEscHandler(e) {
+  if (e.key === "Escape") closeShortcutsModal();
+}
+function openShortcutsModal() {
+  closeShortcutsModal();
+
+  var backdrop = el("div", "modalbackdrop");
+  backdrop.id = "shortcutsModal";
+  backdrop.addEventListener("click", function (e) {
+    if (e.target === backdrop) closeShortcutsModal();
+  });
+
+  var box = el("div", "modalbox");
+  box.appendChild(el("h2", null, "Tastenkürzel"));
+  var list = el("div", "shortcutlist");
+  for (var i = 0; i < SHORTCUTS.length; i++) {
+    var row = el("div", "shortcutrow");
+    row.appendChild(el("kbd", null, SHORTCUTS[i][0]));
+    row.appendChild(el("span", null, SHORTCUTS[i][1]));
+    list.appendChild(row);
+  }
+  box.appendChild(list);
+
+  box.appendChild(el("h2", "shortcutsub", "Weitere Funktionen"));
+  var more = el("div", "shortcutlist");
+  for (var j = 0; j < MORE_FEATURES.length; j++) {
+    var mrow = el("div", "shortcutrow featurerow");
+    mrow.appendChild(el("span", "featurename", MORE_FEATURES[j][0]));
+    mrow.appendChild(el("span", null, MORE_FEATURES[j][1]));
+    more.appendChild(mrow);
+  }
+  box.appendChild(more);
+
+  var actions = el("div", "modalactions");
+  var okBtn = el("button", "btn", "OK");
+  okBtn.type = "button";
+  okBtn.addEventListener("click", closeShortcutsModal);
+  actions.appendChild(okBtn);
+  box.appendChild(actions);
+
+  backdrop.appendChild(box);
+  document.body.appendChild(backdrop);
+  document.addEventListener("keydown", shortcutsModalEscHandler);
+}
+document
+  .getElementById("shortcutsBtn")
+  .addEventListener("click", openShortcutsModal);
+// "?" opens the shortcuts cheat sheet too - standard convention, alongside
+// the always-visible icon button above for anyone who doesn't know it.
+document.addEventListener("keydown", function (e) {
+  if (!ME || !isDesktopWidth()) return;
+  if (e.key !== "?") return;
+  var ae = document.activeElement;
+  if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA")) return;
+  e.preventDefault();
+  openShortcutsModal();
+});
 
 function closeBallotExportModal() {
   var m = document.getElementById("ballotExportModal");
@@ -4023,6 +4125,9 @@ function renderNamenRoom() {
       var btn = el("button", "juryab", j.hidden ? "Zu Wing" : "Zu Trainee");
       btn.type = "button";
       btn.tabIndex = -1;
+      btn.title = j.hidden
+        ? "Wertung wieder in den Schnitt einbeziehen"
+        : "Aus der Wertung nehmen (Punkte bleiben gespeichert, zählen aber nicht mehr in den Schnitt)";
       btn.addEventListener("click", function () {
         confirmHiddenToggle(id, j.name, !j.hidden);
       });

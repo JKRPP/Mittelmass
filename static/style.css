@@ -160,6 +160,17 @@ body {
   background: var(--live-bg);
   color: var(--live);
 }
+#shortcutsBtn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 50%;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 .menupanel {
   position: absolute;
   top: 100%;
@@ -1762,6 +1773,47 @@ tr.deducted td.l {
 .ballotexportjrow .nm {
   flex: 1;
   min-width: 0;
+}
+.shortcutlist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.shortcutrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.shortcutrow kbd {
+  flex: 0 0 auto;
+  min-width: 90px;
+  text-align: center;
+  padding: 3px 8px;
+  border: 1px solid var(--line-2);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--bg-2, var(--card));
+  font-family: inherit;
+  font-size: 12px;
+}
+.shortcutrow span {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+.shortcutsub {
+  margin: 18px 0 8px !important;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.featurerow {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.featurename {
+  color: var(--ink) !important;
+  font-size: 13px !important;
+  font-weight: 500;
 }
 .modalactions {
   display: flex;

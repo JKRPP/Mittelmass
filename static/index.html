@@ -202,7 +202,12 @@
             <span class="dot" id="cdot"></span>
             <span id="cstate">verbinde …</span>
             <div class="dashnav hide" id="dashNav">
-              <button data-dv="namen" aria-pressed="true" tabindex="-1">
+              <button
+                data-dv="namen"
+                aria-pressed="true"
+                tabindex="-1"
+                title="Namen eingeben (lokal) und Status der Jurierenden ändern"
+              >
                 Namen
               </button>
               <button
@@ -222,21 +227,50 @@
                 Team
               </button>
 
-              <button data-dv="blatt" aria-pressed="false" tabindex="-1">
+              <button
+                data-dv="blatt"
+                aria-pressed="false"
+                tabindex="-1"
+                title="Notizen und Punkte für Einzelreden (digitaler Jurierbogen)"
+              >
                 Einzelreden
               </button>
-              <button data-dv="teampoints" aria-pressed="false" tabindex="-1">
+              <button
+                data-dv="teampoints"
+                aria-pressed="false"
+                tabindex="-1"
+                title="Notizen und Punkte für Teampunkte (digitaler Jurierbogen)"
+              >
                 Teampunkte
               </button>
-              <button data-dv="schnell" aria-pressed="false" tabindex="-1">
+              <button
+                data-dv="schnell"
+                aria-pressed="false"
+                tabindex="-1"
+                title="Übersicht über deine Punkte und Eingaberaster"
+              >
                 Komplette Wertung
               </button>
-              <button data-dv="dashboard" aria-pressed="false" tabindex="-1">
+              <button
+                data-dv="dashboard"
+                aria-pressed="false"
+                tabindex="-1"
+                title="Übersicht über Spreads und Status von Jurierenden"
+              >
                 Dashboard
               </button>
             </div>
             <span class="sp"></span>
             <div class="dashjury hide" id="dashJury"></div>
+            <button
+              class="menubtn hide"
+              id="shortcutsBtn"
+              aria-label="Tastenkürzel"
+              title="Tastenkürzel anzeigen"
+              tabindex="-1"
+            >
+              ?
+            </button>
             <button
               class="menubtn"
               id="menuBtn"
