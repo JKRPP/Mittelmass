@@ -125,8 +125,12 @@ with TestClient(server.app) as c:
     )
     check("chair can remove a judge", r.status_code == 200)
     snap = c.get(f"/api/rooms/{code}/snapshot?token={chair['token']}").json()
-    hidden_gone = all(s["judge_id"] != w2["judge_id"] for s in snap["scores"])
-    check("removed judge drops out of scores", hidden_gone)
+    hidden_kept = any(s["judge_id"] == w2["judge_id"] for s in snap["scores"])
+    check("hidden judge's scores still sent (client aggregates exclude them)", hidden_kept)
+    hidden_flagged = any(
+        j["id"] == w2["judge_id"] and j["hidden"] for j in snap["judges"]
+    )
+    check("hidden judge flagged in judges list", hidden_flagged)
 
     # cross-room token must not work
     other = c.post(

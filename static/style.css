@@ -1232,6 +1232,14 @@ tr.deducted td.l {
 #v-dashboard .ballottable tr.deducted:hover td {
   background: color-mix(in srgb, var(--ink) 10%, var(--danger-bg));
 }
+
+/* Trainee columns in the Wertungsvergleich: shown for context, but visibly
+   excluded from Ø/Spread since their scores never factor into either. */
+.ballottable .trainee {
+  color: var(--ink-3);
+  opacity: 0.6;
+  font-style: italic;
+}
 .dedbadge {
   color: var(--danger);
   font-weight: 500;
@@ -1726,6 +1734,16 @@ tr.deducted td.l {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+.dashtraineetoggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink-3);
+  cursor: pointer;
+  white-space: nowrap;
 }
 .modalbackdrop {
   position: fixed;

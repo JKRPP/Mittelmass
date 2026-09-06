@@ -1337,8 +1337,11 @@ function avgRound(vals) {
   return Math.round((sum / vals.length) * 100) / 100;
 }
 // Shared chair math, used by both mobile chair view and desktop dashboard.
-function computeChairSummary() {
-  var ids = activeJudges();
+// includeHidden: local-only override for the Redner:innen/Teampunkte spread
+// toggle - every other caller leaves it off and gets the usual
+// trainees-excluded math untouched.
+function computeChairSummary(includeHidden) {
+  var ids = includeHidden ? Object.keys(peers) : activeJudges();
   function includedFor(id, target) {
     return !(remoteExclusions[id] && remoteExclusions[id][target]);
   }
@@ -2285,7 +2288,10 @@ function dashJudgeChips(judges) {
   return wrap;
 }
 
-function dashSpeakerGroup(label, teamVal, summary) {
+// spreadSummary is a separate computeChairSummary() call (potentially with
+// includeHidden) used only for the spread badge - avg always stays on the
+// regular, trainees-excluded summary.
+function dashSpeakerGroup(label, teamVal, summary, spreadSummary) {
   var wrap = el("div");
   var rows = activeSpeakerIndices().filter(function (s) {
     return SPEAKERS[s].team === teamVal;
@@ -2300,7 +2306,7 @@ function dashSpeakerGroup(label, teamVal, summary) {
     row.appendChild(el("span", "lb", speakerLabel(s)));
     var avg = summary.speakerRows[s].avg;
     row.appendChild(el("span", "vl", avg === null ? "·" : avg.toFixed(1)));
-    var tot = summary.totals.filter(function (t) {
+    var tot = spreadSummary.totals.filter(function (t) {
       return t.key === "s" + s;
     })[0];
     row.appendChild(dashSpreadBadge(tot ? tot.spread : null));
@@ -2313,26 +2319,51 @@ function dashSpeakerGroup(label, teamVal, summary) {
   return wrap;
 }
 
-function dashSpeakerPanel(summary) {
+// Local-only (not synced, not persisted) override for the Redner:innen/
+// Teampunkte spread: purely a display choice for whoever is looking at this
+// dashboard right now, so it stays a plain var rather than going through
+// LS like gradeInputMode does.
+var dashIncludeTrainees = false;
+function dashTraineeToggle() {
+  var lbl = el("label", "dashtraineetoggle");
+  var cb = el("input");
+  cb.type = "checkbox";
+  cb.checked = dashIncludeTrainees;
+  cb.addEventListener("change", function () {
+    dashIncludeTrainees = cb.checked;
+    renderDashboard();
+  });
+  lbl.appendChild(cb);
+  lbl.appendChild(document.createTextNode(" Spread inkl. Trainees"));
+  return lbl;
+}
+
+function dashSpeakerPanel(summary, spreadSummary) {
   var panel = el("div", "dashpanel dashpanel-grow3");
-  var head = el("div", "dashpanelhead");
+  var head = el("div", "dashpanelhead dashpanelhead-row");
   head.appendChild(el("h2", null, "Redner:innen"));
+  head.appendChild(dashTraineeToggle());
   panel.appendChild(head);
   var body = el("div", "dashpanelbody");
-  body.appendChild(dashSpeakerGroup("Regierung", 0, summary));
-  body.appendChild(dashSpeakerGroup("Opposition", 1, summary));
-  body.appendChild(dashSpeakerGroup("Fraktionsfrei", null, summary));
+  body.appendChild(dashSpeakerGroup("Regierung", 0, summary, spreadSummary));
+  body.appendChild(dashSpeakerGroup("Opposition", 1, summary, spreadSummary));
+  body.appendChild(
+    dashSpeakerGroup("Fraktionsfrei", null, summary, spreadSummary),
+  );
   panel.appendChild(body);
   return panel;
 }
 
-function dashTeamGroupRows(summary) {
+function dashTeamGroupRows(summary, spreadSummary) {
   var wrap = el("div");
   TEAMS.forEach(function (tm, t) {
     wrap.appendChild(el("div", "dashgrp", tm));
     summary.teamGroups.forEach(function (g) {
       var teamCls = t === 0 ? "team-gov" : "team-opp";
       var gc = summary.groupCells.filter(function (x) {
+        return x.key === "t" + t + "/grp-" + tm + " · " + g;
+      })[0];
+      var spreadGc = spreadSummary.groupCells.filter(function (x) {
         return x.key === "t" + t + "/grp-" + tm + " · " + g;
       })[0];
       var sel =
@@ -2342,7 +2373,7 @@ function dashTeamGroupRows(summary) {
       var row = el("div", "dashspk " + teamCls + (sel ? " sel" : ""));
       row.appendChild(el("span", "lb", g));
       row.appendChild(el("span", "vl", gc ? gc.avg.toFixed(1) : "·"));
-      row.appendChild(dashSpreadBadge(gc ? gc.spread : null));
+      row.appendChild(dashSpreadBadge(spreadGc ? spreadGc.spread : null));
       row.addEventListener("click", function () {
         dashboardSelected = { kind: "team", t: t, grp: g };
         renderDashboard();
@@ -2353,21 +2384,29 @@ function dashTeamGroupRows(summary) {
   return wrap;
 }
 
-function dashTeamPanel(summary) {
+function dashTeamPanel(summary, spreadSummary) {
   var panel = el("div", "dashpanel dashpanel-grow2");
-  var head = el("div", "dashpanelhead");
+  var head = el("div", "dashpanelhead dashpanelhead-row");
   head.appendChild(el("h2", null, "Teampunkte"));
+  head.appendChild(dashTraineeToggle());
   panel.appendChild(head);
   var body = el("div", "dashpanelbody");
-  body.appendChild(dashTeamGroupRows(summary));
+  body.appendChild(dashTeamGroupRows(summary, spreadSummary));
   panel.appendChild(body);
   return panel;
 }
 
+// summary stays the trainees-excluded math used everywhere else (ballot
+// tables, exports, mobile chair view) and still feeds the averages here;
+// only the spread badge in these two panels can switch to an alternate,
+// includeHidden summary via the local/unsynced dashIncludeTrainees toggle.
 function dashColA(summary) {
   var col = el("div", "dashcol dashcol-a");
-  col.appendChild(dashSpeakerPanel(summary));
-  col.appendChild(dashTeamPanel(summary));
+  var spreadSummary = dashIncludeTrainees
+    ? computeChairSummary(true)
+    : summary;
+  col.appendChild(dashSpeakerPanel(summary, spreadSummary));
+  col.appendChild(dashTeamPanel(summary, spreadSummary));
   return col;
 }
 
@@ -2458,12 +2497,17 @@ function dashSpreadCell(spread) {
 }
 
 function dashBallotTable(summary, s) {
-  var chairFirst = chairFirstIds(summary.ids);
+  // Trainees are shown for context but greyed out (.trainee) - never counted
+  // into vals/totVals, which stay gated on the active (non-hidden) judges
+  // summary.ids already resolves to.
+  var chairFirst = chairFirstIds(Object.keys(peers));
   var table = el("table", "ballottable");
   var head = el("tr");
   head.appendChild(el("th", "l", "Kriterium"));
   chairFirst.forEach(function (id) {
-    head.appendChild(el("th", null, peers[id].name));
+    head.appendChild(
+      el("th", peers[id].hidden ? "trainee" : null, peers[id].name),
+    );
   });
   head.appendChild(el("th", null, "Ø"));
   head.appendChild(el("th", null, "Spread"));
@@ -2477,8 +2521,19 @@ function dashBallotTable(summary, s) {
     var vals = [];
     chairFirst.forEach(function (id) {
       var v = (remote[id] || {})[kk("s" + s, c.key)];
-      tr.appendChild(el("td", null, v === undefined ? "·" : String(v)));
-      if (summary.includedFor(id, "s" + s) && v !== undefined) vals.push(v);
+      tr.appendChild(
+        el(
+          "td",
+          peers[id].hidden ? "trainee" : null,
+          v === undefined ? "·" : String(v),
+        ),
+      );
+      if (
+        !peers[id].hidden &&
+        summary.includedFor(id, "s" + s) &&
+        v !== undefined
+      )
+        vals.push(v);
     });
     var avg = avgRound(vals);
     tr.appendChild(el("td", "tot", avg === null ? "·" : String(avg)));
@@ -2490,8 +2545,15 @@ function dashBallotTable(summary, s) {
   var totVals = [];
   chairFirst.forEach(function (id) {
     var v = summary.remoteTotal(id, s);
-    totTr.appendChild(el("td", "tot", v === null ? "·" : String(v)));
-    if (summary.includedFor(id, "s" + s) && v !== null) totVals.push(v);
+    totTr.appendChild(
+      el(
+        "td",
+        "tot" + (peers[id].hidden ? " trainee" : ""),
+        v === null ? "·" : String(v),
+      ),
+    );
+    if (!peers[id].hidden && summary.includedFor(id, "s" + s) && v !== null)
+      totVals.push(v);
   });
   var totAvg = avgRound(totVals);
   totTr.appendChild(el("td", "tot", totAvg === null ? "·" : String(totAvg)));
@@ -2512,7 +2574,10 @@ function dashBallotTable(summary, s) {
 }
 
 function dashTeamBallotTable(summary, t, grp) {
-  var chairFirst = chairFirstIds(summary.ids);
+  // Trainees are shown for context but greyed out (.trainee) - never counted
+  // into vals/totVals, which stay gated on the active (non-hidden) judges
+  // summary.ids already resolves to.
+  var chairFirst = chairFirstIds(Object.keys(peers));
   var cats = TEAMCATS.filter(function (c) {
     return c.grp === grp;
   });
@@ -2520,7 +2585,9 @@ function dashTeamBallotTable(summary, t, grp) {
   var head = el("tr");
   head.appendChild(el("th", "l", "Kategorie"));
   chairFirst.forEach(function (id) {
-    head.appendChild(el("th", null, peers[id].name));
+    head.appendChild(
+      el("th", peers[id].hidden ? "trainee" : null, peers[id].name),
+    );
   });
   head.appendChild(el("th", null, "Ø"));
   head.appendChild(el("th", null, "Spread"));
@@ -2534,8 +2601,19 @@ function dashTeamBallotTable(summary, t, grp) {
     var vals = [];
     chairFirst.forEach(function (id) {
       var v = (remote[id] || {})[kk("t" + t, c.key)];
-      tr.appendChild(el("td", null, v === undefined ? "·" : String(v)));
-      if (summary.includedFor(id, "t" + t) && v !== undefined) vals.push(v);
+      tr.appendChild(
+        el(
+          "td",
+          peers[id].hidden ? "trainee" : null,
+          v === undefined ? "·" : String(v),
+        ),
+      );
+      if (
+        !peers[id].hidden &&
+        summary.includedFor(id, "t" + t) &&
+        v !== undefined
+      )
+        vals.push(v);
     });
     var avg = avgRound(vals);
     tr.appendChild(el("td", "tot", avg === null ? "·" : String(avg)));
@@ -2556,8 +2634,15 @@ function dashTeamBallotTable(summary, t, grp) {
       }
       sum += v;
     });
-    totTr.appendChild(el("td", "tot", complete ? String(sum) : "·"));
-    if (summary.includedFor(id, "t" + t) && complete) totVals.push(sum);
+    totTr.appendChild(
+      el(
+        "td",
+        "tot" + (peers[id].hidden ? " trainee" : ""),
+        complete ? String(sum) : "·",
+      ),
+    );
+    if (!peers[id].hidden && summary.includedFor(id, "t" + t) && complete)
+      totVals.push(sum);
   });
   var totAvg = avgRound(totVals);
   totTr.appendChild(el("td", "tot", totAvg === null ? "·" : String(totAvg)));
@@ -2577,7 +2662,7 @@ function dashSpeakerBallotPanel(summary, s) {
   );
   var head = el("div", "dashpanelhead");
   head.appendChild(el("h2", null, speakerLabel(s)));
-  head.appendChild(el("div", "sub", "Ballotvergleich"));
+  head.appendChild(el("div", "sub", "Wertungsvergleich"));
   panel.appendChild(head);
   var body = el("div", "dashpanelbody dashpanelbody-table");
   body.appendChild(dashBallotTable(summary, s));
@@ -2590,7 +2675,7 @@ function dashTeamBallotPanel(summary, t, grp) {
   panel.classList.add(t === 0 ? "team-gov" : "team-opp");
   var head = el("div", "dashpanelhead");
   head.appendChild(el("h2", null, TEAMS[t] + " · " + grp));
-  head.appendChild(el("div", "sub", "Ballotvergleich"));
+  head.appendChild(el("div", "sub", "Wertungsvergleich"));
   panel.appendChild(head);
   var body = el("div", "dashpanelbody dashpanelbody-table");
   body.appendChild(dashTeamBallotTable(summary, t, grp));

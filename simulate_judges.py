@@ -14,6 +14,7 @@ criteria, 0-max for team categories) — not snapped to the discrete rating-scal
 steps the UI itself offers, since the server doesn't enforce that and it's not
 needed to exercise sync/aggregation/UI behavior under load.
 """
+
 import argparse
 import json
 import random
@@ -51,7 +52,9 @@ def http(method, url, body=None):
 
 
 def client_id():
-    return "sim_" + "".join(random.choices(string.ascii_lowercase + string.digits, k=16))
+    return "sim_" + "".join(
+        random.choices(string.ascii_lowercase + string.digits, k=16)
+    )
 
 
 def make_patches(incomplete_frac):
@@ -84,12 +87,16 @@ def main():
     ap.add_argument(
         "--judges",
         type=int,
-        default=5,
+        default=2,
         help="Number of judges to simulate, including the chair when creating a new room",
     )
-    ap.add_argument("--code", help="Join an existing room instead of creating a new one")
     ap.add_argument(
-        "--motion", default="Dies ist eine Testrunde", help="Motion, only used when creating a room"
+        "--code", help="Join an existing room instead of creating a new one"
+    )
+    ap.add_argument(
+        "--motion",
+        default="Dies ist eine Testrunde",
+        help="Motion, only used when creating a room",
     )
     ap.add_argument(
         "--incomplete",
@@ -153,7 +160,10 @@ def main():
                 {"patches": batch},
             )
             if status != 200:
-                print(f"  patch batch failed for {j['name']}: {status} {res}", file=sys.stderr)
+                print(
+                    f"  patch batch failed for {j['name']}: {status} {res}",
+                    file=sys.stderr,
+                )
         print(f"  {j['name']}: submitted {len(patches)} scores")
 
     print()

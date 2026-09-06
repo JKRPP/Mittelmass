@@ -399,10 +399,13 @@ async def snapshot(code: str, token: str = Query(...)):
     try:
         me = auth(con, code, token)
         room = con.execute("SELECT * FROM rooms WHERE code=?", (code,)).fetchone()
+        # Hidden (trainee) judges' scores are still sent - the dashboard shows
+        # them greyed out - just excluded from aggregates client-side via
+        # activeJudges()/computeChairSummary().
         rows = con.execute(
             """SELECT s.judge_id, s.target, s.criterion, s.points, s.seq
                FROM scores s JOIN judges j ON j.id = s.judge_id
-               WHERE j.room_code=? AND j.hidden=0""",
+               WHERE j.room_code=?""",
             (code,),
         ).fetchall()
         deds = con.execute(
@@ -440,7 +443,8 @@ async def apply_patches(code: str, body: PatchBatch, token: str = Query(...)):
     con = db()
     try:
         me = auth(con, code, token)
-        # A hidden judge can still score - just excluded from /snapshot's aggregates until un-hidden.
+        # A hidden judge can still score - their scores are sent as usual,
+        # just excluded from the client's chair-summary aggregates until un-hidden.
         now = time.time()
         applied, stale = [], 0
         for p in body.patches:
