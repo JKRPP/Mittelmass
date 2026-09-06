@@ -1985,6 +1985,12 @@ var DASH_WIDE_VIEWS = ["dashboard", "schnell", "blatt", "teampoints", "namen"];
 // Remembers the last-focused field id per view ("blatt"/"teampoints"), so
 // Alt+Space can swap between the two and land back where you were.
 var lastFocusByView = {};
+// Persists the desktop nav tab across a reload, per room - so refreshing
+// mid-Blatt doesn't bounce back to Namen. Mirrors showView()'s LS write below.
+function setDashboardView(v) {
+  dashboardView = v;
+  if (ME) LS.set("opd.dashboardView." + ME.code, v);
+}
 
 function isDesktopWidth() {
   return !!(ME && window.matchMedia("(min-width: 1024px)").matches);
@@ -2005,6 +2011,13 @@ function effectiveDashboardView() {
   )
     return "schnell";
   return dashboardView;
+}
+// Mirrors effectiveDashboardView() for the mobile tab bar: a restored
+// view="chair" falls back to "namen" if it's no longer reachable (chair
+// status lost, or the chair since locked spreadOpen again).
+function effectiveMobileView() {
+  if (view === "chair" && !ME.is_chair && !spreadOpen) return "namen";
+  return view;
 }
 
 function applyLayoutMode() {
@@ -2062,7 +2075,7 @@ function applyLayoutMode() {
     // Restore dock (hidden by the "wide" branch) on plain mobile - otherwise
     // shrinking down from desktop leaves no way to score.
     document.getElementById("dock").classList.remove("hide");
-    showView(view);
+    showView(effectiveMobileView());
     syncDockSpacer();
   }
   return changed;
@@ -2159,7 +2172,7 @@ document.getElementById("dashNav").addEventListener("click", function (e) {
   var b = e.target.closest("button[data-dv]");
   if (!b) return;
   if (b.dataset.dv === "dashboard" && !ME.is_chair && !spreadOpen) return;
-  dashboardView = b.dataset.dv;
+  setDashboardView(b.dataset.dv);
   render();
 });
 // PageUp/PageDown cycle nav views - the keyboard route now that tab order skips the chrome.
@@ -2181,7 +2194,7 @@ document.addEventListener("keydown", function (e) {
   var dir = e.key === "PageDown" ? 1 : -1;
   var nextIdx = (idx + dir + btns.length) % btns.length;
   e.preventDefault();
-  dashboardView = btns[nextIdx].dataset.dv;
+  setDashboardView(btns[nextIdx].dataset.dv);
   render();
 });
 
@@ -2210,7 +2223,7 @@ document.addEventListener("keydown", function (e) {
   if (idx >= btns.length) return;
   e.preventDefault();
   commitActiveInput();
-  dashboardView = btns[idx].dataset.dv;
+  setDashboardView(btns[idx].dataset.dv);
   render();
 });
 
@@ -2250,7 +2263,7 @@ document.addEventListener("keydown", function (e) {
   var ae = document.activeElement;
   if (ae && ae.id) lastFocusByView[ev] = ae.id;
   var target = ev === "blatt" ? "teampoints" : "blatt";
-  dashboardView = target;
+  setDashboardView(target);
   render();
   var restoreId = lastFocusByView[target];
   // Jumping into Teampunkte mid-speech snaps straight to the *opposing*
@@ -2564,9 +2577,11 @@ function dashBallotTable(summary, s) {
   if (deductionPoints(s) > 0) {
     var dedTr = el("tr", "deducted");
     dedTr.appendChild(el("td", "l", "Abzug"));
-    var dedTd = el("td", "tot", "−" + deductionPoints(s));
-    dedTd.setAttribute("colspan", String(chairFirst.length + 2));
-    dedTr.appendChild(dedTd);
+    var dedFiller = el("td", null, "");
+    dedFiller.setAttribute("colspan", String(chairFirst.length));
+    dedTr.appendChild(dedFiller);
+    dedTr.appendChild(el("td", "tot", "−" + deductionPoints(s)));
+    dedTr.appendChild(el("td", null, ""));
     table.appendChild(dedTr);
   }
   table.appendChild(totTr);
@@ -4241,11 +4256,12 @@ function render() {
     else if (ev === "teampoints") renderTeamPoints();
     else renderDashboard();
   } else {
-    if (view === "namen") renderNamen();
-    if (view === "sheet") renderSheet();
-    if (view === "team") renderTeam();
-    if (view === "matrix") renderMatrix();
-    if (view === "chair") renderChair();
+    var mv = effectiveMobileView();
+    if (mv === "namen") renderNamen();
+    if (mv === "sheet") renderSheet();
+    if (mv === "team") renderTeam();
+    if (mv === "matrix") renderMatrix();
+    if (mv === "chair") renderChair();
   }
   paintBar();
 }
@@ -4355,6 +4371,10 @@ function startSession(s) {
   };
   LS.set("opd.session." + s.code, ME);
   LS.set("opd.lastname", s.name);
+  // Land back on whatever tab/dashboard view was open before a reload,
+  // instead of always resetting to Namen.
+  view = LS.get("opd.view." + s.code, "namen") || "namen";
+  dashboardView = LS.get("opd.dashboardView." + s.code, "namen") || "namen";
   loadLocal();
   recordRecentRoom(s.code, s.name, s.is_chair);
   if (!remote[ME.judge_id]) remote[ME.judge_id] = {};
@@ -4627,6 +4647,7 @@ document.getElementById("btnSpreadOpen").addEventListener("click", function () {
 
 function showView(v) {
   view = v;
+  if (ME) LS.set("opd.view." + ME.code, v);
   [].forEach.call(
     document.querySelectorAll("#tabs button[data-t]"),
     function (x) {
