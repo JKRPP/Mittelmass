@@ -352,23 +352,19 @@ body {
   letter-spacing: -0.01em;
 }
 #v-sheet .card,
-#v-team .card,
-#v-namen .card {
+#v-team .card {
   border-top: 3px solid transparent;
 }
 #v-sheet .card.team-gov,
-#v-team .card.team-gov,
-#v-namen .card.team-gov {
+#v-team .card.team-gov {
   border-top-color: var(--team-gov);
 }
 #v-sheet .card.team-opp,
-#v-team .card.team-opp,
-#v-namen .card.team-opp {
+#v-team .card.team-opp {
   border-top-color: var(--team-opp);
 }
 #v-sheet .card.team-free,
-#v-team .card.team-free,
-#v-namen .card.team-free {
+#v-team .card.team-free {
   border-top-color: var(--team-free);
 }
 /* Namen (mobile) */
@@ -376,6 +372,25 @@ body {
   font-size: 12px;
   color: var(--ink-2);
   margin-bottom: 6px;
+}
+/* "Raum CODE" heading atop the Namen view (mobile and desktop) - the first
+   tab most judges land on, so it doubles as the room's title screen. */
+.roomtitle {
+  font-size: 36px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  margin: 4px 0 10px;
+  text-align: center;
+}
+/* One card for every speech, position colored per-row instead of per-card. */
+.seat .slbl.team-gov {
+  color: var(--team-gov);
+}
+.seat .slbl.team-opp {
+  color: var(--team-opp);
+}
+.seat .slbl.team-free {
+  color: var(--team-free);
 }
 .team-gov .hd h1 {
   color: var(--team-gov);
@@ -1067,6 +1082,11 @@ body {
   color: var(--ink-3);
   margin-right: 2px;
   flex: 0 0 auto;
+  cursor: pointer;
+  border-bottom: 1px dotted var(--line-2);
+}
+.dashroom:hover {
+  color: var(--ink-2);
 }
 .dashjury {
   display: flex;
@@ -1087,8 +1107,28 @@ body {
   font-size: 12px;
   color: var(--ink-3);
   white-space: nowrap;
-  cursor: default;
+  cursor: pointer;
   border-bottom: 1px dotted var(--line-2);
+}
+/* Judge-list popover, opened from .dashjsummary - same look as .menupanel,
+   but fixed-positioned and anchored under the summary via JS (it can't sit
+   as a normal absolute-positioned sibling because .dashjurychips scrolls
+   its own content, which would clip it). */
+.jurypanel {
+  position: fixed;
+  z-index: 40;
+  min-width: 220px;
+  max-width: 300px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 4px 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+.jurypanel .jrow:last-child {
+  border-bottom: 0;
 }
 .dashjbtn {
   margin-top: 0;

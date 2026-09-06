@@ -2643,7 +2643,20 @@ function renderDashChrome() {
 
   var jury = document.getElementById("dashJury");
   jury.innerHTML = "";
-  jury.appendChild(el("span", "dashroom", "Raum " + ME.code));
+  var roomSpan = el("span", "dashroom", "Raum " + ME.code);
+  roomSpan.title = "Link kopieren";
+  roomSpan.setAttribute("role", "button");
+  roomSpan.tabIndex = 0;
+  roomSpan.addEventListener("click", function () {
+    copyRoomLink(roomSpan, location.origin + "/r/" + ME.code);
+  });
+  roomSpan.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      roomSpan.click();
+    }
+  });
+  jury.appendChild(roomSpan);
   var chips = el("div", "dashjurychips");
   jury.appendChild(chips);
 
@@ -2680,23 +2693,86 @@ function renderDashChrome() {
     completeCount +
     " Vollständig";
   var summarySpan = el("span", "dashjsummary", summary);
-  summarySpan.title = ids
-    .map(function (id) {
-      var j = peers[id];
-      return (
-        j.name +
-        (j.is_chair ? " · Chair" : "") +
-        (j.hidden ? " · Trainee" : "") +
-        " · " +
-        (j.online ? "Online" : "Offline") +
-        " · " +
-        j.filled +
-        "/59"
-      );
-    })
-    .join("\n");
+  summarySpan.setAttribute("role", "button");
+  summarySpan.setAttribute("aria-haspopup", "true");
+  summarySpan.tabIndex = 0;
+  summarySpan.addEventListener("click", function (e) {
+    e.stopPropagation();
+    toggleJuryPanel(summarySpan);
+  });
+  summarySpan.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggleJuryPanel(summarySpan);
+    }
+  });
   chips.appendChild(summarySpan);
+
+  // Keep an already-open panel's judge list live as peers change, since
+  // chips (and summarySpan with it) get rebuilt on every render() here.
+  var openPanel = document.getElementById("juryPanel");
+  if (openPanel && !openPanel.classList.contains("hide")) renderJuryPanel();
 }
+
+// Judge-list popover for the dashboard header's summary chip - the styled
+// replacement for a native title="" tooltip, built from the same .jrow
+// rows the Chair tab's own judge list uses (style.css: .jrow).
+function ensureJuryPanel() {
+  var p = document.getElementById("juryPanel");
+  if (p) return p;
+  p = el("div", "jurypanel hide");
+  p.id = "juryPanel";
+  document.body.appendChild(p);
+  return p;
+}
+function renderJuryPanel() {
+  var p = ensureJuryPanel();
+  p.textContent = "";
+  var ids = Object.keys(peers);
+  if (!ids.length) {
+    p.appendChild(el("p", "note", "Noch keine Jurierenden."));
+    return;
+  }
+  ids.forEach(function (id) {
+    var j = peers[id];
+    var row = el("div", "jrow");
+    row.appendChild(el("span", "dot " + (j.online ? "on" : "off")));
+    row.appendChild(
+      el(
+        "span",
+        "n",
+        j.name +
+          (j.is_chair ? " · Chair" : "") +
+          (j.hidden ? " · Trainee" : ""),
+      ),
+    );
+    row.appendChild(el("span", "p", j.filled + " / 59"));
+    p.appendChild(row);
+  });
+}
+function closeJuryPanel() {
+  var p = document.getElementById("juryPanel");
+  if (p) p.classList.add("hide");
+}
+function toggleJuryPanel(anchor) {
+  var p = ensureJuryPanel();
+  if (!p.classList.contains("hide")) {
+    closeJuryPanel();
+    return;
+  }
+  renderJuryPanel();
+  var r = anchor.getBoundingClientRect();
+  p.style.top = r.bottom + 6 + "px";
+  p.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 308)) + "px";
+  p.classList.remove("hide");
+}
+document.addEventListener("click", function (e) {
+  var p = document.getElementById("juryPanel");
+  if (!p || p.classList.contains("hide")) return;
+  if (e.target.closest("#juryPanel") || e.target.closest(".dashjsummary"))
+    return;
+  closeJuryPanel();
+});
 document.getElementById("dashNav").addEventListener("click", function (e) {
   var b = e.target.closest("button[data-dv]");
   if (!b) return;
@@ -4681,21 +4757,14 @@ function renderTeamPoints() {
 function renderNamen() {
   var list = document.getElementById("namenList");
   if (!list) return;
+  var title = document.getElementById("namenTitle");
+  if (title && ME) title.textContent = "Raum " + ME.code;
   if (dashEditGuard(list)) return;
   list.innerHTML = "";
   activeSpeakerIndices().forEach(function (s) {
-    var card = el("div", "card");
-    setTeamAccent(card, teamOf(s));
-    card.appendChild(el("div", "namelbl", SPEAKERS[s].label));
-    var input = document.createElement("input");
-    input.type = "text";
-    input.placeholder = "Name eingeben";
-    input.value = getName(s);
-    input.addEventListener("input", function () {
-      setName(s, input.value);
-    });
-    card.appendChild(input);
-    list.appendChild(card);
+    var seat = namenSeat(s, SPEAKERS[s].label);
+    setTeamAccent(seat.querySelector(".slbl"), teamOf(s));
+    list.appendChild(seat);
   });
 }
 
@@ -4725,11 +4794,12 @@ function renderNamenRoom() {
   root.innerHTML = "";
 
   var wrap = el("div", "roomview");
+  wrap.appendChild(el("h1", "roomtitle", "Raum " + ME.code));
   wrap.appendChild(
     el(
       "p",
       "sub",
-      "Namen werden nur lokal gespeichert und nicht synchronisiert.",
+      "Namen sind optional, werden nur lokal gespeichert und nicht synchronisiert.",
     ),
   );
 
@@ -5351,7 +5421,10 @@ document.addEventListener("click", function (e) {
   closeMenu();
 });
 document.addEventListener("keydown", function (e) {
-  if (e.key === "Escape") closeMenu();
+  if (e.key === "Escape") {
+    closeMenu();
+    closeJuryPanel();
+  }
 });
 window.addEventListener("popstate", function () {
   var code = urlCode();
