@@ -1,2 +1,4 @@
 fastapi>=0.115
 uvicorn[standard]>=0.30
+
+# Test-only (fastapi.testclient needs it): httpx

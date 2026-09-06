@@ -23,6 +23,10 @@ import sys
 import urllib.error
 import urllib.request
 
+# Mirrors the rubric constants at the top of static/app.js (CRITERIA,
+# TEAMCATS, SPEAKERS/freeSpeakerCount - NUM_SPEAKERS is the default 3-FFR
+# round's 9 speeches). A rubric change there has to be repeated here, or this
+# script starts posting keys the app never reads.
 CRITERIA = ["spr", "auf", "kon", "sac", "urt"]
 NUM_SPEAKERS = 9
 TEAMCATS = [

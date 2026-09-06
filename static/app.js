@@ -94,11 +94,13 @@ var OVERDRAW_GRACE_MS = 15 * 1000;
 function teamOf(s) {
   return SPEAKERS[s].team;
 }
+// The accent class for a team index - null (a free speaker) included.
+function teamClass(team) {
+  return team === 0 ? "team-gov" : team === 1 ? "team-opp" : "team-free";
+}
 function setTeamAccent(card, team) {
   card.classList.remove("team-gov", "team-opp", "team-free");
-  card.classList.add(
-    team === 0 ? "team-gov" : team === 1 ? "team-opp" : "team-free",
-  );
+  card.classList.add(teamClass(team));
 }
 var CRITERIA = [
   { key: "spr", label: "Sprachkraft", short: "Spr" },
@@ -370,6 +372,26 @@ function pointsFromGrade(mark, max) {
 function gradeHintText(v) {
   return v === null ? "–" : v + " Punkte";
 }
+// Speaker names are free text a judge types in, and the two result tables
+// below are built as HTML strings (the one place this codebase does that) -
+// so anything user-typed has to go through here on the way in.
+function esc(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+// How many cells a complete Wertung has for the room's current shape: every
+// active speech's criteria plus both teams' categories. Follows the chair's
+// FFR count, so it is never the fixed 59 of a default 3-FFR round.
+function expectedCellCount() {
+  return activeSpeakerCount() * CRITERIA.length + TEAMS.length * TEAMCATS.length;
+}
+// Highest reachable team score - the sum of every category's own max.
+var TEAM_MAX = TEAMCATS.reduce(function (a, c) {
+  return a + c.max;
+}, 0);
 function labelOf(target, criterion) {
   if (target[0] === "s") {
     var s = speakerLabel(+target.slice(1));
@@ -424,10 +446,7 @@ if (!CLIENT_ID) {
 // Feature-detecting the method isn't enough: it exists, it just throws.
 // The URL is a nicety (a shareable /r/CODE link, a back-button escape
 // hatch out of "Verlassen"), so it must never take the caller down with
-// it - startSession() in particular calls this immediately before its
-// render(), so an unguarded throw left the app half-started: #main
-// visible, but stuck on the untouched mobile markup until a tab click
-// happened to call render() again.
+// it - startSession() calls this immediately before its render().
 function setHistoryUrl(method, state, url) {
   if (!history[method]) return;
   try {
@@ -558,12 +577,19 @@ function setTeamNote(t, groupKey, text) {
   }, 300);
 }
 
-// Save locally first, then push to db
+// Save locally first, then push to db. points === null clears the cell
+// (Undo of a first-ever entry) - the server deletes the row rather than
+// storing a 0 every other judge would count as a real score.
 function write(target, criterion, points) {
   var k = kk(target, criterion);
-  mine[k] = points;
   if (!remote[ME.judge_id]) remote[ME.judge_id] = {};
-  remote[ME.judge_id][k] = points;
+  if (points === null) {
+    delete mine[k];
+    delete remote[ME.judge_id][k];
+  } else {
+    mine[k] = points;
+    remote[ME.judge_id][k] = points;
+  }
   seq += 1;
   // Collapsing by key caps an hour offline at one queued entry per cell.
   queue[k] = {
@@ -839,13 +865,11 @@ function timerBarMax(type) {
 // by the judge each time via the type buttons below, not carried
 // automatically.
 //
-// This is also where the fired-signals bookkeeping gets rebuilt - and it
-// must be rebuilt from the actual elapsed time, not just cleared, because
-// this runs on every resync() too (tab focus, visibility change, a ws
-// reconnect), not only on a real start/reset. The server's *banked*
-// elapsed_ms stays 0 for a running timer until its first pause, so a naive
-// "elapsed is 0 -> clear" wiped already-rung thresholds on every such
-// resync and made the bell re-ring minutes into an unpaused speech.
+// This also rebuilds the fired-signals bookkeeping - from the actual elapsed
+// time, never just cleared, since this runs on every resync() (tab focus,
+// visibility change, ws reconnect), not only on a real start/reset, and the
+// server's *banked* elapsed_ms stays 0 for a running timer until its first
+// pause.
 function applyTimerState(t, fromSnapshot) {
   // A snapshot is a point-in-time read that can be *older* than what this
   // device just did - most obviously after acting while offline, which the
@@ -966,8 +990,8 @@ function adjustTimer(deltaMs) {
 }
 
 // Everything below repaints four times a second, so it only ever touches
-// the DOM when a value actually changed - writing the same text/class every
-// tick is what made the digits visibly stutter.
+// the DOM when a value actually changed - rewriting identical text/classes
+// on every tick makes the digits visibly stutter.
 function setText(node, text) {
   if (node && node.textContent !== text) node.textContent = text;
 }
@@ -997,9 +1021,8 @@ function refreshTimerModal() {
 
 // The modal's *structure* only depends on these two things; everything else
 // (button labels, the clock, the bar, whether the Zwischenrede button is
-// showing) is updated in place below. Rebuilding the whole modal on every
-// state change - which is what this replaced - tore down and recreated
-// every button on each -5s/+5s tap, which is the stutter that caused.
+// showing) is updated in place below, so that a -5s/+5s tap doesn't tear
+// down and recreate every button under the judge's finger.
 function timerModalShape() {
   return (!timer.type || timer.status === "idle" ? "pick" : "run") + "|" + timer.type;
 }
@@ -1039,13 +1062,91 @@ function tickTimer() {
 }
 setInterval(tickTimer, 250);
 
-function closeTimerModal() {
-  var m = document.getElementById("timerModal");
+// Every modal in the app is the same shape: a .modalbackdrop that closes on
+// an outside click or Escape, wrapping one .modalbox the caller fills. These
+// two hold that pattern once; the named open/close pairs below are thin
+// wrappers so call sites (and the Esc/Tab handlers) keep reading as before.
+var modalEscHandlers = {};
+function closeModal(id) {
+  var m = document.getElementById(id);
   if (m) m.remove();
-  document.removeEventListener("keydown", timerModalEscHandler);
+  if (modalEscHandlers[id]) {
+    document.removeEventListener("keydown", modalEscHandlers[id]);
+    delete modalEscHandlers[id];
+  }
 }
-function timerModalEscHandler(e) {
-  if (e.key === "Escape") closeTimerModal();
+// build(box) fills the box; the finished backdrop is returned so a caller
+// can stash state on it (openTimerModal's dataset.shape) or focus into it.
+function openModal(id, build) {
+  closeModal(id);
+  var backdrop = el("div", "modalbackdrop");
+  backdrop.id = id;
+  backdrop.addEventListener("click", function (e) {
+    if (e.target === backdrop) closeModal(id);
+  });
+  var box = el("div", "modalbox");
+  build(box);
+  backdrop.appendChild(box);
+  document.body.appendChild(backdrop);
+  var esc = function (e) {
+    if (e.key === "Escape") closeModal(id);
+  };
+  modalEscHandlers[id] = esc;
+  document.addEventListener("keydown", esc);
+  return backdrop;
+}
+// One-button notice in the app's modal style, replacing alert().
+function openInfoModal(title, text) {
+  openModal("infoModal", function (box) {
+    if (title) box.appendChild(el("h2", null, title));
+    box.appendChild(el("p", "note", text));
+    var actions = el("div", "modalactions");
+    var okBtn = el("button", "btn", "OK");
+    okBtn.type = "button";
+    okBtn.addEventListener("click", function () {
+      closeModal("infoModal");
+    });
+    actions.appendChild(okBtn);
+    box.appendChild(actions);
+  });
+}
+// Abbrechen/confirm pair instead of confirm().
+// opts: {title, text, confirmLabel, cancelLabel, onConfirm}.
+function openConfirmModal(opts) {
+  openModal("confirmModal", function (box) {
+    if (opts.title) box.appendChild(el("h2", null, opts.title));
+    box.appendChild(el("p", "note", opts.text));
+    var actions = el("div", "modalactions");
+    var cancelBtn = el("button", "btn ghost", opts.cancelLabel || "Abbrechen");
+    cancelBtn.type = "button";
+    cancelBtn.addEventListener("click", function () {
+      closeModal("confirmModal");
+    });
+    var confirmBtn = el("button", "btn", opts.confirmLabel);
+    confirmBtn.type = "button";
+    confirmBtn.addEventListener("click", function () {
+      closeModal("confirmModal");
+      opts.onConfirm();
+    });
+    actions.appendChild(cancelBtn);
+    actions.appendChild(confirmBtn);
+    box.appendChild(actions);
+  });
+}
+// A "Schließen"/"OK"-style single action row, the tail of most modals here.
+function modalCloseRow(id, label) {
+  var row = el("div", "modalactions");
+  var btn = el("button", "btn ghost", label);
+  btn.type = "button";
+  btn.addEventListener("click", function () {
+    closeModal(id);
+  });
+  row.appendChild(btn);
+  return row;
+}
+
+function closeTimerModal() {
+  closeModal("timerModal");
 }
 // Every visible, non-disabled focusable element in the modal - used both to
 // trap Tab inside it and to focus the first control when it opens.
@@ -1069,15 +1170,16 @@ function timerModalFocusables() {
 // focus back to the first button every time, unlike a genuine fresh open
 // (a click, or the Alt+T shortcut).
 function openTimerModal(isRefresh) {
-  closeTimerModal();
-  var backdrop = el("div", "modalbackdrop");
-  backdrop.id = "timerModal";
-  backdrop.dataset.shape = timerModalShape();
-  backdrop.addEventListener("click", function (e) {
-    if (e.target === backdrop) closeTimerModal();
+  var backdrop = openModal("timerModal", function (box) {
+    buildTimerModalBox(box);
   });
-
-  var box = el("div", "modalbox");
+  backdrop.dataset.shape = timerModalShape();
+  if (!isRefresh) {
+    var focusables = timerModalFocusables();
+    if (focusables.length) focusables[0].focus();
+  }
+}
+function buildTimerModalBox(box) {
   box.appendChild(el("h2", null, "Timer"));
 
   if (!timer.type || timer.status === "idle") {
@@ -1135,9 +1237,8 @@ function openTimerModal(isRefresh) {
 
     // Pause/Weiter/Reset stay on the modal instead of closing it - the
     // point of watching the big clock/bar is to correct a mistimed start,
-    // which usually takes a few taps. One handler that dispatches on the
-    // current status (rather than two differently-wired buttons) keeps
-    // pause<->resume a label change instead of a structural rebuild.
+    // which usually takes a few taps. One handler dispatching on the current
+    // status keeps pause<->resume a label change, not a structural rebuild.
     var actions = el("div", "modalactions");
     var pb = el("button", "btn", timer.status === "running" ? "Pause" : "Weiter");
     pb.id = "timerPauseResume";
@@ -1194,20 +1295,7 @@ function openTimerModal(isRefresh) {
   soundRow.appendChild(testBtn);
   box.appendChild(soundRow);
 
-  var close = el("div", "modalactions");
-  var okBtn = el("button", "btn ghost", "Schließen");
-  okBtn.type = "button";
-  okBtn.addEventListener("click", closeTimerModal);
-  close.appendChild(okBtn);
-  box.appendChild(close);
-
-  backdrop.appendChild(box);
-  document.body.appendChild(backdrop);
-  document.addEventListener("keydown", timerModalEscHandler);
-  if (!isRefresh) {
-    var focusables = timerModalFocusables();
-    if (focusables.length) focusables[0].focus();
-  }
+  box.appendChild(modalCloseRow("timerModal", "Schließen"));
 }
 
 // Repaints the compact .bar widget (shared markup for mobile top bar and
@@ -1221,9 +1309,9 @@ function paintTimer() {
   }
   host.classList.remove("hide");
 
-  // Built once, then only its text and classes change. This runs on every
-  // 250ms tick, and wiping/rebuilding the children each time made the
-  // digits stutter (and threw away an in-progress tap on → Zwischenrede).
+  // Built once, then only its text and classes change - this runs on every
+  // 250ms tick, and rebuilding the children each time would both stutter the
+  // digits and throw away an in-progress tap on → Zwischenrede.
   if (!timerWidgetParts || timerWidgetParts.host !== host) {
     host.textContent = "";
     var clock = el("span", "timerclock");
@@ -1308,7 +1396,9 @@ function connect() {
     if (m.type === "patches") {
       if (!remote[m.judge_id]) remote[m.judge_id] = {};
       m.patches.forEach(function (p) {
-        remote[m.judge_id][kk(p.target, p.criterion)] = p.points;
+        var k = kk(p.target, p.criterion);
+        if (p.points === null) delete remote[m.judge_id][k];
+        else remote[m.judge_id][k] = p.points;
       });
       if (view === "chair" || isDesktopChair()) render();
     } else if (m.type === "judges") {
@@ -1501,6 +1591,22 @@ function resetRoomState() {
   };
   timerFired = {};
   timerLocalAt = 0;
+  timerWidgetParts = null;
+  serverTimeOffsetMs = 0;
+  online = false;
+  pending = 0;
+  // Room settings the server owns: back to their defaults, so the next room
+  // isn't briefly rendered with this one's until its first snapshot lands.
+  spreadOpen = false;
+  freeSpeakerCount = 3;
+  // Per-room view state. Without this the next room opens with this one's
+  // expanded spread rows, dashboard selection and open ballot.
+  openSpread = {};
+  ballotOpen = false;
+  dashboardSelected = { kind: "speaker", s: 0 };
+  dashIncludeTrainees = false;
+  lastFocusByView = {};
+  promotingOffline = false;
   paintTimer();
   showView("namen");
 }
@@ -1717,19 +1823,26 @@ function teamPunkte(t) {
   }
   return Math.max(0, sum);
 }
+// Speaker indices belonging to a team, in speaking order. Indices, not
+// SPEAKERS entries: "s"+s is the key every score/note/exclusion is stored
+// under, so callers always need the index anyway.
+function speakersOfTeam(t) {
+  var out = [];
+  SPEAKERS.forEach(function (sp, s) {
+    if (sp.team === t) out.push(s);
+  });
+  return out;
+}
 function firstEmptyS(s) {
   for (var c = 0; c < NC; c++) if (sget(s, c) === null) return c;
   return -1;
 }
 // Own team points + own speakers' totals - shared by Übersicht and Schnelleingabe's Teampunkte row.
 function myTeamGrand(t) {
-  var teamSpeakers = SPEAKERS.filter(function (sp) {
-    return sp.team === t;
-  });
+  var teamSpeakers = speakersOfTeam(t);
   var speakerSum = 0,
     scoredCount = 0;
-  teamSpeakers.forEach(function (sp) {
-    var s = SPEAKERS.indexOf(sp);
+  teamSpeakers.forEach(function (s) {
     if (firstEmptyS(s) !== -1) return; // not fully scored yet
     speakerSum += personPunkte(s);
     scoredCount++;
@@ -1953,6 +2066,7 @@ function renderTeam() {
     host.appendChild(row);
   });
   document.getElementById("tmTot").textContent = String(teamPunkte(ct));
+  document.getElementById("tmMax").textContent = String(TEAM_MAX);
 
   var texcluded = !!myExclusions["t" + ct];
   var teb = document.getElementById("texclBtn");
@@ -1992,7 +2106,7 @@ function renderMatrix() {
       '<tr class="' +
         (deductionPoints(s) ? "deducted" : "") +
         '"><td class="l">' +
-        lbl +
+        esc(lbl) +
         "</td>",
     );
     for (var c = 0; c < NC; c++) {
@@ -2036,7 +2150,9 @@ function renderMatrix() {
         t +
         '</td><td class="tot">' +
         teamPunkte(i) +
-        "/ 200 </td>" +
+        "/ " +
+        TEAM_MAX +
+        " </td>" +
         '<td class="tot">' +
         grand +
         (partial ? " *" : "") +
@@ -2098,14 +2214,19 @@ function chairFirstIds(ids) {
     return (peers[b].is_chair ? 1 : 0) - (peers[a].is_chair ? 1 : 0);
   });
 }
-// Mean of a list of numbers, rounded to 2 decimals; returns null for an
-// empty list, so callers can render "·" without a separate check.
-function avgRound(vals) {
+// Mean of a list of numbers; null for an empty list, so callers can render
+// "·" without a separate check. avgRound() is the display variant - the
+// tables that print a raw mean format it themselves (toFixed(1)).
+function mean(vals) {
   if (!vals.length) return null;
   var sum = vals.reduce(function (a, b) {
     return a + b;
   }, 0);
-  return Math.round((sum / vals.length) * 100) / 100;
+  return sum / vals.length;
+}
+function avgRound(vals) {
+  var m = mean(vals);
+  return m === null ? null : Math.round(m * 100) / 100;
 }
 // Shared chair math, used by both mobile chair view and desktop dashboard.
 // includeHidden: local-only override for the Redner:innen/Teampunkte spread
@@ -2151,14 +2272,10 @@ function computeChairSummary(includeHidden) {
     if (vals.length < 2) return;
     var mx = Math.max.apply(null, vals),
       mn = Math.min.apply(null, vals);
-    var avg =
-      vals.reduce(function (a, b) {
-        return a + b;
-      }, 0) / vals.length;
     cells.push({
       label: label,
       spread: mx - mn,
-      avg: avg,
+      avg: mean(vals),
       n: vals.length,
       detail: names.join(" · "),
       judges: judges,
@@ -2199,15 +2316,10 @@ function computeChairSummary(includeHidden) {
       judges.push({ name: peers[id].name, v: sum });
     });
     if (vals.length < 2) return null;
-    var avg =
-      vals.reduce(function (a, b) {
-        return a + b;
-      }, 0) / vals.length;
-    var spread = Math.max.apply(null, vals) - Math.min.apply(null, vals);
     return {
       label: label,
-      spread: spread,
-      avg: avg,
+      spread: Math.max.apply(null, vals) - Math.min.apply(null, vals),
+      avg: mean(vals),
       n: vals.length,
       judges: judges,
       key: target + "/grp-" + label,
@@ -2253,14 +2365,10 @@ function computeChairSummary(includeHidden) {
     if (vals.length < 2) return;
     var mx = Math.max.apply(null, vals),
       mn = Math.min.apply(null, vals);
-    var avg =
-      vals.reduce(function (a, b) {
-        return a + b;
-      }, 0) / vals.length;
     totals.push({
       label: speakerLabel(s),
       spread: mx - mn,
-      avg: avg,
+      avg: mean(vals),
       n: vals.length,
       detail: names.join(" · "),
       judges: judges,
@@ -2279,12 +2387,7 @@ function computeChairSummary(includeHidden) {
       var v = remoteTotal(id, s);
       if (v !== null) vals.push(v);
     });
-    var avg = vals.length
-      ? vals.reduce(function (a, b) {
-          return a + b;
-        }, 0) / vals.length
-      : null;
-    return { label: speakerLabel(s), avg: avg, n: vals.length };
+    return { label: speakerLabel(s), avg: mean(vals), n: vals.length };
   });
   // speakerRows stays positional (summary.speakerRows[s] is looked up by
   // raw index elsewhere) - but a hidden free speaker's stale avg must not
@@ -2299,29 +2402,20 @@ function computeChairSummary(includeHidden) {
       if (!includedFor(id, "t" + t)) return;
       vals.push(remoteTeamTotal(id, t));
     });
-    var teamAvg = vals.length
-      ? vals.reduce(function (a, b) {
-          return a + b;
-        }, 0) / vals.length
-      : null;
-    var teamSpeakers = SPEAKERS.filter(function (sp) {
-      return sp.team === t;
-    });
+    var teamAvg = mean(vals);
+    var teamSpeakers = speakersOfTeam(t);
     var speakerSum = 0,
       scoredCount = 0;
-    teamSpeakers.forEach(function (sp) {
-      var s = SPEAKERS.indexOf(sp);
+    teamSpeakers.forEach(function (s) {
       var svals = [];
       ids.forEach(function (id) {
         if (!includedFor(id, "s" + s)) return;
         var v = remoteTotal(id, s);
         if (v !== null) svals.push(v);
       });
-      if (!svals.length) return;
-      speakerSum +=
-        svals.reduce(function (a, b) {
-          return a + b;
-        }, 0) / svals.length;
+      var avg = mean(svals);
+      if (avg === null) return;
+      speakerSum += avg;
       scoredCount++;
     });
     var grand =
@@ -2373,7 +2467,7 @@ function finalResultHTML(summary) {
         '"><td class="l' +
         (isBest ? " best" : "") +
         '">' +
-        r.label +
+        esc(r.label) +
         '</td><td class="' +
         (r.avg === null ? "mt" : "tot") +
         (isBest ? " best" : "") +
@@ -2399,7 +2493,7 @@ function finalResultHTML(summary) {
       '<tr><td class="l' +
         (isBest ? " best" : "") +
         '">' +
-        r.label +
+        esc(r.label) +
         '</td><td class="' +
         (r.teamAvg === null ? "mt" : "") +
         '">' +
@@ -2491,10 +2585,7 @@ function fullBallotTable(summary) {
   // Each team's grand total per judge (team pts + own speakers) - the higher team per judge gets the "best" mark.
   var teamMeta = [];
   TEAMS.forEach(function (tm, t) {
-    var teamSpeakers = [];
-    SPEAKERS.forEach(function (sp, s) {
-      if (sp.team === t) teamSpeakers.push(s);
-    });
+    var teamSpeakers = speakersOfTeam(t);
     var tr = el("tr", "grandtot");
     var teamAbbr = tm.replace("Regierung", "Reg").replace("Opposition", "Opp");
     tr.appendChild(el("td", "l tot", "Gesamt " + teamAbbr));
@@ -2603,7 +2694,7 @@ function renderChair() {
             (j.hidden ? " · (Trainee)" : ""),
         ),
       );
-      row.appendChild(el("span", "p", j.filled + " / 59"));
+      row.appendChild(el("span", "p", j.filled + " / " + expectedCellCount()));
       if (!j.is_chair) {
         var x = el("button", "x", j.hidden ? "Zu Wing" : "Zu Trainee");
         x.addEventListener("click", function () {
@@ -2752,7 +2843,6 @@ function renderChair() {
 // and "blatt" are wide, desktop-only views with no mobile equivalent.
 var dashboardSelected = { kind: "speaker", s: 0 };
 var dashboardView = "namen";
-var DASH_WIDE_VIEWS = ["dashboard", "schnell", "blatt", "teampoints", "namen"];
 // Remembers the last-focused field id per view ("blatt"/"teampoints"), so
 // Alt+Space can swap between the two and land back where you were.
 var lastFocusByView = {};
@@ -2770,8 +2860,9 @@ function isDesktopChair() {
   return isDesktopWidth() && ME.is_chair;
 }
 // Falls back to "schnell" when dashboardView points somewhere unreachable
-// now - "dashboard" for a wing the chair hasn't opened it to, or the
-// retired matrix/sheet/team.
+// now - "dashboard" for a wing the chair hasn't opened it to, or a
+// matrix/sheet/team value still cached in localStorage from a version that
+// had those desktop views (they are mobile-only again).
 function effectiveDashboardView() {
   if (dashboardView === "dashboard" && !ME.is_chair && !spreadOpen)
     return "schnell";
@@ -2791,19 +2882,17 @@ function effectiveMobileView() {
   return view;
 }
 
+// Every view effectiveDashboardView() can return is a wide, desktop-only
+// page, so on a desktop width the mobile views and dock are simply all
+// hidden - there is no narrow-column desktop mode any more.
 function applyLayoutMode() {
   var dash = isDesktopWidth();
   var app = document.getElementById("app");
-  var changed = app.classList.contains("dashboard-mode") !== dash;
   app.classList.toggle("dashboard-mode", dash);
   document.getElementById("dashNav").classList.toggle("hide", !dash);
   document.getElementById("dashJury").classList.toggle("hide", !dash);
 
   var ev = effectiveDashboardView();
-  var wide = dash && DASH_WIDE_VIEWS.indexOf(ev) !== -1;
-  var subview = dash && !wide;
-
-  app.classList.toggle("dashboard-subview", subview);
   document
     .getElementById("v-namenroom")
     .classList.toggle("hide", !dash || ev !== "namen");
@@ -2820,7 +2909,7 @@ function applyLayoutMode() {
     .getElementById("v-teampoints")
     .classList.toggle("hide", !dash || ev !== "teampoints");
 
-  if (wide) {
+  if (dash) {
     ["v-namen", "v-sheet", "v-team", "v-matrix", "v-chair"].forEach(
       function (id) {
         document.getElementById(id).classList.add("hide");
@@ -2829,27 +2918,14 @@ function applyLayoutMode() {
     document.getElementById("dock").classList.add("hide");
     document.getElementById("dockSheet").classList.add("hide");
     document.getElementById("dockTeam").classList.add("hide");
-  } else if (subview) {
-    document.getElementById("v-chair").classList.add("hide");
-    document.getElementById("v-matrix").classList.add("hide");
-    ["sheet", "team"].forEach(function (vv) {
-      document.getElementById("v-" + vv).classList.toggle("hide", vv !== ev);
-    });
-    document.getElementById("dock").classList.remove("hide");
-    document
-      .getElementById("dockSheet")
-      .classList.toggle("hide", ev !== "sheet");
-    document.getElementById("dockTeam").classList.toggle("hide", ev !== "team");
-    document.getElementById("tabs").classList.add("hide");
   } else {
     document.getElementById("tabs").classList.remove("hide");
-    // Restore dock (hidden by the "wide" branch) on plain mobile - otherwise
+    // Restore dock (hidden by the desktop branch) on plain mobile - otherwise
     // shrinking down from desktop leaves no way to score.
     document.getElementById("dock").classList.remove("hide");
     showView(effectiveMobileView());
     syncDockSpacer();
   }
-  return changed;
 }
 
 // .tabs is fixed to the screen bottom on mobile (see style.css) and so sits
@@ -2916,7 +2992,7 @@ function renderDashChrome() {
     return peers[id].online;
   }).length;
   var completeCount = judgeIds.filter(function (id) {
-    return peers[id].filled === 59;
+    return peers[id].filled >= expectedCellCount();
   }).length;
   var summary =
     judgeIds.length +
@@ -2981,7 +3057,7 @@ function renderJuryPanel() {
           (j.hidden ? " · Trainee" : ""),
       ),
     );
-    row.appendChild(el("span", "p", j.filled + " / 59"));
+    row.appendChild(el("span", "p", j.filled + " / " + expectedCellCount()));
     p.appendChild(row);
   });
 }
@@ -3145,8 +3221,8 @@ document.addEventListener("keydown", function (e) {
   // Jumping into Teampunkte mid-speech snaps straight to the *opposing*
   // team's Zwischenfragen note - that's almost always what an interjection
   // during a team speech needs to be logged against - instead of wherever
-  // was last focused there. Free speakers (team index 2) have no opposing
-  // side, so fall through to the normal remembered/first-field behavior.
+  // was last focused there. Free speakers (team null) have no opposing side,
+  // so they fall through to the normal remembered/first-field behavior.
   if (ev === "blatt" && target === "teampoints") {
     var spTeam = SPEAKERS[cs].team;
     if (spTeam === 0 || spTeam === 1) {
@@ -3188,8 +3264,7 @@ function dashSpeakerGroup(label, teamVal, summary, spreadSummary) {
   if (!rows.length) return wrap;
   wrap.appendChild(el("div", "dashgrp", label));
   rows.forEach(function (s) {
-    var teamCls =
-      teamVal === 0 ? "team-gov" : teamVal === 1 ? "team-opp" : "team-free";
+    var teamCls = teamClass(teamVal);
     var sel = dashboardSelected.kind === "speaker" && dashboardSelected.s === s;
     var row = el("div", "dashspk " + teamCls + (sel ? " sel" : ""));
     row.appendChild(el("span", "lb", speakerLabel(s)));
@@ -3248,7 +3323,7 @@ function dashTeamGroupRows(summary, spreadSummary) {
   TEAMS.forEach(function (tm, t) {
     wrap.appendChild(el("div", "dashgrp", tm));
     summary.teamGroups.forEach(function (g) {
-      var teamCls = t === 0 ? "team-gov" : "team-opp";
+      var teamCls = teamClass(t);
       var gc = summary.groupCells.filter(function (x) {
         return x.key === "t" + t + "/grp-" + tm + " · " + g;
       })[0];
@@ -3416,14 +3491,19 @@ function dashSpreadCell(spread) {
   );
 }
 
-function dashBallotTable(summary, s) {
-  // Trainees are shown for context but greyed out (.trainee) - never counted
-  // into vals/totVals, which stay gated on the active (non-hidden) judges
-  // summary.ids already resolves to.
+// The dashboard's "Wertungsvergleich" table, in both the shapes it takes:
+// one row per speaker criterion (below) or per category of a team group,
+// each with every adjudicator's value, an average and a spread, closed by a
+// total row. Trainees are shown for context but greyed out (.trainee) -
+// never counted into any average, which stays gated on the active
+// (non-hidden) judges summary.ids already resolves to.
+// spec: {target, rowHead, rows:[{label, key}], totalLabel,
+//        totalFor(id) -> number|null, totalSpread, extraRow(ncols) -> tr?}
+function dashComparisonTable(summary, spec) {
   var chairFirst = chairFirstIds(Object.keys(peers));
   var table = el("table", "ballottable");
   var head = el("tr");
-  head.appendChild(el("th", "l", "Kriterium"));
+  head.appendChild(el("th", "l", spec.rowHead));
   chairFirst.forEach(function (id) {
     head.appendChild(
       el("th", peers[id].hidden ? "trainee" : null, peers[id].name),
@@ -3432,15 +3512,20 @@ function dashBallotTable(summary, s) {
   head.appendChild(el("th", null, "Ø"));
   head.appendChild(el("th", null, "Spread"));
   table.appendChild(head);
-  CRITERIA.forEach(function (c) {
+
+  function counts(id) {
+    return !peers[id].hidden && summary.includedFor(id, spec.target);
+  }
+
+  spec.rows.forEach(function (r) {
     var cell = summary.cells.filter(function (x) {
-      return x.key === "s" + s + "/" + c.key;
+      return x.key === spec.target + "/" + r.key;
     })[0];
     var tr = el("tr", cell && cell.spread >= 5 ? "hot" : null);
-    tr.appendChild(el("td", "l", c.label));
+    tr.appendChild(el("td", "l", r.label));
     var vals = [];
     chairFirst.forEach(function (id) {
-      var v = (remote[id] || {})[kk("s" + s, c.key)];
+      var v = (remote[id] || {})[kk(spec.target, r.key)];
       tr.appendChild(
         el(
           "td",
@@ -3448,23 +3533,19 @@ function dashBallotTable(summary, s) {
           v === undefined ? "·" : String(v),
         ),
       );
-      if (
-        !peers[id].hidden &&
-        summary.includedFor(id, "s" + s) &&
-        v !== undefined
-      )
-        vals.push(v);
+      if (counts(id) && v !== undefined) vals.push(v);
     });
     var avg = avgRound(vals);
     tr.appendChild(el("td", "tot", avg === null ? "·" : String(avg)));
     tr.appendChild(dashSpreadCell(cell ? cell.spread : null));
     table.appendChild(tr);
   });
+
   var totTr = el("tr");
-  totTr.appendChild(el("td", "l tot", "Gesamt"));
+  totTr.appendChild(el("td", "l tot", spec.totalLabel));
   var totVals = [];
   chairFirst.forEach(function (id) {
-    var v = summary.remoteTotal(id, s);
+    var v = spec.totalFor(id);
     totTr.appendChild(
       el(
         "td",
@@ -3472,116 +3553,84 @@ function dashBallotTable(summary, s) {
         v === null ? "·" : String(v),
       ),
     );
-    if (!peers[id].hidden && summary.includedFor(id, "s" + s) && v !== null)
-      totVals.push(v);
+    if (counts(id) && v !== null) totVals.push(v);
   });
   var totAvg = avgRound(totVals);
   totTr.appendChild(el("td", "tot", totAvg === null ? "·" : String(totAvg)));
-  var totCell = summary.totals.filter(function (x) {
-    return x.key === "s" + s;
-  })[0];
-  totTr.appendChild(dashSpreadCell(totCell ? totCell.spread : null));
-  if (deductionPoints(s) > 0) {
-    var dedTr = el("tr", "deducted");
-    dedTr.appendChild(el("td", "l", "Abzug"));
-    var dedFiller = el("td", null, "");
-    dedFiller.setAttribute("colspan", String(chairFirst.length));
-    dedTr.appendChild(dedFiller);
-    dedTr.appendChild(el("td", "tot", "−" + deductionPoints(s)));
-    dedTr.appendChild(el("td", null, ""));
-    table.appendChild(dedTr);
-  }
+  totTr.appendChild(dashSpreadCell(spec.totalSpread));
+
+  // Anything that belongs between the rows and the total (the speaker
+  // table's Abzug line).
+  var extra = spec.extraRow && spec.extraRow(chairFirst.length);
+  if (extra) table.appendChild(extra);
   table.appendChild(totTr);
   return table;
 }
 
+// Spread of one summary row (speech total or team group), or null while
+// fewer than two judges have scored it.
+function spreadOfKey(list, key) {
+  var hit = list.filter(function (x) {
+    return x.key === key;
+  })[0];
+  return hit ? hit.spread : null;
+}
+
+function dashBallotTable(summary, s) {
+  return dashComparisonTable(summary, {
+    target: "s" + s,
+    rowHead: "Kriterium",
+    rows: CRITERIA,
+    totalLabel: "Gesamt",
+    totalFor: function (id) {
+      return summary.remoteTotal(id, s);
+    },
+    totalSpread: spreadOfKey(summary.totals, "s" + s),
+    extraRow: function (ncols) {
+      if (deductionPoints(s) <= 0) return null;
+      var dedTr = el("tr", "deducted");
+      dedTr.appendChild(el("td", "l", "Abzug"));
+      var dedFiller = el("td", null, "");
+      dedFiller.setAttribute("colspan", String(ncols));
+      dedTr.appendChild(dedFiller);
+      dedTr.appendChild(el("td", "tot", "−" + deductionPoints(s)));
+      dedTr.appendChild(el("td", null, ""));
+      return dedTr;
+    },
+  });
+}
+
 function dashTeamBallotTable(summary, t, grp) {
-  // Trainees are shown for context but greyed out (.trainee) - never counted
-  // into vals/totVals, which stay gated on the active (non-hidden) judges
-  // summary.ids already resolves to.
-  var chairFirst = chairFirstIds(Object.keys(peers));
   var cats = TEAMCATS.filter(function (c) {
     return c.grp === grp;
   });
-  var table = el("table", "ballottable");
-  var head = el("tr");
-  head.appendChild(el("th", "l", "Kategorie"));
-  chairFirst.forEach(function (id) {
-    head.appendChild(
-      el("th", peers[id].hidden ? "trainee" : null, peers[id].name),
-    );
+  return dashComparisonTable(summary, {
+    target: "t" + t,
+    rowHead: "Kategorie",
+    rows: cats,
+    totalLabel: "Summe " + grp,
+    // A group's sum only means something once every category in it is scored.
+    totalFor: function (id) {
+      var sum = 0,
+        complete = true;
+      cats.forEach(function (c) {
+        var v = (remote[id] || {})[kk("t" + t, c.key)];
+        if (v === undefined) complete = false;
+        else sum += v;
+      });
+      return complete ? sum : null;
+    },
+    totalSpread: spreadOfKey(
+      summary.groupCells,
+      "t" + t + "/grp-" + TEAMS[t] + " · " + grp,
+    ),
   });
-  head.appendChild(el("th", null, "Ø"));
-  head.appendChild(el("th", null, "Spread"));
-  table.appendChild(head);
-  cats.forEach(function (c) {
-    var cell = summary.cells.filter(function (x) {
-      return x.key === "t" + t + "/" + c.key;
-    })[0];
-    var tr = el("tr", cell && cell.spread >= 5 ? "hot" : null);
-    tr.appendChild(el("td", "l", c.label));
-    var vals = [];
-    chairFirst.forEach(function (id) {
-      var v = (remote[id] || {})[kk("t" + t, c.key)];
-      tr.appendChild(
-        el(
-          "td",
-          peers[id].hidden ? "trainee" : null,
-          v === undefined ? "·" : String(v),
-        ),
-      );
-      if (
-        !peers[id].hidden &&
-        summary.includedFor(id, "t" + t) &&
-        v !== undefined
-      )
-        vals.push(v);
-    });
-    var avg = avgRound(vals);
-    tr.appendChild(el("td", "tot", avg === null ? "·" : String(avg)));
-    tr.appendChild(dashSpreadCell(cell ? cell.spread : null));
-    table.appendChild(tr);
-  });
-  var totTr = el("tr");
-  totTr.appendChild(el("td", "l tot", "Summe " + grp));
-  var totVals = [];
-  chairFirst.forEach(function (id) {
-    var sum = 0,
-      complete = true;
-    cats.forEach(function (c) {
-      var v = (remote[id] || {})[kk("t" + t, c.key)];
-      if (v === undefined) {
-        complete = false;
-        return;
-      }
-      sum += v;
-    });
-    totTr.appendChild(
-      el(
-        "td",
-        "tot" + (peers[id].hidden ? " trainee" : ""),
-        complete ? String(sum) : "·",
-      ),
-    );
-    if (!peers[id].hidden && summary.includedFor(id, "t" + t) && complete)
-      totVals.push(sum);
-  });
-  var totAvg = avgRound(totVals);
-  totTr.appendChild(el("td", "tot", totAvg === null ? "·" : String(totAvg)));
-  var totCell = summary.groupCells.filter(function (x) {
-    return x.key === "t" + t + "/grp-" + TEAMS[t] + " · " + grp;
-  })[0];
-  totTr.appendChild(dashSpreadCell(totCell ? totCell.spread : null));
-  table.appendChild(totTr);
-  return table;
 }
 
 function dashSpeakerBallotPanel(summary, s) {
   var sp = SPEAKERS[s];
   var panel = el("div", "dashpanel");
-  panel.classList.add(
-    sp.team === 0 ? "team-gov" : sp.team === 1 ? "team-opp" : "team-free",
-  );
+  panel.classList.add(teamClass(sp.team));
   var head = el("div", "dashpanelhead");
   head.appendChild(el("h2", null, speakerLabel(s)));
   head.appendChild(el("div", "sub", "Wertungsvergleich"));
@@ -3594,7 +3643,7 @@ function dashSpeakerBallotPanel(summary, s) {
 
 function dashTeamBallotPanel(summary, t, grp) {
   var panel = el("div", "dashpanel");
-  panel.classList.add(t === 0 ? "team-gov" : "team-opp");
+  panel.classList.add(teamClass(t));
   var head = el("div", "dashpanelhead");
   head.appendChild(el("h2", null, TEAMS[t] + " · " + grp));
   head.appendChild(el("div", "sub", "Wertungsvergleich"));
@@ -3738,82 +3787,6 @@ function ballotBookmarkletHref() {
   return "javascript:" + encodeURIComponent(BALLOT_BOOKMARKLET_SRC);
 }
 
-function closeConfirmModal() {
-  var m = document.getElementById("confirmModal");
-  if (m) m.remove();
-  document.removeEventListener("keydown", confirmModalEscHandler);
-}
-function confirmModalEscHandler(e) {
-  if (e.key === "Escape") closeConfirmModal();
-}
-// Generic confirm dialog in the app's modal style - an Abbrechen/confirm
-// pair instead of confirm(). opts: {title, text, confirmLabel, cancelLabel, onConfirm}.
-function openConfirmModal(opts) {
-  closeConfirmModal();
-
-  var backdrop = el("div", "modalbackdrop");
-  backdrop.id = "confirmModal";
-  backdrop.addEventListener("click", function (e) {
-    if (e.target === backdrop) closeConfirmModal();
-  });
-
-  var box = el("div", "modalbox");
-  if (opts.title) box.appendChild(el("h2", null, opts.title));
-  box.appendChild(el("p", "note", opts.text));
-
-  var actions = el("div", "modalactions");
-  var cancelBtn = el("button", "btn ghost", opts.cancelLabel || "Abbrechen");
-  cancelBtn.type = "button";
-  cancelBtn.addEventListener("click", closeConfirmModal);
-  var confirmBtn = el("button", "btn", opts.confirmLabel);
-  confirmBtn.type = "button";
-  confirmBtn.addEventListener("click", function () {
-    closeConfirmModal();
-    opts.onConfirm();
-  });
-  actions.appendChild(cancelBtn);
-  actions.appendChild(confirmBtn);
-  box.appendChild(actions);
-
-  backdrop.appendChild(box);
-  document.body.appendChild(backdrop);
-  document.addEventListener("keydown", confirmModalEscHandler);
-}
-
-function closeInfoModal() {
-  var m = document.getElementById("infoModal");
-  if (m) m.remove();
-  document.removeEventListener("keydown", infoModalEscHandler);
-}
-function infoModalEscHandler(e) {
-  if (e.key === "Escape") closeInfoModal();
-}
-// Generic single-button notice in the app's modal style, replacing alert().
-function openInfoModal(title, text) {
-  closeInfoModal();
-
-  var backdrop = el("div", "modalbackdrop");
-  backdrop.id = "infoModal";
-  backdrop.addEventListener("click", function (e) {
-    if (e.target === backdrop) closeInfoModal();
-  });
-
-  var box = el("div", "modalbox");
-  if (title) box.appendChild(el("h2", null, title));
-  box.appendChild(el("p", "note", text));
-
-  var actions = el("div", "modalactions");
-  var okBtn = el("button", "btn", "OK");
-  okBtn.type = "button";
-  okBtn.addEventListener("click", closeInfoModal);
-  actions.appendChild(okBtn);
-  box.appendChild(actions);
-
-  backdrop.appendChild(box);
-  document.body.appendChild(backdrop);
-  document.addEventListener("keydown", infoModalEscHandler);
-}
-
 // Desktop-only cheat sheet for the Alt/Page keyboard shortcuts wired up
 // further down (dashNav cycling, Blatt speech stepping, Blatt<->Teampunkte
 // swap). Reuses the info-modal look but lists rows instead of one paragraph.
@@ -3857,54 +3830,30 @@ var MORE_FEATURES = [
     "Menü: Einladungslink für diesen Raum in die Zwischenablage kopieren",
   ],
 ];
-function closeShortcutsModal() {
-  var m = document.getElementById("shortcutsModal");
-  if (m) m.remove();
-  document.removeEventListener("keydown", shortcutsModalEscHandler);
-}
-function shortcutsModalEscHandler(e) {
-  if (e.key === "Escape") closeShortcutsModal();
-}
 function openShortcutsModal() {
-  closeShortcutsModal();
+  openModal("shortcutsModal", function (box) {
+    box.appendChild(el("h2", null, "Tastenkürzel"));
+    var list = el("div", "shortcutlist");
+    SHORTCUTS.forEach(function (sc) {
+      var row = el("div", "shortcutrow");
+      row.appendChild(el("kbd", null, sc[0]));
+      row.appendChild(el("span", null, sc[1]));
+      list.appendChild(row);
+    });
+    box.appendChild(list);
 
-  var backdrop = el("div", "modalbackdrop");
-  backdrop.id = "shortcutsModal";
-  backdrop.addEventListener("click", function (e) {
-    if (e.target === backdrop) closeShortcutsModal();
+    box.appendChild(el("h2", "shortcutsub", "Weitere Funktionen"));
+    var more = el("div", "shortcutlist");
+    MORE_FEATURES.forEach(function (f) {
+      var mrow = el("div", "shortcutrow featurerow");
+      mrow.appendChild(el("span", "featurename", f[0]));
+      mrow.appendChild(el("span", null, f[1]));
+      more.appendChild(mrow);
+    });
+    box.appendChild(more);
+
+    box.appendChild(modalCloseRow("shortcutsModal", "OK"));
   });
-
-  var box = el("div", "modalbox");
-  box.appendChild(el("h2", null, "Tastenkürzel"));
-  var list = el("div", "shortcutlist");
-  for (var i = 0; i < SHORTCUTS.length; i++) {
-    var row = el("div", "shortcutrow");
-    row.appendChild(el("kbd", null, SHORTCUTS[i][0]));
-    row.appendChild(el("span", null, SHORTCUTS[i][1]));
-    list.appendChild(row);
-  }
-  box.appendChild(list);
-
-  box.appendChild(el("h2", "shortcutsub", "Weitere Funktionen"));
-  var more = el("div", "shortcutlist");
-  for (var j = 0; j < MORE_FEATURES.length; j++) {
-    var mrow = el("div", "shortcutrow featurerow");
-    mrow.appendChild(el("span", "featurename", MORE_FEATURES[j][0]));
-    mrow.appendChild(el("span", null, MORE_FEATURES[j][1]));
-    more.appendChild(mrow);
-  }
-  box.appendChild(more);
-
-  var actions = el("div", "modalactions");
-  var okBtn = el("button", "btn", "OK");
-  okBtn.type = "button";
-  okBtn.addEventListener("click", closeShortcutsModal);
-  actions.appendChild(okBtn);
-  box.appendChild(actions);
-
-  backdrop.appendChild(box);
-  document.body.appendChild(backdrop);
-  document.addEventListener("keydown", shortcutsModalEscHandler);
 }
 document
   .getElementById("shortcutsBtn")
@@ -3920,28 +3869,14 @@ document.addEventListener("keydown", function (e) {
   openShortcutsModal();
 });
 
-function closeBallotExportModal() {
-  var m = document.getElementById("ballotExportModal");
-  if (m) m.remove();
-  document.removeEventListener("keydown", ballotExportEscHandler);
-}
-function ballotExportEscHandler(e) {
-  if (e.key === "Escape") closeBallotExportModal();
-}
-
 // Appended to <body>, since #v-dashboard gets torn down on every render().
 function openBallotExportModal(summary) {
-  closeBallotExportModal();
-
   var order = chairFirstIds(summary.ids);
-
-  var backdrop = el("div", "modalbackdrop");
-  backdrop.id = "ballotExportModal";
-  backdrop.addEventListener("click", function (e) {
-    if (e.target === backdrop) closeBallotExportModal();
+  openModal("ballotExportModal", function (box) {
+    buildBallotExportBox(box, summary, order);
   });
-
-  var box = el("div", "modalbox");
+}
+function buildBallotExportBox(box, summary, order) {
   box.appendChild(el("h2", null, "Ballot exportieren"));
   box.appendChild(
     el(
@@ -3995,9 +3930,11 @@ function openBallotExportModal(summary) {
   bmLink.href = ballotBookmarkletHref();
   bmLink.title = "In die Lesezeichenleiste ziehen";
   bmLink.addEventListener("click", function (e) {
-    // A direct click (vs. dragging) just runs harmlessly here - the alert explains why nothing happened.
+    // A direct click (vs. dragging) does nothing useful here - the notice
+    // explains why nothing happened.
     e.preventDefault();
-    alert(
+    openInfoModal(
+      null,
       "Den Link in die Lesezeichenleiste ziehen, nicht anklicken — er muss später auf der Ballot-Seite des Tabbing-Programms ausgeführt werden.",
     );
   });
@@ -4021,37 +3958,25 @@ function openBallotExportModal(summary) {
   });
   var closeBtn = el("button", "btn ghost", "Schließen");
   closeBtn.type = "button";
-  closeBtn.addEventListener("click", closeBallotExportModal);
+  closeBtn.addEventListener("click", function () {
+    closeModal("ballotExportModal");
+  });
   actions.appendChild(copyBtn);
   actions.appendChild(closeBtn);
   box.appendChild(actions);
-
-  backdrop.appendChild(box);
-  document.body.appendChild(backdrop);
-  document.addEventListener("keydown", ballotExportEscHandler);
-}
-
-function closeFreeSpeakersModal() {
-  var m = document.getElementById("freeSpeakersModal");
-  if (m) m.remove();
-  document.removeEventListener("keydown", freeSpeakersEscHandler);
-}
-function freeSpeakersEscHandler(e) {
-  if (e.key === "Escape") closeFreeSpeakersModal();
 }
 
 // Chair-only: how many reserved free-speaker slots are active. Lowering
 // never deletes scores; raising brings them back.
 function openFreeSpeakersModal() {
-  closeFreeSpeakersModal();
-
-  var backdrop = el("div", "modalbackdrop");
-  backdrop.id = "freeSpeakersModal";
-  backdrop.addEventListener("click", function (e) {
-    if (e.target === backdrop) closeFreeSpeakersModal();
+  var input;
+  openModal("freeSpeakersModal", function (box) {
+    input = buildFreeSpeakersBox(box);
   });
-
-  var box = el("div", "modalbox");
+  input.focus();
+  input.select();
+}
+function buildFreeSpeakersBox(box) {
   box.appendChild(el("h2", null, "Fraktionsfreie Reden"));
   box.appendChild(
     el(
@@ -4086,7 +4011,7 @@ function openFreeSpeakersModal() {
     freeSpeakerCount = n;
     snapToActiveSpeaker();
     render();
-    closeFreeSpeakersModal();
+    closeModal("freeSpeakersModal");
     fetch(
       "/api/rooms/" +
         ME.code +
@@ -4099,16 +4024,13 @@ function openFreeSpeakersModal() {
   });
   var cancelBtn = el("button", "btn ghost", "Abbrechen");
   cancelBtn.type = "button";
-  cancelBtn.addEventListener("click", closeFreeSpeakersModal);
+  cancelBtn.addEventListener("click", function () {
+    closeModal("freeSpeakersModal");
+  });
   actions.appendChild(saveBtn);
   actions.appendChild(cancelBtn);
   box.appendChild(actions);
-
-  backdrop.appendChild(box);
-  document.body.appendChild(backdrop);
-  document.addEventListener("keydown", freeSpeakersEscHandler);
-  input.focus();
-  input.select();
+  return input;
 }
 document
   .getElementById("menuFreeSpeakers")
@@ -4171,13 +4093,11 @@ function schnellNumberInput(opts) {
     "input",
     "schnellinput" + (opts.extraClass ? " " + opts.extraClass : ""),
   );
-  // type=text, not number: a native number input reports its .value as ""
-  // for anything it can't parse (pasted text, a trailing space, "1 2"),
-  // which silently defeated the digit-filter below - the field kept
-  // showing that stray text while .value (and so the write on commit) was
-  // just an empty string, leaving a cell that looked filled in but never
-  // actually contributed to the score. inputMode keeps the numeric keypad
-  // on mobile/tablet; the filter below does the actual digit restriction.
+  // type=text, not number: a native number input reports .value as "" for
+  // anything it can't parse (pasted text, a trailing space, "1 2"), so the
+  // field can show stray text while the value committed on change is empty -
+  // a cell that looks filled in but contributes nothing. inputMode keeps the
+  // numeric keypad on mobile/tablet; the filter below restricts to digits.
   inp.type = "text";
   inp.inputMode = "numeric";
   if (opts.width !== false) inp.style.width = opts.width || "95px";
@@ -4233,79 +4153,69 @@ function gradeTextInput(opts) {
   return inp;
 }
 
-// Speaker criteria (Spr/Auf/Kon/Sac/Urt) sit on the raw 0-20 Notenskala -
-// typed value is written as-is, just clamped. In grade mode the cell
-// itself holds the grade mark rather than the point number (there's no
-// separate hint slot in this grid, unlike Blatt) - fine-tuning a value
-// happens on Blatt/Teampunkte, or by switching back to points mode here.
+// The commit path every desktop score field shares (Schnelleingabe's two
+// grids, Blatt, Teampunkte). In points mode a typed number is rounded and
+// clamped to the field's scale; in grade mode the typed mark goes through
+// pointsFromGrade, which for a team category snaps to the same band midpoint
+// the mobile keypad writes (pickTeam(), via katOf()/convert()/mid()), so
+// free typing can never produce an invalid team score. Unparsable input is
+// reverted. refresh() repaints the field (and, where there is one, its hint
+// and nudge buttons) from the stored value - it runs after a successful
+// write too, so what ends up on screen is always the normalised value.
+// max is the field's own scale: 20 for the speaker criteria's Notenskala,
+// the category's max for a team category.
+function commitScoreField(inp, max, target, criterion, refresh) {
+  var raw = inp.value.trim();
+  if (raw === "") return;
+  var n;
+  if (gradeInputMode()) {
+    n = pointsFromGrade(raw, max);
+  } else {
+    n = Math.round(Number(raw));
+    if (!isFinite(n)) n = undefined;
+    else n = Math.max(0, Math.min(max, n));
+  }
+  if (n === undefined) {
+    refresh(); // not a value we can parse - put the stored one back
+    return;
+  }
+  write(target, criterion, n);
+  refresh();
+}
+
+// Speaker criteria (Spr/Auf/Kon/Sac/Urt) sit on the raw 0-20 Notenskala. In
+// grade mode the cell itself holds the grade mark rather than the point
+// number (there's no separate hint slot in this grid, unlike Blatt) -
+// fine-tuning a value happens on Blatt/Teampunkte, or by switching back to
+// points mode here.
 function schnellSpeakerInput(s, c) {
-  var v = sget(s, c);
-  var grade = gradeInputMode();
-  var inp = grade ? gradeTextInput() : schnellNumberInput();
-  if (v !== null) inp.value = grade ? gradeMarkFor(v) : String(v);
-  inp.addEventListener("change", function () {
-    var raw = inp.value.trim();
-    if (raw === "") return;
-    var n;
-    if (grade) {
-      n = pointsFromGrade(raw);
-      if (n === undefined) {
-        inp.value = v === null ? "" : gradeMarkFor(v);
-        return;
-      }
-    } else {
-      n = Math.round(Number(raw));
-      if (!isFinite(n)) {
-        inp.value = v === null ? "" : String(v);
-        return;
-      }
-      n = Math.max(0, Math.min(20, n));
-    }
-    inp.value = grade ? gradeMarkFor(n) : String(n);
-    v = n;
-    write("s" + s, CRITERIA[c].key, n);
+  var inp = gradeInputMode() ? gradeTextInput() : schnellNumberInput();
+  function refresh() {
+    var v = sget(s, c);
+    inp.value =
+      v === null ? "" : gradeInputMode() ? gradeMarkFor(v) : String(v);
     updateSchnellSpeakerRow(s);
+  }
+  refresh();
+  inp.addEventListener("change", function () {
+    commitScoreField(inp, 20, "s" + s, CRITERIA[c].key, refresh);
   });
   return inp;
 }
 
-// Team categories are stored in their own point scale (e.g. 0-25), but
-// only the discrete bands the Jurierbogen's Umrechnungstabelle defines are
-// valid - the mobile keypad only ever writes a band's midpoint (pickTeam(),
-// via katOf()/convert()/mid()). A typed number here gets snapped to that
-// same midpoint on commit, exactly as if the matching pad button had been
-// tapped, so free typing can never produce an invalid team score. Grade
-// mode goes through the same conversion (pointsFromGrade), so a typed
-// grade snaps to the identical midpoint too.
+// Team categories are stored in their own point scale (e.g. 0-25).
 function schnellTeamInput(t, catIdx) {
   var cat = TEAMCATS[catIdx];
-  var v = tget(t, catIdx);
-  var grade = gradeInputMode();
-  var inp = grade ? gradeTextInput() : schnellNumberInput();
-  if (v !== null) inp.value = grade ? gradeMarkFor(v, cat.max) : String(v);
-  inp.addEventListener("change", function () {
-    var raw = inp.value.trim();
-    if (raw === "") return;
-    var n;
-    if (grade) {
-      n = pointsFromGrade(raw, cat.max);
-      if (n === undefined) {
-        inp.value = v === null ? "" : gradeMarkFor(v, cat.max);
-        return;
-      }
-    } else {
-      n = Math.round(Number(raw));
-      if (!isFinite(n)) {
-        inp.value = v === null ? "" : String(v);
-        return;
-      }
-      // Clamps to the category's range; the keypad instead snaps to a grade midpoint.
-      n = Math.max(0, Math.min(cat.max, n));
-    }
-    inp.value = grade ? gradeMarkFor(n, cat.max) : String(n);
-    v = n;
-    write("t" + t, cat.key, n);
+  var inp = gradeInputMode() ? gradeTextInput() : schnellNumberInput();
+  function refresh() {
+    var v = tget(t, catIdx);
+    inp.value =
+      v === null ? "" : gradeInputMode() ? gradeMarkFor(v, cat.max) : String(v);
     updateSchnellTeamRow(t);
+  }
+  refresh();
+  inp.addEventListener("change", function () {
+    commitScoreField(inp, cat.max, "t" + t, cat.key, refresh);
   });
   return inp;
 }
@@ -4420,8 +4330,7 @@ function schnellSpeakerTable() {
   table.appendChild(head);
 
   function teamClsOf(s) {
-    var t = SPEAKERS[s].team;
-    return t === 0 ? "team-gov" : t === 1 ? "team-opp" : "team-free";
+    return teamClass(SPEAKERS[s].team);
   }
 
   var active = activeSpeakerIndices();
@@ -4478,7 +4387,7 @@ function schnellTeamTable() {
 
   TEAMS.forEach(function (tm, t) {
     var tr = el("tr");
-    var lbl = el("td", "l " + (t === 0 ? "team-gov" : "team-opp"), tm);
+    var lbl = el("td", "l " + teamClass(t), tm);
     tr.appendChild(lbl);
     TEAMGROUPS_INFO.forEach(function (g) {
       g.cats.forEach(function (catIdx, i) {
@@ -4615,25 +4524,9 @@ function blattScoreField(s, c, tabIdx) {
   var v = sget(s, c);
   if (v !== null) inp.value = grade ? gradeMarkFor(v) : String(v);
   inp.addEventListener("change", function () {
-    var raw = inp.value.trim();
-    if (raw === "") return;
-    var n;
-    if (grade) {
-      n = pointsFromGrade(raw);
-      if (n === undefined) {
-        updateBlattScore(s, c);
-        return;
-      }
-    } else {
-      n = Math.round(Number(raw));
-      if (!isFinite(n)) {
-        updateBlattScore(s, c);
-        return;
-      }
-      n = Math.max(0, Math.min(20, n));
-    }
-    write("s" + s, CRITERIA[c].key, n);
-    updateBlattScore(s, c);
+    commitScoreField(inp, 20, "s" + s, CRITERIA[c].key, function () {
+      updateBlattScore(s, c);
+    });
   });
   wrap.appendChild(inp);
 
@@ -4707,8 +4600,7 @@ function renderBlatt() {
   root.innerHTML = "";
 
   var sp = SPEAKERS[cs];
-  var teamCls =
-    sp.team === 0 ? "team-gov" : sp.team === 1 ? "team-opp" : "team-free";
+  var teamCls = teamClass(sp.team);
 
   var head = el("div", "blatthead " + teamCls);
   var prev = el("button", "navbtn", "‹");
@@ -4858,26 +4750,9 @@ function teamPointsScoreField(t, catIdx, tabIdx) {
   var v = tget(t, catIdx);
   if (v !== null) inp.value = grade ? gradeMarkFor(v, cat.max) : String(v);
   inp.addEventListener("change", function () {
-    var raw = inp.value.trim();
-    if (raw === "") return;
-    var n;
-    if (grade) {
-      n = pointsFromGrade(raw, cat.max);
-      if (n === undefined) {
-        updateTeamPointsScore(t, catIdx);
-        return;
-      }
-    } else {
-      n = Math.round(Number(raw));
-      if (!isFinite(n)) {
-        updateTeamPointsScore(t, catIdx);
-        return;
-      }
-      // Clamps to the category's range; the mobile keypad instead snaps to a grade midpoint.
-      n = Math.max(0, Math.min(cat.max, n));
-    }
-    write("t" + t, cat.key, n);
-    updateTeamPointsScore(t, catIdx);
+    commitScoreField(inp, cat.max, "t" + t, cat.key, function () {
+      updateTeamPointsScore(t, catIdx);
+    });
   });
   wrap.appendChild(inp);
 
@@ -4957,7 +4832,7 @@ function teamPointsColumn(t, group, scoreTabStart, noteTabStart) {
 // so tab order goes through every note field (both teams) before any score
 // field - see renderTeamPoints.
 function teamPointsSection(t, noteTabStart, scoreTabStart) {
-  var teamCls = t === 0 ? "team-gov" : "team-opp";
+  var teamCls = teamClass(t);
   var sec = el("div", "teampointssec " + teamCls);
 
   var head = el("div", "teampointssechead");
@@ -5151,8 +5026,6 @@ function render() {
     renderDashChrome();
     var ev = effectiveDashboardView();
     if (ev === "namen") renderNamenRoom();
-    else if (ev === "sheet") renderSheet();
-    else if (ev === "team") renderTeam();
     else if (ev === "schnell") renderSchnell();
     else if (ev === "blatt") renderBlatt();
     else if (ev === "teampoints") renderTeamPoints();
@@ -5254,9 +5127,7 @@ function showLobby() {
   // render()/applyLayoutMode() never run again once ME is null (leaveRoom's
   // resetRoomState clears it), so the desktop chrome classes from before
   // leaving would otherwise stay stuck on #app, stretching the lobby card.
-  document
-    .getElementById("app")
-    .classList.remove("dashboard-mode", "dashboard-subview");
+  document.getElementById("app").classList.remove("dashboard-mode");
   if (code) {
     document.getElementById("lobbyCode").textContent = code;
     document.getElementById("lobbyJoin").classList.remove("hide");
@@ -5318,6 +5189,7 @@ var promotingOffline = false;
 function promoteOfflineRoom() {
   if (!ME || !ME.pendingCreate || promotingOffline) return;
   promotingOffline = true;
+  var forCode = ME.code;
   fetch("/api/rooms", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -5328,6 +5200,13 @@ function promoteOfflineRoom() {
       return r.json();
     })
     .then(function (s) {
+      // The judge can have left (or swapped rooms) while this was in flight -
+      // the new server room is then simply abandoned, rather than having this
+      // room's local scores migrated into it.
+      if (!ME || !ME.pendingCreate || ME.code !== forCode) {
+        promotingOffline = false;
+        return;
+      }
       var oldCode = ME.code;
       var oldJudgeId = ME.judge_id;
 
@@ -5470,7 +5349,6 @@ function doJoin(code) {
   })
     .then(function (r) {
       if (r.status === 404) throw new Error("Raum " + code + " gibt es nicht.");
-      if (r.status === 410) throw new Error("Dieser Raum ist geschlossen.");
       if (!r.ok) throw new Error("Beitritt fehlgeschlagen.");
       return r.json();
     })
@@ -5734,13 +5612,7 @@ document
 document.getElementById("undoBtn").addEventListener("click", function () {
   var h = hist.pop();
   if (!h) return;
-  if (h.prev === null) {
-    delete mine[kk("s" + h.s, CRITERIA[h.c].key)];
-    write("s" + h.s, CRITERIA[h.c].key, 0); // server has no delete; 0 is the eraser
-    delete mine[kk("s" + h.s, CRITERIA[h.c].key)];
-  } else {
-    write("s" + h.s, CRITERIA[h.c].key, h.prev);
-  }
+  write("s" + h.s, CRITERIA[h.c].key, h.prev); // prev === null clears the cell
   cs = h.s;
   cc = h.c;
   render();
@@ -5748,13 +5620,7 @@ document.getElementById("undoBtn").addEventListener("click", function () {
 document.getElementById("tundoBtn").addEventListener("click", function () {
   var h = thist.pop();
   if (!h) return;
-  if (h.prev === null) {
-    delete mine[kk("t" + h.t, TEAMCATS[h.c].key)];
-    write("t" + h.t, TEAMCATS[h.c].key, 0); // server has no delete; 0 is the eraser
-    delete mine[kk("t" + h.t, TEAMCATS[h.c].key)];
-  } else {
-    write("t" + h.t, TEAMCATS[h.c].key, h.prev);
-  }
+  write("t" + h.t, TEAMCATS[h.c].key, h.prev); // prev === null clears the cell
   ct = h.t;
   ctc = h.c;
   render();

@@ -7,7 +7,7 @@ import os
 import secrets
 import sqlite3
 import time
-from collections import defaultdict, deque
+from collections import deque
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -39,8 +39,9 @@ IMPRESSUM_DEFAULTS = {
 # No O/0, no I/1/L. Room codes get read aloud across a lecture hall.
 ALPHABET = "ACDEFGHJKMNPQRTUVWXY34679"
 
-# Rooms are never deleted otherwise, so the db would grow forever. Judges/scores/
-# deductions/exclusions cascade off `rooms`, so evicting a room cleans up everything.
+# Rooms are never closed or deleted by hand - a round just stops being used -
+# so without a cap the db would grow forever. Judges/scores/deductions/
+# exclusions cascade off `rooms`, so evicting a room cleans up everything.
 MAX_ROOMS = 5000
 
 SCHEMA = """
@@ -49,8 +50,7 @@ CREATE TABLE IF NOT EXISTS rooms (
   motion        TEXT NOT NULL DEFAULT '',
   spread_open   INTEGER NOT NULL DEFAULT 0,
   free_speakers INTEGER NOT NULL DEFAULT 3,
-  created_at    REAL NOT NULL,
-  closed_at     REAL
+  created_at    REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS judges (
   id           TEXT PRIMARY KEY,
@@ -101,19 +101,11 @@ def db() -> sqlite3.Connection:
 async def lifespan(app: FastAPI):
     con = db()
     con.executescript(SCHEMA)
-    try:
-        con.execute(
-            "ALTER TABLE rooms ADD COLUMN spread_open INTEGER NOT NULL DEFAULT 0"
-        )
-    except sqlite3.OperationalError:
-        pass  # already there
-    try:
-        con.execute(
-            "ALTER TABLE rooms ADD COLUMN free_speakers INTEGER NOT NULL DEFAULT 3"
-        )
-    except sqlite3.OperationalError:
-        pass  # already there
+    # Columns added after the first release. A fresh DB gets them from SCHEMA
+    # above and every ALTER here is a no-op; an existing one picks them up.
     for ddl in (
+        "ALTER TABLE rooms ADD COLUMN spread_open INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE rooms ADD COLUMN free_speakers INTEGER NOT NULL DEFAULT 3",
         "ALTER TABLE rooms ADD COLUMN timer_type TEXT",
         "ALTER TABLE rooms ADD COLUMN timer_status TEXT NOT NULL DEFAULT 'idle'",
         "ALTER TABLE rooms ADD COLUMN timer_duration_ms INTEGER NOT NULL DEFAULT 0",
@@ -182,14 +174,26 @@ hub = Hub()
 
 
 class SlidingWindowLimiter:
+    """Per-key request timestamps in a rolling window.
+
+    Keys are client IPs, so the map has to be pruned or it grows for the
+    lifetime of the process - one entry per address ever seen. Sweeping every
+    `window` seconds (from inside allow(), so there is no background task)
+    keeps it to roughly the addresses actually active in one window.
+    """
+
     def __init__(self, max_hits: int, window_seconds: float) -> None:
         self.max_hits = max_hits
         self.window = window_seconds
-        self.hits: dict[str, deque[float]] = defaultdict(deque)
+        self.hits: dict[str, deque[float]] = {}
+        self.next_sweep = 0.0
 
     def allow(self, key: str) -> bool:
         now = time.time()
-        q = self.hits[key]
+        self.sweep(now)
+        q = self.hits.get(key)
+        if q is None:
+            q = self.hits[key] = deque()
         while q and now - q[0] > self.window:
             q.popleft()
         if len(q) >= self.max_hits:
@@ -197,10 +201,21 @@ class SlidingWindowLimiter:
         q.append(now)
         return True
 
+    def sweep(self, now: float) -> None:
+        """Drops keys whose newest hit has aged out - an all-expired deque is
+        indistinguishable from never having seen the key."""
+        if now < self.next_sweep:
+            return
+        self.next_sweep = now + self.window
+        for key in [
+            k for k, q in self.hits.items() if not q or now - q[-1] > self.window
+        ]:
+            del self.hits[key]
+
 
 # Limit users that send more than 300 requests a minute
 api_limiter = SlidingWindowLimiter(max_hits=300, window_seconds=60)
-# Limit users that try to create more than 10 rooms a minute
+# Limit users that try to create more than 10 rooms in 10 minutes
 room_create_limiter = SlidingWindowLimiter(max_hits=10, window_seconds=600)
 
 
@@ -298,7 +313,10 @@ class JoinRoom(BaseModel):
 class Patch(BaseModel):
     target: str = Field(min_length=1, max_length=32)
     criterion: str = Field(min_length=1, max_length=32)
-    points: int = Field(ge=0, le=500)
+    # null clears the cell (the client's Undo of a first-ever entry). Without
+    # it the only way to "unset" a score was to write a 0, which every other
+    # judge then saw - and counted - as a real score of zero.
+    points: Optional[int] = Field(default=None, ge=0, le=500)
     seq: int = Field(ge=0)
 
 
@@ -395,8 +413,6 @@ async def join_room(code: str, body: JoinRoom):
         room = con.execute("SELECT * FROM rooms WHERE code=?", (code,)).fetchone()
         if not room:
             raise HTTPException(404, "room not found")
-        if room["closed_at"]:
-            raise HTTPException(410, "room closed")
 
         # Same device rejoining hands back the existing identity, which is
         # what makes a browser crash cheap.
@@ -469,7 +485,6 @@ async def snapshot(code: str, token: str = Query(...)):
         return {
             "code": code,
             "motion": room["motion"],
-            "closed": bool(room["closed_at"]),
             "spread_open": bool(room["spread_open"]),
             "free_speakers": room["free_speakers"],
             "timer": timer_payload(room),
@@ -505,6 +520,13 @@ async def apply_patches(code: str, body: PatchBatch, token: str = Query(...)):
             ).fetchone()
             if cur and cur["seq"] >= p.seq:
                 stale += 1  # a late arrival from before a reconnect
+                continue
+            if p.points is None:
+                con.execute(
+                    "DELETE FROM scores WHERE judge_id=? AND target=? AND criterion=?",
+                    (me["id"], p.target, p.criterion),
+                )
+                applied.append(p)
                 continue
             con.execute(
                 """INSERT INTO scores (judge_id, target, criterion, points, seq, updated_at)
@@ -735,22 +757,6 @@ async def set_timer(code: str, body: TimerAction, token: str = Query(...)):
         payload = timer_payload(room)
         await hub.broadcast(code, {"type": "timer", "timer": payload})
         return {"ok": True, "timer": payload}
-    finally:
-        con.close()
-
-
-@app.post("/api/rooms/{code}/close")
-async def close_room(code: str, token: str = Query(...)):
-    code = code.upper()
-    con = db()
-    try:
-        me = auth(con, code, token)
-        if not me["is_chair"]:
-            raise HTTPException(403, "only the chair can close the room")
-        con.execute("UPDATE rooms SET closed_at=? WHERE code=?", (time.time(), code))
-        con.commit()
-        await hub.broadcast(code, {"type": "closed"})
-        return {"ok": True}
     finally:
         con.close()
 

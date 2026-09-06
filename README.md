@@ -124,7 +124,7 @@ double names don't overwrite each others scores.
 ### Data model
 
 ```
-rooms       (code PK, motion, spread_open, created_at, closed_at)
+rooms       (code PK, motion, spread_open, free_speakers, created_at, timer_*)
 judges      (id PK, room_code, client_id, token, display_name, is_chair, hidden, joined_at)
 scores      (judge_id, target, criterion, points, seq, updated_at,
              PRIMARY KEY (judge_id, target, criterion))

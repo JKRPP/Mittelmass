@@ -1,9 +1,10 @@
-import asyncio, json, os, sys, tempfile
+import os, sys, tempfile, time
 
-os.environ["OPD_DB"] = tempfile.mktemp(suffix=".sqlite3")
+# A fresh DB per run, in a directory that gets cleaned up with it.
+_tmpdir = tempfile.TemporaryDirectory()
+os.environ["OPD_DB"] = os.path.join(_tmpdir.name, "test.sqlite3")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import httpx
 from fastapi.testclient import TestClient
 import server
 
@@ -94,6 +95,26 @@ with TestClient(server.app) as c:
         w1["token"], [{"target": "s0", "criterion": "spr", "points": 14, "seq": 2}]
     )
     check("newer seq accepted", res["applied"] == 1)
+
+    # Undo of a first-ever entry clears the cell instead of writing a 0 that
+    # every other judge would count as a real score.
+    patch(w2["token"], [{"target": "s1", "criterion": "auf", "points": 7, "seq": 5}])
+    res = patch(
+        w2["token"], [{"target": "s1", "criterion": "auf", "points": None, "seq": 6}]
+    )
+    check("null points applied as a delete", res["applied"] == 1, res)
+    snap = c.get(f"/api/rooms/{code}/snapshot?token={chair['token']}").json()
+    check(
+        "cleared cell is gone from the snapshot",
+        not any(
+            s["judge_id"] == w2["judge_id"]
+            and s["target"] == "s1"
+            and s["criterion"] == "auf"
+            for s in snap["scores"]
+        ),
+    )
+    w2_filled = next(j["filled"] for j in snap["judges"] if j["id"] == w2["judge_id"])
+    check("cleared cell no longer counts as filled", w2_filled == 1, w2_filled)
 
     # Snapshot can be recovered
     snap = c.get(f"/api/rooms/{code}/snapshot?token={chair['token']}").json()
@@ -283,6 +304,18 @@ with TestClient(server.app) as c:
         r.status_code == 200 and r.json()["timer"]["updated_at"] > before,
         (before, r.text),
     )
+
+    # Rate limiter: enforces its cap, and prunes keys that have gone quiet
+    # instead of keeping one entry per address ever seen.
+    lim = server.SlidingWindowLimiter(max_hits=2, window_seconds=0.2)
+    check(
+        "limiter allows up to max_hits then blocks",
+        lim.allow("a") and lim.allow("a") and not lim.allow("a"),
+    )
+    check("limiter is per key", lim.allow("b"))
+    time.sleep(0.25)
+    check("window expiry lets a blocked key through again", lim.allow("a"))
+    check("sweep dropped the key that went quiet", "b" not in lim.hits, lim.hits)
 
 print()
 print("ALL PASS" if ok else "FAILURES ABOVE")
