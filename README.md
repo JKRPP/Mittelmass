@@ -9,7 +9,8 @@
 
 A judging app for OPD (Offene Parlamentarische Debatte) rounds: share links,
 per-judge scoresheets, and a chair view that surfaces disagreement between
-judges. FastAPI + SQLite on the server, one static HTML/JS/CSS client.
+judges. A timer for all types of speeches is shared between all judges.
+FastAPI + SQLite on the server, one static HTML/JS/CSS client.
 
 ## User perspective
 
