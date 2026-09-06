@@ -652,6 +652,13 @@ function timerDisplayMs(elapsedMs, durationMs) {
   return timerCountUp() ? elapsedMs : durationMs - elapsedMs;
 }
 
+// And per-device again: which BELL_VOICES entry this device rings. Whoever
+// holds the bell picks whichever carries better in their room, so it can't
+// be a room-wide setting.
+function bellVoice() {
+  return LS.get("opd.bellVoice", "hoch") === "tief" ? "tief" : "hoch";
+}
+
 // Lazily created (and resumed) from inside a user gesture - start/resume
 // button handlers call this - so autoplay policies don't block the bell.
 function timerAudioCtx_() {
@@ -667,32 +674,67 @@ function timerAudioCtx_() {
   }
   return timerAudioCtx;
 }
-// Bell tone tuned in the Bell Tuner - a struck-idiophone approximation:
-// a few inharmonic sine partials over a fast-attack/exponential-decay
-// envelope, plus a short noise burst for the strike transient, so it
-// reads as a bell rather than a beep and cuts through a talking room.
+// The two Zeitsignal voices, both tuned in the Bell Tuner and both the
+// same struck-idiophone approximation: sine partials over a fast-attack /
+// exponential-decay envelope, plus a short noise burst for the strike
+// transient, so they read as a bell rather than a beep. "hoch" is bright
+// and short, and cuts through a talking room; "tief" rings much longer
+// and carries better in a big hall. Which one a device uses is a personal
+// per-device choice (bellVoice() below), like mute - not a room setting.
+var BELL_VOICES = {
+  hoch: {
+    label: "Hoch",
+    fundamental: 1630,
+    partials: [
+      { ratio: 1, gain: 1 },
+      { ratio: 2, gain: 0.37 },
+      { ratio: 3, gain: 0.24 },
+    ],
+    gapSec: 0.38, // between successive rings of a 2x/3x signal
+    attackSec: 0.005,
+    decaySec: 0.9,
+    gain: 0.9,
+    bite: 0, // square-wave blend at the fundamental; 0 = none
+    noiseSec: 0.012,
+    noiseGain: 0.19,
+  },
+  tief: {
+    label: "Tief",
+    fundamental: 420,
+    partials: [
+      { ratio: 1, gain: 1 },
+      { ratio: 2, gain: 0.21 },
+    ],
+    gapSec: 0.31,
+    attackSec: 0.004,
+    decaySec: 2.12,
+    gain: 0.85,
+    bite: 0.02,
+    noiseSec: 0.03,
+    noiseGain: 0.19,
+  },
+};
 function playBellTones(times) {
   var ctx = timerAudioCtx_();
   if (!ctx) return;
-  var PARTIALS = [
-    { ratio: 1, gain: 1 },
-    { ratio: 2, gain: 0.37 },
-    { ratio: 3, gain: 0.24 },
-  ];
+  var v = BELL_VOICES[bellVoice()];
   for (var i = 0; i < times; i++) {
-    var t0 = ctx.currentTime + i * 0.38;
-    var end = t0 + 0.005 + 0.9 + 0.05;
+    var t0 = ctx.currentTime + i * v.gapSec;
+    var end = t0 + v.attackSec + v.decaySec + 0.05;
 
     var master = ctx.createGain();
     master.gain.setValueAtTime(0.0001, t0);
-    master.gain.exponentialRampToValueAtTime(0.9, t0 + 0.005);
-    master.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.005 + 0.9);
+    master.gain.exponentialRampToValueAtTime(v.gain, t0 + v.attackSec);
+    master.gain.exponentialRampToValueAtTime(
+      0.0001,
+      t0 + v.attackSec + v.decaySec,
+    );
     master.connect(ctx.destination);
 
-    PARTIALS.forEach(function (p) {
+    v.partials.forEach(function (p) {
       var osc = ctx.createOscillator();
       osc.type = "sine";
-      osc.frequency.value = 1630 * p.ratio;
+      osc.frequency.value = v.fundamental * p.ratio;
       var g = ctx.createGain();
       g.gain.value = p.gain;
       osc.connect(g);
@@ -701,16 +743,27 @@ function playBellTones(times) {
       osc.stop(end);
     });
 
-    var noiseSec = 0.012;
-    var bufferSize = Math.round(ctx.sampleRate * noiseSec);
+    if (v.bite > 0) {
+      var bite = ctx.createOscillator();
+      bite.type = "square";
+      bite.frequency.value = v.fundamental;
+      var biteGain = ctx.createGain();
+      biteGain.gain.value = v.bite;
+      bite.connect(biteGain);
+      biteGain.connect(master);
+      bite.start(t0);
+      bite.stop(end);
+    }
+
+    var bufferSize = Math.round(ctx.sampleRate * v.noiseSec);
     var buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
     var data = buffer.getChannelData(0);
     for (var n = 0; n < bufferSize; n++) data[n] = Math.random() * 2 - 1;
     var noise = ctx.createBufferSource();
     noise.buffer = buffer;
     var noiseGain = ctx.createGain();
-    noiseGain.gain.setValueAtTime(0.19, t0);
-    noiseGain.gain.exponentialRampToValueAtTime(0.0001, t0 + noiseSec);
+    noiseGain.gain.setValueAtTime(v.noiseGain, t0);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, t0 + v.noiseSec);
     noise.connect(noiseGain);
     noiseGain.connect(master);
     noise.start(t0);
@@ -1500,6 +1553,19 @@ function toggleTimerCountUp() {
   applyTimerDisplayLabel();
   paintTimer();
   refreshTimerModal();
+}
+
+function applyBellVoiceLabel() {
+  var b = document.getElementById("menuBellVoice");
+  if (b) b.textContent = "Zeitsignal: " + BELL_VOICES[bellVoice()].label;
+}
+// Rings the newly picked voice straight away - this is a choice about a
+// sound, so hearing it beats reading a label. Deliberately uses testBell(),
+// which ignores mute, since the tap itself is the request to hear it.
+function toggleBellVoice() {
+  LS.set("opd.bellVoice", bellVoice() === "hoch" ? "tief" : "hoch");
+  applyBellVoiceLabel();
+  testBell();
 }
 function toggleGradeInput() {
   LS.set("opd.gradeInput", !gradeInputMode());
@@ -5614,9 +5680,11 @@ document.getElementById("menuBtn").addEventListener("click", function (e) {
 });
 document.getElementById("menuPanel").addEventListener("click", function (e) {
   var item = e.target.closest(".menuitem");
-  // Copying stays open briefly to show the "Kopiert" confirmation instead
-  // of vanishing the instant it's tapped.
-  if (item && item.id !== "menuCopyLink") closeMenu();
+  // Two exceptions stay open: copying, to show the "Kopiert" confirmation
+  // instead of vanishing the instant it's tapped, and the Zeitsignal
+  // switch, so the two voices can be tapped back and forth and compared.
+  if (item && item.id !== "menuCopyLink" && item.id !== "menuBellVoice")
+    closeMenu();
 });
 document.addEventListener("click", function (e) {
   var panel = document.getElementById("menuPanel");
@@ -5660,6 +5728,9 @@ document
 document
   .getElementById("menuTimerDisplay")
   .addEventListener("click", toggleTimerCountUp);
+document
+  .getElementById("menuBellVoice")
+  .addEventListener("click", toggleBellVoice);
 document.getElementById("undoBtn").addEventListener("click", function () {
   var h = hist.pop();
   if (!h) return;
@@ -5735,6 +5806,7 @@ window.addEventListener("appinstalled", function () {
   applyTheme(LS.get("opd.theme", "light"));
   applyGradeInputLabel();
   applyTimerDisplayLabel();
+  applyBellVoiceLabel();
   // Only an explicit /r/CODE link auto-resumes a session - landing on the
   // bare app URL always shows the lobby (with the recent-rooms list to
   // rejoin from), even if a session for some room is still cached.
