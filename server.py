@@ -85,7 +85,22 @@ CREATE TABLE IF NOT EXISTS exclusions (
   updated_at REAL NOT NULL,
   PRIMARY KEY (judge_id, target)
 );
+CREATE TABLE IF NOT EXISTS offline_judges (
+  id         TEXT PRIMARY KEY,
+  room_code  TEXT NOT NULL REFERENCES rooms(code) ON DELETE CASCADE,
+  name       TEXT NOT NULL DEFAULT '',
+  hidden     INTEGER NOT NULL DEFAULT 0,
+  updated_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS offline_scores (
+  offline_id TEXT NOT NULL REFERENCES offline_judges(id) ON DELETE CASCADE,
+  target     TEXT NOT NULL,
+  points     INTEGER NOT NULL,
+  updated_at REAL NOT NULL,
+  PRIMARY KEY (offline_id, target)
+);
 CREATE INDEX IF NOT EXISTS idx_judges_room ON judges(room_code);
+CREATE INDEX IF NOT EXISTS idx_offline_judges_room ON offline_judges(room_code);
 """
 
 
@@ -112,6 +127,7 @@ async def lifespan(app: FastAPI):
         "ALTER TABLE rooms ADD COLUMN timer_elapsed_ms INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE rooms ADD COLUMN timer_started_at REAL",
         "ALTER TABLE rooms ADD COLUMN timer_updated_at REAL NOT NULL DEFAULT 0",
+        "ALTER TABLE offline_judges ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0",
     ):
         try:
             con.execute(ddl)
@@ -334,6 +350,21 @@ class ExclusionSet(BaseModel):
     excluded: bool = True
 
 
+class OfflineJudgeSet(BaseModel):
+    # The client mints the id (so it can use it immediately, before the
+    # round-trip completes) - this upserts, creating a row for a new id or
+    # renaming an existing one. name may be blank: the chair can add a
+    # judge first and fill in the name once the discussion allows it.
+    id: str = Field(min_length=1, max_length=64)
+    name: str = Field(default="", max_length=60)
+
+
+class OfflineScoreSet(BaseModel):
+    offline_id: str = Field(min_length=1, max_length=64)
+    target: str = Field(min_length=1, max_length=32)
+    points: Optional[int] = Field(default=None, ge=0, le=500)
+
+
 # Nominal duration per timer type, in milliseconds - the server is the
 # source of truth (mirrors how free_speakers bounds are server-validated),
 # the client only ever sends which type it wants to start. "discussion" is
@@ -482,6 +513,14 @@ async def snapshot(code: str, token: str = Query(...)):
                JOIN judges j ON j.id = e.judge_id WHERE j.room_code=?""",
             (code,),
         ).fetchall()
+        offl_judges = con.execute(
+            "SELECT id, name, hidden FROM offline_judges WHERE room_code=?", (code,)
+        ).fetchall()
+        offl_scores = con.execute(
+            """SELECT os.offline_id, os.target, os.points FROM offline_scores os
+               JOIN offline_judges oj ON oj.id = os.offline_id WHERE oj.room_code=?""",
+            (code,),
+        ).fetchall()
         return {
             "code": code,
             "motion": room["motion"],
@@ -497,6 +536,8 @@ async def snapshot(code: str, token: str = Query(...)):
             "scores": [dict(r) for r in rows],
             "deductions": [dict(r) for r in deds],
             "exclusions": [dict(r) for r in excl],
+            "offline_judges": [dict(r) for r in offl_judges],
+            "offline_scores": [dict(r) for r in offl_scores],
             "server_time": time.time(),
         }
     finally:
@@ -641,6 +682,140 @@ async def set_exclusion(code: str, body: ExclusionSet, token: str = Query(...)):
                 "judge_id": me["id"],
                 "target": body.target,
                 "excluded": body.excluded,
+            },
+        )
+        return {"ok": True}
+    finally:
+        con.close()
+
+
+@app.post("/api/rooms/{code}/offline-judges")
+async def set_offline_judge(code: str, body: OfflineJudgeSet, token: str = Query(...)):
+    code = code.upper()
+    con = db()
+    try:
+        me = auth(con, code, token)
+        if not me["is_chair"]:
+            raise HTTPException(403, "only the chair can manage offline judges")
+        now = time.time()
+        oid = body.id
+        name = body.name.strip()
+        existing = con.execute(
+            "SELECT hidden FROM offline_judges WHERE id=? AND room_code=?", (oid, code)
+        ).fetchone()
+        if existing:
+            con.execute(
+                "UPDATE offline_judges SET name=?, updated_at=? WHERE id=?",
+                (name, now, oid),
+            )
+            hidden = bool(existing["hidden"])
+        else:
+            con.execute(
+                """INSERT INTO offline_judges (id, room_code, name, hidden, updated_at)
+                   VALUES (?,?,?,0,?)""",
+                (oid, code, name, now),
+            )
+            hidden = False
+        con.commit()
+        await hub.broadcast(
+            code, {"type": "offline_judges", "id": oid, "name": name, "hidden": hidden}
+        )
+        return {"ok": True, "id": oid}
+    finally:
+        con.close()
+
+
+@app.delete("/api/rooms/{code}/offline-judges/{offline_id}")
+async def delete_offline_judge(code: str, offline_id: str, token: str = Query(...)):
+    code = code.upper()
+    con = db()
+    try:
+        me = auth(con, code, token)
+        if not me["is_chair"]:
+            raise HTTPException(403, "only the chair can manage offline judges")
+        con.execute(
+            "DELETE FROM offline_judges WHERE id=? AND room_code=?", (offline_id, code)
+        )
+        con.commit()
+        await hub.broadcast(code, {"type": "offline_judges_removed", "id": offline_id})
+        return {"ok": True}
+    finally:
+        con.close()
+
+
+@app.post("/api/rooms/{code}/offline-judges/{offline_id}/hidden")
+async def set_offline_hidden(
+    code: str, offline_id: str, hidden: bool = Query(True), token: str = Query(...)
+):
+    code = code.upper()
+    con = db()
+    try:
+        me = auth(con, code, token)
+        if not me["is_chair"]:
+            raise HTTPException(403, "only the chair can manage offline judges")
+        row = con.execute(
+            "SELECT name FROM offline_judges WHERE id=? AND room_code=?",
+            (offline_id, code),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "offline judge not found")
+        con.execute(
+            "UPDATE offline_judges SET hidden=? WHERE id=? AND room_code=?",
+            (1 if hidden else 0, offline_id, code),
+        )
+        con.commit()
+        # No per-socket "removed"/"restored" notice, unlike set_hidden - an
+        # offline judge has no live connection to notify.
+        await hub.broadcast(
+            code,
+            {
+                "type": "offline_judges",
+                "id": offline_id,
+                "name": row["name"],
+                "hidden": hidden,
+            },
+        )
+        return {"ok": True}
+    finally:
+        con.close()
+
+
+@app.post("/api/rooms/{code}/offline-scores")
+async def set_offline_score(code: str, body: OfflineScoreSet, token: str = Query(...)):
+    code = code.upper()
+    con = db()
+    try:
+        me = auth(con, code, token)
+        if not me["is_chair"]:
+            raise HTTPException(403, "only the chair can manage offline judges")
+        owner = con.execute(
+            "SELECT 1 FROM offline_judges WHERE id=? AND room_code=?",
+            (body.offline_id, code),
+        ).fetchone()
+        if not owner:
+            raise HTTPException(404, "offline judge not found")
+        now = time.time()
+        if body.points is None:
+            con.execute(
+                "DELETE FROM offline_scores WHERE offline_id=? AND target=?",
+                (body.offline_id, body.target),
+            )
+        else:
+            con.execute(
+                """INSERT INTO offline_scores (offline_id, target, points, updated_at)
+                   VALUES (?,?,?,?)
+                   ON CONFLICT(offline_id, target)
+                   DO UPDATE SET points=excluded.points, updated_at=excluded.updated_at""",
+                (body.offline_id, body.target, body.points, now),
+            )
+        con.commit()
+        await hub.broadcast(
+            code,
+            {
+                "type": "offline_scores",
+                "offline_id": body.offline_id,
+                "target": body.target,
+                "points": body.points,
             },
         )
         return {"ok": True}

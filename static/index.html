@@ -201,7 +201,12 @@
           <div class="bar">
             <span class="dot" id="cdot"></span>
             <span id="cstate">verbinde …</span>
-            <div class="timerwidget hide" id="timerWidget" role="button" tabindex="-1"></div>
+            <div
+              class="timerwidget hide"
+              id="timerWidget"
+              role="button"
+              tabindex="-1"
+            ></div>
             <div class="dashnav hide" id="dashNav">
               <button
                 data-dv="namen"
@@ -242,6 +247,14 @@
                 title="Übersicht über Spreads und Status von Jurierenden"
               >
                 Dashboard
+              </button>
+              <button
+                data-dv="offline"
+                aria-pressed="false"
+                tabindex="-1"
+                title="Punktesummen für Jurierende verwalten, die die App nicht nutzen"
+              >
+                Offline-Jurierende
               </button>
             </div>
             <span class="sp"></span>
@@ -365,6 +378,18 @@
               >
                 Spreads freigeben
               </button>
+              <button
+                class="btn ghost"
+                id="btnOfflineJudges"
+                style="margin-top: 14px"
+              >
+                Offline-Jurierende
+              </button>
+              <div
+                id="offlineJudgesWrap"
+                class="hide"
+                style="margin-top: 12px"
+              ></div>
             </div>
             <div class="card">
               <h2>Abweichungen - Reden</h2>
@@ -409,6 +434,7 @@
         <div id="v-schnell" class="hide"></div>
         <div id="v-blatt" class="hide"></div>
         <div id="v-teampoints" class="hide"></div>
+        <div id="v-offline" class="hide"></div>
       </div>
     </div>
 

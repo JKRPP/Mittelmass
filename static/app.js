@@ -386,7 +386,9 @@ function esc(s) {
 // active speech's criteria plus both teams' categories. Follows the chair's
 // FFR count, so it is never the fixed 59 of a default 3-FFR round.
 function expectedCellCount() {
-  return activeSpeakerCount() * CRITERIA.length + TEAMS.length * TEAMCATS.length;
+  return (
+    activeSpeakerCount() * CRITERIA.length + TEAMS.length * TEAMCATS.length
+  );
 }
 // Highest reachable team score - the sum of every category's own max.
 var TEAM_MAX = TEAMCATS.reduce(function (a, c) {
@@ -1024,7 +1026,9 @@ function refreshTimerModal() {
 // showing) is updated in place below, so that a -5s/+5s tap doesn't tear
 // down and recreate every button under the judge's finger.
 function timerModalShape() {
-  return (!timer.type || timer.status === "idle" ? "pick" : "run") + "|" + timer.type;
+  return (
+    (!timer.type || timer.status === "idle" ? "pick" : "run") + "|" + timer.type
+  );
 }
 function refreshTimerModalControls() {
   var m = document.getElementById("timerModal");
@@ -1240,7 +1244,11 @@ function buildTimerModalBox(box) {
     // which usually takes a few taps. One handler dispatching on the current
     // status keeps pause<->resume a label change, not a structural rebuild.
     var actions = el("div", "modalactions");
-    var pb = el("button", "btn", timer.status === "running" ? "Pause" : "Weiter");
+    var pb = el(
+      "button",
+      "btn",
+      timer.status === "running" ? "Pause" : "Weiter",
+    );
     pb.id = "timerPauseResume";
     pb.type = "button";
     pb.addEventListener("click", function () {
@@ -1419,6 +1427,18 @@ function connect() {
       if (m.excluded) remoteExclusions[m.judge_id][m.target] = true;
       else delete remoteExclusions[m.judge_id][m.target];
       render();
+    } else if (m.type === "offline_judges") {
+      offlineJudges[m.id] = { name: m.name, hidden: !!m.hidden };
+      render();
+    } else if (m.type === "offline_judges_removed") {
+      delete offlineJudges[m.id];
+      delete offlineScores[m.id];
+      render();
+    } else if (m.type === "offline_scores") {
+      if (!offlineScores[m.offline_id]) offlineScores[m.offline_id] = {};
+      if (m.points === null) delete offlineScores[m.offline_id][m.target];
+      else offlineScores[m.offline_id][m.target] = m.points;
+      render();
     } else if (m.type === "removed") {
       handleRemoved();
     } else if (m.type === "restored") {
@@ -1500,6 +1520,16 @@ function resync() {
         if (x.judge_id === ME.judge_id) myExclusions[x.target] = true;
       });
 
+      offlineJudges = {};
+      (s.offline_judges || []).forEach(function (j) {
+        offlineJudges[j.id] = { name: j.name, hidden: !!j.hidden };
+      });
+      offlineScores = {};
+      (s.offline_scores || []).forEach(function (r) {
+        if (!offlineScores[r.offline_id]) offlineScores[r.offline_id] = {};
+        offlineScores[r.offline_id][r.target] = r.points;
+      });
+
       render();
       paintBar();
     })
@@ -1541,6 +1571,109 @@ function setExclusion(target, excluded) {
   ).catch(function () {});
 }
 
+// Offline judges: added/renamed/removed and scored only by the chair, via
+// the desktop "Offline-Jurierende" tab or the mobile Chair panel.
+function randomOfflineId() {
+  return "off" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+function addOfflineJudge(name) {
+  if (!ME || !ME.is_chair) return;
+  var id = randomOfflineId();
+  offlineJudges[id] = { name: name, hidden: false };
+  render();
+  fetch(
+    "/api/rooms/" +
+      ME.code +
+      "/offline-judges?token=" +
+      encodeURIComponent(ME.token),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: id, name: name }),
+    },
+  ).catch(function () {});
+  return id;
+}
+// The only way to create an offline judge on desktop (from the Namen jury
+// list or the Dashboard's Ballot panel) - the "Offline-Jurierende" tab itself
+// stays hidden until one exists (see renderDashChrome()), so adding one
+// also has to be what reveals and opens it.
+function addOfflineJudgeAndOpenPanel() {
+  addOfflineJudge("");
+  setDashboardView("offline");
+  render();
+}
+function renameOfflineJudge(id, name) {
+  if (!ME || !ME.is_chair || !offlineJudges[id]) return;
+  offlineJudges[id].name = name;
+  // No render() here: this fires on a name field's blur, often while Tab is
+  // moving focus into the first score field of the same column - rebuilding
+  // the table mid-transition would strand focus (see setOfflineScore).
+  fetch(
+    "/api/rooms/" +
+      ME.code +
+      "/offline-judges?token=" +
+      encodeURIComponent(ME.token),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: id, name: name }),
+    },
+  ).catch(function () {});
+}
+function removeOfflineJudge(id) {
+  if (!ME || !ME.is_chair) return;
+  delete offlineJudges[id];
+  delete offlineScores[id];
+  render();
+  fetch(
+    "/api/rooms/" +
+      ME.code +
+      "/offline-judges/" +
+      encodeURIComponent(id) +
+      "?token=" +
+      encodeURIComponent(ME.token),
+    { method: "DELETE" },
+  ).catch(function () {});
+}
+function setOfflineHidden(offlineId, hidden) {
+  if (!ME || !ME.is_chair || !offlineJudges[offlineId]) return;
+  offlineJudges[offlineId].hidden = hidden;
+  render();
+  fetch(
+    "/api/rooms/" +
+      ME.code +
+      "/offline-judges/" +
+      encodeURIComponent(offlineId) +
+      "/hidden?hidden=" +
+      hidden +
+      "&token=" +
+      encodeURIComponent(ME.token),
+    { method: "POST" },
+  ).catch(function () {});
+}
+function setOfflineScore(offlineId, target, points) {
+  if (!ME || !ME.is_chair) return;
+  if (!offlineScores[offlineId]) offlineScores[offlineId] = {};
+  if (points === null) delete offlineScores[offlineId][target];
+  else offlineScores[offlineId][target] = points;
+  fetch(
+    "/api/rooms/" +
+      ME.code +
+      "/offline-scores?token=" +
+      encodeURIComponent(ME.token),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        offline_id: offlineId,
+        target: target,
+        points: points,
+      }),
+    },
+  ).catch(function () {});
+}
+
 function handleRemoved() {
   if (!ME) return;
   openInfoModal(
@@ -1575,6 +1708,9 @@ function resetRoomState() {
   deductions = {};
   myExclusions = {};
   remoteExclusions = {};
+  offlineJudges = {};
+  offlineScores = {};
+  offlineJudgesOpen = false;
   hist = [];
   thist = [];
   cs = 0;
@@ -1790,6 +1926,10 @@ function deductionPoints(s) {
 // Judge exclusions
 var myExclusions = {}; // target -> true
 var remoteExclusions = {}; // judge_id -> {target: true}
+
+// Offline judges: chair-entered sums for judges not using the app.
+var offlineJudges = {}; // id -> {name}
+var offlineScores = {}; // id -> {target: points}
 
 function sget(s, c) {
   var v = mine[kk("s" + s, CRITERIA[c].key)];
@@ -2171,6 +2311,7 @@ function renderMatrix() {
 // Chair
 var openSpread = {};
 var ballotOpen = false;
+var offlineJudgesOpen = false;
 var spreadOpen = false;
 function updateChairTab() {
   var tab = document.getElementById("tabChair");
@@ -2183,12 +2324,18 @@ function hiddenToggleMessage(name, goingHidden) {
     ? name + " wirklich aus der Wertung nehmen?"
     : name + " wieder als Wing zur Wertung hinzufügen?";
 }
-// Shared by the mobile chair view and the desktop dashboard's judge chips.
+// Shared by the mobile chair view and the desktop dashboard's judge chips -
+// also handles an offline judge (id prefixed OFFLINE_ID_PREFIX), which has
+// no row in the real judges table and so needs its own endpoint/state.
 function confirmHiddenToggle(id, name, goingHidden) {
   openConfirmModal({
     text: hiddenToggleMessage(name, goingHidden),
     confirmLabel: goingHidden ? "Zu Trainee" : "Zu Wing",
     onConfirm: function () {
+      if (isOfflineId(id)) {
+        setOfflineHidden(offlineRealId(id), goingHidden);
+        return;
+      }
       fetch(
         "/api/rooms/" +
           ME.code +
@@ -2211,7 +2358,10 @@ function activeJudges() {
 // Chair's column always comes first in a ballot comparison table.
 function chairFirstIds(ids) {
   return ids.slice().sort(function (a, b) {
-    return (peers[b].is_chair ? 1 : 0) - (peers[a].is_chair ? 1 : 0);
+    return (
+      (peers[b] && peers[b].is_chair ? 1 : 0) -
+      (peers[a] && peers[a].is_chair ? 1 : 0)
+    );
   });
 }
 // Mean of a list of numbers; null for an empty list, so callers can render
@@ -2232,12 +2382,45 @@ function avgRound(vals) {
 // includeHidden: local-only override for the Redner:innen/Teampunkte spread
 // toggle - every other caller leaves it off and gets the usual
 // trainees-excluded math untouched.
+// Offline ids are prefixed so they can never collide with a real judge id
+// and are trivially recognized by every helper below.
+var OFFLINE_ID_PREFIX = "off:";
+function isOfflineId(id) {
+  return id.indexOf(OFFLINE_ID_PREFIX) === 0;
+}
+function offlineRealId(id) {
+  return id.slice(OFFLINE_ID_PREFIX.length);
+}
 function computeChairSummary(includeHidden) {
-  var ids = includeHidden ? Object.keys(peers) : activeJudges();
+  var offlineIds = Object.keys(offlineJudges)
+    .filter(function (id) {
+      return includeHidden || !offlineJudges[id].hidden;
+    })
+    .map(function (id) {
+      return OFFLINE_ID_PREFIX + id;
+    });
+  var ids = (includeHidden ? Object.keys(peers) : activeJudges()).concat(
+    offlineIds,
+  );
+  // Only sums exist for an offline judge, so they never have per-criterion
+  // detail (scan()/scanGroup() below stay real-judges-only for that reason)
+  // and can't be individually excluded the way a real judge's target can.
   function includedFor(id, target) {
+    if (isOfflineId(id)) return true;
     return !(remoteExclusions[id] && remoteExclusions[id][target]);
   }
+  function nameOf(id) {
+    if (isOfflineId(id)) {
+      var oj = offlineJudges[offlineRealId(id)];
+      return (oj && oj.name) || "Offline-Juror";
+    }
+    return peers[id] ? peers[id].name : id;
+  }
   function remoteTotal(id, s) {
+    if (isOfflineId(id)) {
+      var v = (offlineScores[offlineRealId(id)] || {})["s" + s];
+      return v === undefined ? null : v;
+    }
     var sum = 0;
     for (var c = 0; c < NC; c++) {
       var v = (remote[id] || {})[kk("s" + s, CRITERIA[c].key)];
@@ -2247,6 +2430,10 @@ function computeChairSummary(includeHidden) {
     return sum - deductionPoints(s);
   }
   function remoteTeamTotal(id, t) {
+    if (isOfflineId(id)) {
+      var v = (offlineScores[offlineRealId(id)] || {})["t" + t];
+      return v === undefined ? 0 : v;
+    }
     var sum = 0;
     for (var c = 0; c < NT; c++) {
       var v = (remote[id] || {})[kk("t" + t, TEAMCATS[c].key)];
@@ -2358,8 +2545,8 @@ function computeChairSummary(includeHidden) {
       var v = remoteTotal(id, s);
       if (v !== null) {
         vals.push(v);
-        names.push(peers[id].name + " " + v);
-        judges.push({ name: peers[id].name, v: v });
+        names.push(nameOf(id) + " " + v);
+        judges.push({ name: nameOf(id), v: v });
       }
     });
     if (vals.length < 2) return;
@@ -2438,6 +2625,7 @@ function computeChairSummary(includeHidden) {
   return {
     ids: ids,
     includedFor: includedFor,
+    nameOf: nameOf,
     remoteTotal: remoteTotal,
     remoteTeamTotal: remoteTeamTotal,
     cells: cells,
@@ -2533,7 +2721,7 @@ function fullBallotTable(summary) {
   var head = el("tr");
   head.appendChild(el("th", "l", "Redner:in"));
   chairFirst.forEach(function (id) {
-    head.appendChild(el("th", null, peers[id].name));
+    head.appendChild(el("th", null, summary.nameOf(id)));
   });
   head.appendChild(el("th", null, "Ø"));
   table.appendChild(head);
@@ -2704,6 +2892,41 @@ function renderChair() {
       }
       jh.appendChild(row);
     });
+    Object.keys(offlineJudges).forEach(function (id) {
+      var j = offlineJudges[id];
+      var row = el("div", "jrow");
+      row.appendChild(el("span", "dot off"));
+      row.appendChild(
+        el(
+          "span",
+          "n",
+          j.name + " · Offline" + (j.hidden ? " · (Trainee)" : ""),
+        ),
+      );
+      row.appendChild(
+        el(
+          "span",
+          "p",
+          offlineFilledCount(id) + " / " + offlineExpectedCellCount(),
+        ),
+      );
+      var x = el("button", "x", j.hidden ? "Zu Wing" : "Zu Trainee");
+      x.addEventListener("click", function () {
+        confirmHiddenToggle(OFFLINE_ID_PREFIX + id, j.name, !j.hidden);
+      });
+      row.appendChild(x);
+      jh.appendChild(row);
+    });
+
+    var ojb = document.getElementById("btnOfflineJudges");
+    ojb.textContent = offlineJudgesOpen
+      ? "Offline-Jurierende ausblenden"
+      : "Offline-Jurierende";
+    var ojWrap = document.getElementById("offlineJudgesWrap");
+    ojWrap.classList.toggle("hide", !offlineJudgesOpen);
+    // Guard against a remote score/judges update rebuilding this list
+    if (offlineJudgesOpen && !dashEditGuard(ojWrap))
+      buildOfflineJuryTable(ojWrap);
   }
 
   var summary = computeChairSummary();
@@ -2867,6 +3090,11 @@ function effectiveDashboardView() {
   if (dashboardView === "dashboard" && !ME.is_chair && !spreadOpen)
     return "schnell";
   if (
+    dashboardView === "offline" &&
+    (!ME.is_chair || !Object.keys(offlineJudges).length)
+  )
+    return "schnell";
+  if (
     dashboardView === "matrix" ||
     dashboardView === "sheet" ||
     dashboardView === "team"
@@ -2908,6 +3136,9 @@ function applyLayoutMode() {
   document
     .getElementById("v-teampoints")
     .classList.toggle("hide", !dash || ev !== "teampoints");
+  document
+    .getElementById("v-offline")
+    .classList.toggle("hide", !dash || ev !== "offline");
 
   if (dash) {
     ["v-namen", "v-sheet", "v-team", "v-matrix", "v-chair"].forEach(
@@ -2951,6 +3182,18 @@ function renderDashChrome() {
       b.classList.toggle("hide", !ME.is_chair && !spreadOpen);
     },
   );
+  [].forEach.call(
+    document.querySelectorAll('#dashNav button[data-dv="offline"]'),
+    function (b) {
+      // Stays hidden until at least one offline judge exists, so the tab
+      // doesn't sit there unexplained for chairs who never need it - see
+      // addOfflineJudgeAndOpenPanel(), the only way in.
+      b.classList.toggle(
+        "hide",
+        !ME.is_chair || !Object.keys(offlineJudges).length,
+      );
+    },
+  );
 
   var jury = document.getElementById("dashJury");
   jury.innerHTML = "";
@@ -2987,15 +3230,28 @@ function renderDashChrome() {
   var judgeIds = ids.filter(function (id) {
     return !peers[id].hidden;
   });
-  var traineeCount = ids.length - judgeIds.length;
+  var offlineIds = Object.keys(offlineJudges);
+  var offlineVisibleIds = offlineIds.filter(function (id) {
+    return !offlineJudges[id].hidden;
+  });
+  var traineeCount =
+    ids.length -
+    judgeIds.length +
+    (offlineIds.length - offlineVisibleIds.length);
+  // Offline judges are never "online" - that count stays real-judges-only.
   var onlineCount = judgeIds.filter(function (id) {
     return peers[id].online;
   }).length;
-  var completeCount = judgeIds.filter(function (id) {
-    return peers[id].filled >= expectedCellCount();
-  }).length;
+  var completeCount =
+    judgeIds.filter(function (id) {
+      return peers[id].filled >= expectedCellCount();
+    }).length +
+    offlineVisibleIds.filter(function (id) {
+      return offlineFilledCount(id) >= offlineExpectedCellCount();
+    }).length;
   var summary =
     judgeIds.length +
+    offlineVisibleIds.length +
     " Judges" +
     (traineeCount ? " · " + traineeCount + " Trainees" : "") +
     " · " +
@@ -3040,7 +3296,8 @@ function renderJuryPanel() {
   var p = ensureJuryPanel();
   p.textContent = "";
   var ids = Object.keys(peers);
-  if (!ids.length) {
+  var offlineIds = Object.keys(offlineJudges);
+  if (!ids.length && !offlineIds.length) {
     p.appendChild(el("p", "note", "Noch keine Jurierenden."));
     return;
   }
@@ -3058,6 +3315,22 @@ function renderJuryPanel() {
       ),
     );
     row.appendChild(el("span", "p", j.filled + " / " + expectedCellCount()));
+    p.appendChild(row);
+  });
+  offlineIds.forEach(function (id) {
+    var j = offlineJudges[id];
+    var row = el("div", "jrow");
+    row.appendChild(el("span", "dot off"));
+    row.appendChild(
+      el("span", "n", j.name + " · Offline" + (j.hidden ? " · Trainee" : "")),
+    );
+    row.appendChild(
+      el(
+        "span",
+        "p",
+        offlineFilledCount(id) + " / " + offlineExpectedCellCount(),
+      ),
+    );
     p.appendChild(row);
   });
 }
@@ -3088,6 +3361,7 @@ document.getElementById("dashNav").addEventListener("click", function (e) {
   var b = e.target.closest("button[data-dv]");
   if (!b) return;
   if (b.dataset.dv === "dashboard" && !ME.is_chair && !spreadOpen) return;
+  if (b.dataset.dv === "offline" && !ME.is_chair) return;
   setDashboardView(b.dataset.dv);
   render();
 });
@@ -3500,13 +3774,26 @@ function dashSpreadCell(spread) {
 // spec: {target, rowHead, rows:[{label, key}], totalLabel,
 //        totalFor(id) -> number|null, totalSpread, extraRow(ncols) -> tr?}
 function dashComparisonTable(summary, spec) {
-  var chairFirst = chairFirstIds(Object.keys(peers));
+  // Offline judges only ever have a Gesamt total (no per-criterion
+  // breakdown), so they're appended after the real, chair-first columns
+  // rather than sorted in among them. A hidden (trainee) one still gets a
+  // column here, same as a real trainee - shown for context, greyed via
+  // isHiddenId()/counts() below, just excluded from Ø/Spread.
+  var offlineIds = Object.keys(offlineJudges).map(function (id) {
+    return OFFLINE_ID_PREFIX + id;
+  });
+  var chairFirst = chairFirstIds(Object.keys(peers)).concat(offlineIds);
+  function isHiddenId(id) {
+    return isOfflineId(id)
+      ? offlineJudges[offlineRealId(id)].hidden
+      : peers[id].hidden;
+  }
   var table = el("table", "ballottable");
   var head = el("tr");
   head.appendChild(el("th", "l", spec.rowHead));
   chairFirst.forEach(function (id) {
     head.appendChild(
-      el("th", peers[id].hidden ? "trainee" : null, peers[id].name),
+      el("th", isHiddenId(id) ? "trainee" : null, summary.nameOf(id)),
     );
   });
   head.appendChild(el("th", null, "Ø"));
@@ -3514,7 +3801,7 @@ function dashComparisonTable(summary, spec) {
   table.appendChild(head);
 
   function counts(id) {
-    return !peers[id].hidden && summary.includedFor(id, spec.target);
+    return !isHiddenId(id) && summary.includedFor(id, spec.target);
   }
 
   spec.rows.forEach(function (r) {
@@ -3525,12 +3812,16 @@ function dashComparisonTable(summary, spec) {
     tr.appendChild(el("td", "l", r.label));
     var vals = [];
     chairFirst.forEach(function (id) {
-      var v = (remote[id] || {})[kk(spec.target, r.key)];
+      // Offline judges never have per-criterion data - "n.a.", not "·"
+      // (which means "not yet scored" for a real judge).
+      var v = isOfflineId(id)
+        ? undefined
+        : (remote[id] || {})[kk(spec.target, r.key)];
       tr.appendChild(
         el(
           "td",
-          peers[id].hidden ? "trainee" : null,
-          v === undefined ? "·" : String(v),
+          isHiddenId(id) ? "trainee" : null,
+          v === undefined ? (isOfflineId(id) ? "n.a." : "·") : String(v),
         ),
       );
       if (counts(id) && v !== undefined) vals.push(v);
@@ -3549,8 +3840,8 @@ function dashComparisonTable(summary, spec) {
     totTr.appendChild(
       el(
         "td",
-        "tot" + (peers[id].hidden ? " trainee" : ""),
-        v === null ? "·" : String(v),
+        "tot" + (isHiddenId(id) ? " trainee" : ""),
+        v === null ? (isOfflineId(id) ? "n.a." : "·") : String(v),
       ),
     );
     if (counts(id) && v !== null) totVals.push(v);
@@ -3659,6 +3950,11 @@ function dashFinalPanel(summary) {
   var head = el("div", "dashpanelhead dashpanelhead-row");
   head.appendChild(el("h2", null, "Ballot"));
   if (ME.is_chair) {
+    var addOfflineBtn = el("button", "exclbtn", "+ Offline-Juror:in");
+    addOfflineBtn.type = "button";
+    addOfflineBtn.tabIndex = -1;
+    addOfflineBtn.addEventListener("click", addOfflineJudgeAndOpenPanel);
+    head.appendChild(addOfflineBtn);
     var exportBtn = el("button", "exclbtn", "Ballot exportieren");
     exportBtn.type = "button";
     exportBtn.tabIndex = -1;
@@ -3724,7 +4020,7 @@ function buildBallotExport(summary, judgeIds) {
     app: "mittelmass",
     version: 1,
     judges: judgeIds.map(function (id) {
-      return peers[id] ? peers[id].name : id;
+      return summary.nameOf(id);
     }),
     speeches: speeches,
     teams: teams,
@@ -3892,7 +4188,7 @@ function buildBallotExportBox(box, summary, order) {
     order.forEach(function (id, i) {
       var row = el("div", "ballotexportjrow");
       row.appendChild(el("span", "n", String(i + 1) + "."));
-      row.appendChild(el("span", "nm", peers[id] ? peers[id].name : id));
+      row.appendChild(el("span", "nm", summary.nameOf(id)));
       var up = el("button", "adj", "▲");
       up.type = "button";
       up.disabled = i === 0;
@@ -4448,6 +4744,187 @@ function renderSchnell() {
   var wrap = el("div", "dashcol");
   wrap.appendChild(schnellPanel("Reden", schnellSpeakerTable()));
   wrap.appendChild(schnellPanel("Teampunkte", schnellTeamTable()));
+  root.appendChild(wrap);
+}
+
+function commitOfflineScoreField(inp, max, offlineId, target, refresh) {
+  var raw = inp.value.trim();
+  if (raw === "") {
+    setOfflineScore(offlineId, target, null);
+    refresh();
+    return;
+  }
+  var n = Math.round(Number(raw));
+  if (!isFinite(n)) {
+    refresh(); // not a value we can parse - put the stored one back
+    return;
+  }
+  n = Math.max(0, Math.min(max, n));
+  setOfflineScore(offlineId, target, n);
+  refresh();
+}
+function offlineScoreInput(offlineId, target, max, tabIdx) {
+  var inp = schnellNumberInput();
+  inp.tabIndex = tabIdx;
+  function refresh() {
+    var v = (offlineScores[offlineId] || {})[target];
+    inp.value = v === undefined ? "" : String(v);
+  }
+  refresh();
+  inp.addEventListener("change", function () {
+    commitOfflineScoreField(inp, max, offlineId, target, refresh);
+  });
+  return inp;
+}
+// Max sum of a speaker's criteria (NC criteria on the 0-20 Notenskala) /
+// a team's categories (TEAMCATS' own maxes) - offline totals are clamped
+// to the same ceilings a fully-maxed real ballot could reach.
+function offlineSpeakerMax() {
+  return NC * 20;
+}
+function offlineTeamMax() {
+  return TEAMCATS.reduce(function (sum, c) {
+    return sum + c.max;
+  }, 0);
+}
+// Offline-judge counterpart to expectedCellCount()/j.filled - one cell per
+// active speech plus one per team, since that's the whole ballot the chair
+// enters for them (no per-criterion breakdown).
+function offlineExpectedCellCount() {
+  return activeSpeakerIndices().length + TEAMS.length;
+}
+function offlineFilledCount(id) {
+  return Object.keys(offlineScores[id] || {}).length;
+}
+function buildOfflineJuryTable(container) {
+  container.innerHTML = "";
+  var ids = Object.keys(offlineJudges);
+  function addBtn() {
+    var b = el("button", "offlinejudgeadd", "+");
+    b.type = "button";
+    b.tabIndex = -1;
+    b.addEventListener("click", function () {
+      addOfflineJudge("");
+    });
+    return b;
+  }
+  if (!ids.length) {
+    container.appendChild(
+      el("p", "note", "Noch keine Offline-Jurorinnen/Juroren hinzugefügt."),
+    );
+    container.appendChild(addBtn());
+    return;
+  }
+
+  var speakers = activeSpeakerIndices();
+  // Rows per judge column: the name field, then one row per speech, then
+  // one per team - fixes the column-major tabIndex stride below.
+  var rowsPerCol = 1 + speakers.length + TEAMS.length;
+
+  var table = el("table", "schnelltable offlinejurytable");
+
+  var head = el("tr");
+  head.appendChild(el("th", "l", "Offline-Jurierende"));
+  ids.forEach(function (id, col) {
+    var th = el("th");
+    var nameInp = el("input", "offlinejudgename");
+    nameInp.type = "text";
+    nameInp.placeholder = "Name";
+    nameInp.value = (offlineJudges[id] || {}).name || "";
+    nameInp.tabIndex = col * rowsPerCol + 1;
+    nameInp.addEventListener("change", function () {
+      renameOfflineJudge(id, nameInp.value.trim());
+    });
+    th.appendChild(nameInp);
+    head.appendChild(th);
+  });
+  // The "add" column stays to the right of the last judge, so the table
+  // itself never has to stretch to make room for it.
+  var addTh = el("th", "offlinejudgeaddcell");
+  addTh.appendChild(addBtn());
+  head.appendChild(addTh);
+  table.appendChild(head);
+
+  speakers.forEach(function (s, r) {
+    var tr = el("tr", deductionLevel(s) ? "deducted" : null);
+    var lbl = el("td", "l", speakerLabel(s));
+    var teamCls = teamClass(SPEAKERS[s].team);
+    if (teamCls) lbl.classList.add(teamCls);
+    tr.appendChild(lbl);
+    ids.forEach(function (id, col) {
+      var td = el("td");
+      td.appendChild(
+        offlineScoreInput(
+          id,
+          "s" + s,
+          offlineSpeakerMax(),
+          col * rowsPerCol + 1 + r + 1,
+        ),
+      );
+      tr.appendChild(td);
+    });
+    tr.appendChild(el("td"));
+    table.appendChild(tr);
+  });
+
+  table.appendChild(ballotSepRow(ids.length + 2));
+
+  TEAMS.forEach(function (tm, t) {
+    var tr = el("tr");
+    tr.appendChild(el("td", "l " + teamClass(t), "Teampunkte " + tm));
+    ids.forEach(function (id, col) {
+      var td = el("td");
+      var r = speakers.length + t;
+      td.appendChild(
+        offlineScoreInput(
+          id,
+          "t" + t,
+          offlineTeamMax(),
+          col * rowsPerCol + 1 + r + 1,
+        ),
+      );
+      tr.appendChild(td);
+    });
+    tr.appendChild(el("td"));
+    table.appendChild(tr);
+  });
+
+  var delTr = el("tr");
+  delTr.appendChild(el("td", "l"));
+  ids.forEach(function (id) {
+    var td = el("td");
+    var del = el("button", "offlinejudgedel", "Entfernen");
+    del.type = "button";
+    del.tabIndex = -1;
+    del.addEventListener("click", function () {
+      var name = (offlineJudges[id] || {}).name;
+      openConfirmModal({
+        text:
+          (name ? name : "Offline-Juror:in") +
+          " wirklich entfernen? Die eingegebenen Punkte gehen dabei verloren.",
+        confirmLabel: "Entfernen",
+        onConfirm: function () {
+          removeOfflineJudge(id);
+        },
+      });
+    });
+    td.appendChild(del);
+    delTr.appendChild(td);
+  });
+  delTr.appendChild(el("td"));
+  table.appendChild(delTr);
+
+  container.appendChild(table);
+}
+function renderOfflineJudges() {
+  var root = document.getElementById("v-offline");
+  if (!root) return;
+  if (dashEditGuard(root)) return;
+  root.innerHTML = "";
+  var wrap = el("div", "dashcol");
+  var container = el("div", "offlinejurywrap");
+  buildOfflineJuryTable(container);
+  wrap.appendChild(schnellPanel("Offline-Jurierende", container));
   root.appendChild(wrap);
 }
 
@@ -5012,6 +5489,42 @@ function renderNamenRoom() {
     }
     jury.appendChild(row);
   });
+  Object.keys(offlineJudges).forEach(function (id) {
+    var j = offlineJudges[id];
+    var row = el("div", "juryrow");
+    row.appendChild(el("span", "dot off"));
+    row.appendChild(
+      el(
+        "span",
+        "juryname",
+        j.name + " · Offline" + (j.hidden ? " · Trainee" : ""),
+      ),
+    );
+    if (ME.is_chair) {
+      var btn = el("button", "juryab", j.hidden ? "Zu Wing" : "Zu Trainee");
+      btn.type = "button";
+      btn.tabIndex = -1;
+      btn.title = j.hidden
+        ? "Wertung wieder in den Schnitt einbeziehen"
+        : "Aus der Wertung nehmen (Punkte bleiben gespeichert, zählen aber nicht mehr in den Schnitt)";
+      btn.addEventListener("click", function () {
+        confirmHiddenToggle(OFFLINE_ID_PREFIX + id, j.name, !j.hidden);
+      });
+      row.appendChild(btn);
+    }
+    jury.appendChild(row);
+  });
+  if (ME.is_chair) {
+    var addOfflineBtn = el(
+      "button",
+      "offlinejudgeadd",
+      "+ Offline-Juror:in hinzufügen",
+    );
+    addOfflineBtn.type = "button";
+    addOfflineBtn.tabIndex = -1;
+    addOfflineBtn.addEventListener("click", addOfflineJudgeAndOpenPanel);
+    jury.appendChild(addOfflineBtn);
+  }
   lower.appendChild(jury);
   stage.appendChild(lower);
 
@@ -5029,6 +5542,7 @@ function render() {
     else if (ev === "schnell") renderSchnell();
     else if (ev === "blatt") renderBlatt();
     else if (ev === "teampoints") renderTeamPoints();
+    else if (ev === "offline") renderOfflineJudges();
     else renderDashboard();
   } else {
     var mv = effectiveMobileView();
@@ -5599,6 +6113,12 @@ document.getElementById("btnBallot").addEventListener("click", function () {
   ballotOpen = !ballotOpen;
   render();
 });
+document
+  .getElementById("btnOfflineJudges")
+  .addEventListener("click", function () {
+    offlineJudgesOpen = !offlineJudgesOpen;
+    render();
+  });
 document.getElementById("themeBtn").addEventListener("click", cycleTheme);
 document
   .getElementById("menuGradeInput")

@@ -1211,6 +1211,48 @@ body {
 .dashpanelbody-table table {
   width: 100%;
 }
+.offlinejurywrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+#offlineJudgesWrap {
+  overflow-x: auto;
+}
+table.offlinejurytable {
+  width: auto;
+}
+input.offlinejudgename {
+  width: 95px;
+  text-align: center;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 6px;
+  border: 1px solid var(--line-2);
+  background: var(--card);
+  color: var(--ink);
+}
+.offlinejudgedel {
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.schnelltable th.offlinejudgeaddcell {
+  padding-left: 14px;
+}
+.offlinejudgeadd {
+  border: 1px dashed var(--line-2);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
 .schnelltable-speaker th:not(.l):not(.schnellspacer) {
   overflow-wrap: break-word;
   white-space: normal;
@@ -1339,12 +1381,14 @@ body {
   color: var(--warn);
   font-weight: 500;
 }
-.ballottable tr.tsep td {
+.ballottable tr.tsep td,
+.offlinejurytable tr.tsep td {
   padding: 0;
   border: 0;
   border-top: 2px solid var(--line-2);
 }
-.ballottable tr.tsep:hover td {
+.ballottable tr.tsep:hover td,
+.offlinejurytable tr.tsep:hover td {
   background: none;
 }
 .ballottable tr.grandtot td {
@@ -1394,6 +1438,25 @@ tr.deducted td.l {
   display: none;
 }
 #v-schnell > .dashcol {
+  max-width: 1100px;
+  margin: 0 auto;
+  gap: 14px;
+}
+
+/* Offline-Jury: same page chrome as Schnelleingabe (#v-schnell above) - a
+   centered column on the paper background, not the card background. */
+#v-offline {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: auto;
+  padding: 14px 28px;
+  background: var(--paper);
+}
+#v-offline.hide {
+  display: none;
+}
+#v-offline > .dashcol {
   max-width: 1100px;
   margin: 0 auto;
   gap: 14px;
@@ -1456,15 +1519,21 @@ tr.deducted td.l {
   font-weight: 500;
 }
 #v-schnell td.team-gov,
-#v-schnell th.team-gov {
+#v-schnell th.team-gov,
+.offlinejurytable td.team-gov,
+.offlinejurytable th.team-gov {
   border-left: 3px solid var(--team-gov);
 }
 #v-schnell td.team-opp,
-#v-schnell th.team-opp {
+#v-schnell th.team-opp,
+.offlinejurytable td.team-opp,
+.offlinejurytable th.team-opp {
   border-left: 3px solid var(--team-opp);
 }
 #v-schnell td.team-free,
-#v-schnell th.team-free {
+#v-schnell th.team-free,
+.offlinejurytable td.team-free,
+.offlinejurytable th.team-free {
   border-left: 3px solid var(--team-free);
 }
 
