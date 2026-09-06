@@ -972,35 +972,20 @@ body {
   min-width: 0;
   gap: 8px;
 }
-.dashjchip {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.dashjsummary {
   font-size: 12px;
-  padding: 4px 9px;
-  border-radius: 999px;
-  background: var(--card);
-  border: 1px solid var(--line-2);
-  color: var(--ink-2);
+  color: var(--ink-3);
   white-space: nowrap;
-}
-.dashjchip.off {
-  opacity: 0.6;
+  cursor: default;
+  border-bottom: 1px dotted var(--line-2);
 }
 .dashjbtn {
-  border: 0;
-  background: transparent;
-  color: var(--ink-3);
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-  text-decoration: underline;
-  padding: 0;
-  margin-left: 4px;
+  margin-top: 0;
 }
 .dashjbtn.on {
-  color: var(--live);
-  font-weight: 500;
+  background: var(--live);
+  color: var(--paper);
+  border-color: var(--live);
 }
 
 .dashbody {

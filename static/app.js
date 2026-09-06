@@ -2123,50 +2123,43 @@ function renderDashChrome() {
 
   if (!ME.is_chair) return;
 
-  // Reuses spreadOpen - opening it also gives wings the stripped dashboard (minus the right column).
-  var dob = el(
-    "button",
-    "dashjbtn" + (spreadOpen ? " on" : ""),
-    spreadOpen ? "Dashboard sperren" : "Dashboard freigeben",
-  );
-  dob.tabIndex = -1;
-  dob.title = spreadOpen
-    ? "Wings verlieren wieder den Zugriff auf das Dashboard"
-    : "Wings erhalten Lesezugriff auf eine reduzierte Ansicht des Dashboards (Spreads)";
-  dob.addEventListener("click", function () {
-    var next = !spreadOpen;
-    fetch(
-      "/api/rooms/" +
-        ME.code +
-        "/spread_open?open=" +
-        next +
-        "&token=" +
-        encodeURIComponent(ME.token),
-      { method: "POST" },
-    ).then(function () {
-      spreadOpen = next;
-      updateChairTab();
-      render();
-    });
+  var ids = Object.keys(peers);
+  var judgeIds = ids.filter(function (id) {
+    return !peers[id].hidden;
   });
-  jury.appendChild(dob);
-  Object.keys(peers).forEach(function (id) {
-    var j = peers[id];
-    var chip = el("span", "dashjchip" + (j.hidden ? " off" : ""));
-    chip.appendChild(el("span", "dot " + (j.online ? "on" : "off")));
-    chip.appendChild(
-      document.createTextNode(
-        " " +
-          j.name +
-          (j.is_chair ? " · Chair" : "") +
-          (j.hidden ? " · Trainee" : "") +
-          " · " +
-          j.filled +
-          "/59",
-      ),
-    );
-    chips.appendChild(chip);
-  });
+  var traineeCount = ids.length - judgeIds.length;
+  var onlineCount = judgeIds.filter(function (id) {
+    return peers[id].online;
+  }).length;
+  var completeCount = judgeIds.filter(function (id) {
+    return peers[id].filled === 59;
+  }).length;
+  var summary =
+    judgeIds.length +
+    " Judges" +
+    (traineeCount ? " · " + traineeCount + " Trainees" : "") +
+    " · " +
+    onlineCount +
+    " Online · " +
+    completeCount +
+    " Vollständig";
+  var summarySpan = el("span", "dashjsummary", summary);
+  summarySpan.title = ids
+    .map(function (id) {
+      var j = peers[id];
+      return (
+        j.name +
+        (j.is_chair ? " · Chair" : "") +
+        (j.hidden ? " · Trainee" : "") +
+        " · " +
+        (j.online ? "Online" : "Offline") +
+        " · " +
+        j.filled +
+        "/59"
+      );
+    })
+    .join("\n");
+  chips.appendChild(summarySpan);
 }
 document.getElementById("dashNav").addEventListener("click", function (e) {
   var b = e.target.closest("button[data-dv]");
@@ -2415,9 +2408,7 @@ function dashTeamPanel(summary, spreadSummary) {
 // includeHidden summary via the local/unsynced dashIncludeTrainees toggle.
 function dashColA(summary) {
   var col = el("div", "dashcol dashcol-a");
-  var spreadSummary = dashIncludeTrainees
-    ? computeChairSummary(true)
-    : summary;
+  var spreadSummary = dashIncludeTrainees ? computeChairSummary(true) : summary;
   col.appendChild(dashSpeakerPanel(summary, spreadSummary));
   col.appendChild(dashTeamPanel(summary, spreadSummary));
   return col;
@@ -2480,8 +2471,41 @@ function dashSpreadPanel(title, list) {
   return panel;
 }
 
+// Reuses spreadOpen - opening it also gives wings the stripped dashboard (minus the right column).
+function dashFreigebenButton() {
+  var dob = el(
+    "button",
+    "btn ghost dashjbtn" + (spreadOpen ? " on" : ""),
+    spreadOpen
+      ? "Dashboard für Wings / Trainees freigegeben"
+      : "Dashboard für Wings / Trainees gesperrt",
+  );
+  dob.tabIndex = -1;
+  dob.title = spreadOpen
+    ? "Wings verlieren wieder den Zugriff auf das Dashboard"
+    : "Wings erhalten Lesezugriff auf eine reduzierte Ansicht des Dashboards (Spreads)";
+  dob.addEventListener("click", function () {
+    var next = !spreadOpen;
+    fetch(
+      "/api/rooms/" +
+        ME.code +
+        "/spread_open?open=" +
+        next +
+        "&token=" +
+        encodeURIComponent(ME.token),
+      { method: "POST" },
+    ).then(function () {
+      spreadOpen = next;
+      updateChairTab();
+      render();
+    });
+  });
+  return dob;
+}
+
 function dashColB(summary) {
   var col = el("div", "dashcol dashcol-b");
+  col.appendChild(dashFreigebenButton());
   col.appendChild(
     dashSpreadPanel(
       "Abweichungen · Reden",
@@ -4290,6 +4314,7 @@ function recordRecentRoom(code, name, isChair) {
     name: name,
     is_chair: isChair,
     filled: Object.keys(mine).length,
+    judges: Object.keys(peers).length,
     ts: Date.now(),
   });
   LS.set("opd.recent", list.slice(0, 8));
@@ -4313,7 +4338,13 @@ function renderRecentRooms() {
     btn.appendChild(who);
     var meta = el("div", "info");
     meta.appendChild(
-      el("div", "meta", (r.filled || 0) + " Punkte eingetragen"),
+      el(
+        "div",
+        "meta",
+        (r.filled || 0) +
+          " Punkte eingetragen" +
+          (r.judges ? " · " + r.judges + " Judges" : ""),
+      ),
     );
     meta.appendChild(
       el("div", "meta", new Date(r.ts).toLocaleDateString("de-DE")),
