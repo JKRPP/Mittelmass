@@ -895,6 +895,20 @@ function applyTimerState(t, fromSnapshot) {
   paintTimer();
   refreshTimerModalControls();
 }
+// Once the overdraw grace itself ends (the speech types' final 3x signal,
+// pushed by timerSignalPoints), a speech still running keeps ringing 3x
+// again every further OVERDRAW_GRACE_MS - discussion has no overdraw grace
+// (it uses an explicit `signals` list instead) so it never repeats. Returns
+// -1 before the first repeat is due; 0, 1, 2, ... for each one crossed
+// since (the grace-end signal itself already rings via timerSignalPoints,
+// so the first repeat here is a further OVERDRAW_GRACE_MS after that).
+function overtimeIntervalIndex(type, elapsedMs) {
+  var t = TIMER_TYPES[type];
+  if (!t || t.signals) return -1;
+  var sinceGraceEnd = elapsedMs - (t.durationMs + OVERDRAW_GRACE_MS);
+  if (sinceGraceEnd < OVERDRAW_GRACE_MS) return -1;
+  return Math.floor(sinceGraceEnd / OVERDRAW_GRACE_MS) - 1;
+}
 // Marks every signal instant already in the past as rung, so a state change
 // never re-rings a bell the speech is past - and, conversely, a threshold
 // nudged back into the future by -5s correctly rings again when reached.
@@ -905,6 +919,7 @@ function rebuildTimerFired() {
   timerSignalPoints(timer.type).forEach(function (sig) {
     if (elapsed >= sig.ms) timerFired[sig.ms] = true;
   });
+  timerFired.overtimeIdx = overtimeIntervalIndex(timer.type, elapsed);
 }
 // Mirrors server.py's set_timer branches so an action takes effect without
 // waiting on a round trip - and keeps working with no connection at all.
@@ -1063,6 +1078,16 @@ function tickTimer() {
       ringBell(sig.times);
     }
   });
+  var overtimeIdx = overtimeIntervalIndex(timer.type, elapsed);
+  // Not "|| -1": that treats a stored 0 (the very first overtime repeat)
+  // as falsy, so it'd fall back to -1 and re-ring every tick for that
+  // whole 15s window instead of once.
+  var lastOvertimeIdx =
+    typeof timerFired.overtimeIdx === "number" ? timerFired.overtimeIdx : -1;
+  if (overtimeIdx > lastOvertimeIdx) {
+    timerFired.overtimeIdx = overtimeIdx;
+    ringBell(3);
+  }
 }
 setInterval(tickTimer, 250);
 
