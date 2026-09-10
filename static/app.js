@@ -3162,6 +3162,9 @@ function applyLayoutMode() {
     .getElementById("v-teampoints")
     .classList.toggle("hide", !dash || ev !== "teampoints");
   document
+    .getElementById("v-notes")
+    .classList.toggle("hide", !dash || ev !== "notes");
+  document
     .getElementById("v-offline")
     .classList.toggle("hide", !dash || ev !== "offline");
 
@@ -3424,8 +3427,15 @@ document.addEventListener("keydown", function (e) {
   var dir = e.key === "PageDown" ? 1 : -1;
   var nextIdx = (idx + dir + btns.length) % btns.length;
   e.preventDefault();
-  setDashboardView(btns[nextIdx].dataset.dv);
+  var ae = document.activeElement;
+  if (ae && ae.id) lastFocusByView[ev] = ae.id;
+  commitActiveInput();
+  var target = btns[nextIdx].dataset.dv;
+  setDashboardView(target);
   render();
+  var restoreId = lastFocusByView[target];
+  var restoreEl = restoreId && document.getElementById(restoreId);
+  if (restoreEl) restoreEl.focus();
 });
 
 // Commits an in-flight score edit (schnellinput only fires its write() on
@@ -3442,7 +3452,9 @@ function commitActiveInput() {
 
 // Alt+1..9 jump straight to a chrome tab, by position among the visible
 // #dashNav buttons - laptop-friendly alternative to PageUp/PageDown that
-// doesn't need cycling through intermediate tabs.
+// doesn't need cycling through intermediate tabs. Remembers/restores focus
+// per view the same way Alt+I does, instead of leaving it to fall wherever
+// the browser's default post-render focus happens to land.
 document.addEventListener("keydown", function (e) {
   if (!ME || !isDesktopWidth()) return;
   if (!e.altKey || !/^[1-9]$/.test(e.key)) return;
@@ -3452,9 +3464,16 @@ document.addEventListener("keydown", function (e) {
   var idx = Number(e.key) - 1;
   if (idx >= btns.length) return;
   e.preventDefault();
+  var fromEv = effectiveDashboardView();
+  var ae = document.activeElement;
+  if (ae && ae.id) lastFocusByView[fromEv] = ae.id;
   commitActiveInput();
-  setDashboardView(btns[idx].dataset.dv);
+  var target = btns[idx].dataset.dv;
+  setDashboardView(target);
   render();
+  var restoreId = lastFocusByView[target];
+  var restoreEl = restoreId && document.getElementById(restoreId);
+  if (restoreEl) restoreEl.focus();
 });
 
 // Alt+T opens/closes the timer, matching the other Alt+ shortcuts above -
@@ -5428,6 +5447,33 @@ function renderTeamPoints() {
   root.appendChild(wrap);
 }
 
+// Desktop-only "Allgemeine Notizen" tab
+function notesColumn(t) {
+  var col = el("div", "notescol " + teamClass(t));
+  col.appendChild(el("div", "notescolhead", TEAMS[t]));
+  var ta = el("textarea", "notestextarea");
+  ta.placeholder = "Notizen zu " + TEAMS[t] + " …";
+  ta.value = getTeamNote(t, "general");
+  ta.id = "notes-t" + t;
+  ta.addEventListener("input", function () {
+    setTeamNote(t, "general", ta.value);
+  });
+  col.appendChild(ta);
+  return col;
+}
+
+function renderNotes() {
+  var root = document.getElementById("v-notes");
+  if (!root) return;
+  if (dashEditGuard(root)) return;
+  root.innerHTML = "";
+
+  var wrap = el("div", "noteswrap");
+  wrap.appendChild(notesColumn(0));
+  wrap.appendChild(notesColumn(1));
+  root.appendChild(wrap);
+}
+
 // Mobile "Namen" tab - a stacked list of name inputs in speaking order.
 function renderNamen() {
   var list = document.getElementById("namenList");
@@ -5593,6 +5639,7 @@ function render() {
     else if (ev === "schnell") renderSchnell();
     else if (ev === "blatt") renderBlatt();
     else if (ev === "teampoints") renderTeamPoints();
+    else if (ev === "notes") renderNotes();
     else if (ev === "offline") renderOfflineJudges();
     else renderDashboard();
   } else {
@@ -5612,14 +5659,7 @@ function urlCode() {
   return m ? m[1].toUpperCase() : null;
 }
 // A small most-recent-first index of past rooms (code/name/filled count/
-// timestamp), separate from the per-room opd.session.<code> blob each one
-// still keeps (leaveRoom() never deletes those) - lets the lobby list
-// rejoinable rooms without scanning all of localStorage. Called both on
-// join (so the room shows up even if the tab closes without an explicit
-// "Verlassen") and again on leave (to capture the final filled count), so
-// it always reads whatever `mine` currently holds rather than the target
-// room's own cache - correct at both call sites, since both run only while
-// `mine` actually belongs to that room.
+// timestamp)
 function recordRecentRoom(code, name, isChair) {
   var list = LS.get("opd.recent", []) || [];
   list = list.filter(function (r) {
