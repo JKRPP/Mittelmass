@@ -3220,6 +3220,21 @@ function renderDashChrome() {
     },
   );
 
+  // Alt+1..9 jump to a #dashNav tab by its position among currently visible
+  // buttons (see the keydown handler below) - show that position as small
+  // text under the tab label so the shortcut stays discoverable and correct
+  // even as tabs like "Dashboard"/"Offline-Jurierende" show or hide.
+  var visibleTabs = [].filter.call(
+    document.querySelectorAll("#dashNav button[data-dv]"),
+    function (b) {
+      return !b.classList.contains("hide");
+    },
+  );
+  visibleTabs.forEach(function (b, i) {
+    var hint = b.querySelector(".navhint");
+    if (hint) hint.textContent = "Alt+" + (i + 1);
+  });
+
   var jury = document.getElementById("dashJury");
   jury.innerHTML = "";
   var roomSpan = el("span", "dashroom", "Raum " + ME.code);
@@ -4107,7 +4122,6 @@ var BALLOT_BOOKMARKLET_SRC = [
 function ballotBookmarkletHref() {
   return "javascript:" + encodeURIComponent(BALLOT_BOOKMARKLET_SRC);
 }
-
 // Desktop-only cheat sheet for the Alt/Page keyboard shortcuts wired up
 // further down (dashNav cycling, Blatt speech stepping, Blatt<->Teampunkte
 // swap). Reuses the info-modal look but lists rows instead of one paragraph.
@@ -5105,8 +5119,11 @@ function renderBlatt() {
   var teamCls = teamClass(sp.team);
 
   var head = el("div", "blatthead " + teamCls);
-  var prev = el("button", "navbtn", "‹");
+  var prev = el("button", "navbtn blattnav");
+  prev.appendChild(el("span", null, "‹"));
+  prev.appendChild(el("span", "navhint", "Alt+,"));
   prev.tabIndex = -1;
+  prev.title = "Vorherige Rede (Alt+,)";
   prev.disabled = prevActiveSpeaker(cs) === -1;
   prev.addEventListener("click", function () {
     var p = prevActiveSpeaker(cs);
@@ -5119,17 +5136,26 @@ function renderBlatt() {
 
   var mid = el("div", "blattheadmid");
   mid.appendChild(el("h1", "blatttitle", speakerLabel(cs)));
-  mid.appendChild(
+  var sub = el(
+    "div",
+    "sub",
+    "Rede " + activeOrdinal(cs) + " von " + activeSpeakerCount(),
+  );
+  sub.appendChild(
     el(
-      "div",
-      "sub",
-      "Rede " + activeOrdinal(cs) + " von " + activeSpeakerCount(),
+      "span",
+      "blattswaphint",
+      "Alt + I, um zu Interaktion des anderen Teams zu wechseln. Tab, um zwischen Textfeldern zu wechseln.",
     ),
   );
+  mid.appendChild(sub);
   head.appendChild(mid);
 
-  var next = el("button", "navbtn", "›");
+  var next = el("button", "navbtn blattnav");
+  next.appendChild(el("span", null, "›"));
+  next.appendChild(el("span", "navhint", "Alt+."));
   next.tabIndex = -1;
+  next.title = "Nächste Rede (Alt+.)";
   next.disabled = nextActiveSpeaker(cs) === -1;
   next.addEventListener("click", function () {
     var n = nextActiveSpeaker(cs);

@@ -415,6 +415,17 @@ body {
 .navbtn:disabled {
   opacity: 0.3;
 }
+.navbtn.blattnav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  height: 40px;
+}
+.navbtn.blattnav .navhint {
+  font-size: 8px;
+}
 .sub {
   font-size: 12px;
   color: var(--ink-3);
@@ -1050,12 +1061,16 @@ body {
   margin-left: 10px;
 }
 .dashnav button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
   border: 1px solid var(--line-2);
   background: transparent;
   color: var(--ink-2);
   font: inherit;
   font-size: 12px;
-  padding: 5px 10px;
+  padding: 4px 10px;
   border-radius: 8px;
   cursor: pointer;
 }
@@ -1064,6 +1079,11 @@ body {
   background: var(--live-bg);
   border-color: var(--live-line);
   font-weight: 500;
+}
+.navhint {
+  font-size: 9px;
+  line-height: 1.2;
+  color: var(--ink-3);
 }
 .dashroom {
   font-size: 12px;
@@ -1575,6 +1595,11 @@ tr.deducted td.l {
   margin: 0;
   font-size: 19px;
   font-weight: 500;
+}
+.blattswaphint {
+  margin-left: 14px;
+  font-size: 11px;
+  color: var(--ink-3);
 }
 .blatthead.team-gov .blatttitle {
   color: var(--team-gov);
