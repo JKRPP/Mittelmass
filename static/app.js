@@ -5137,6 +5137,37 @@ function blattScoreField(s, c, tabIdx) {
   return wrap;
 }
 
+// Replacements for symbols in text
+var NOTE_AUTOREPLACE = [
+  ["==>", "⇒"],
+  ["-->", "→"],
+  ["<--", "←"],
+  ["<->", "↔"],
+  ["...", "…"],
+  ["<=", "≤"],
+  [">=", "≥"],
+  ["!=", "≠"],
+  ["+-", "±"],
+  ["-- ", "— "],
+];
+
+// Checks text for replacement strings and replaces the text with symbols
+function applyNoteAutoReplace(ta) {
+  var pos = ta.selectionStart;
+  var text = ta.value;
+  var before = text.slice(0, pos);
+  for (var i = 0; i < NOTE_AUTOREPLACE.length; i++) {
+    var from = NOTE_AUTOREPLACE[i][0];
+    var to = NOTE_AUTOREPLACE[i][1];
+    if (before.slice(-from.length) === from) {
+      var newBefore = before.slice(0, -from.length) + to;
+      ta.value = newBefore + text.slice(pos);
+      ta.selectionStart = ta.selectionEnd = newBefore.length;
+      return;
+    }
+  }
+}
+
 function blattNotesField(s, group, tabIdx) {
   var ta = el("textarea", "blattnotes");
   ta.placeholder = "Notizen zu " + group.label + " …";
@@ -5144,6 +5175,7 @@ function blattNotesField(s, group, tabIdx) {
   ta.tabIndex = tabIdx;
   ta.id = "blatt-note-" + s + "-" + group.key;
   ta.addEventListener("input", function () {
+    applyNoteAutoReplace(ta);
     setNote(s, group.key, ta.value);
   });
   return ta;
@@ -5465,6 +5497,7 @@ function teamPointsNotesField(t, cat, tabIdx) {
   ta.tabIndex = tabIdx;
   ta.id = "teampoints-note-t" + t + "-" + cat.key;
   ta.addEventListener("input", function () {
+    applyNoteAutoReplace(ta);
     setTeamNote(t, cat.key, ta.value);
   });
   return ta;
@@ -5577,6 +5610,7 @@ function notesColumn(t) {
   ta.value = getTeamNote(t, "general");
   ta.id = "notes-t" + t;
   ta.addEventListener("input", function () {
+    applyNoteAutoReplace(ta);
     setTeamNote(t, "general", ta.value);
   });
   col.appendChild(ta);
