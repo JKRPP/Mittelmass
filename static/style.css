@@ -303,6 +303,11 @@ body {
   border-bottom: 1px solid var(--line);
   margin-bottom: 4px;
 }
+.menudivider {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 4px 6px;
+}
 .menuitem {
   display: block;
   width: 100%;

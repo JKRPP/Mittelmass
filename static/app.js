@@ -2095,13 +2095,13 @@ function paintBar() {
     .getElementById("shortcutsBtn")
     .classList.toggle("hide", !isDesktopWidth());
   document
+    .getElementById("menuBlattDivider")
+    .classList.toggle("hide", !isDesktopWidth());
+  document
     .getElementById("menuResetBlattCols")
     .classList.toggle("hide", !isDesktopWidth());
   document
     .getElementById("menuPrintNotes")
-    .classList.toggle("hide", !isDesktopWidth());
-  document
-    .getElementById("menuPrintNotesAvgOnly")
     .classList.toggle("hide", !isDesktopWidth());
   paintTimer();
 }
@@ -5413,6 +5413,39 @@ function renderBlatt() {
 // A printable sheet with all scores and notes (for handing to teams for
 // feedback purposes), most likely just to save as pdf.
 
+// Lets the judge pick whether their own points are on the printout before
+// building it
+function openPrintNotesModal() {
+  openModal("printNotesModal", function (box) {
+    box.appendChild(el("h2", null, "Notizen exportieren"));
+    box.appendChild(
+      el(
+        "p",
+        "note",
+        "Eigene Punkte anzeigen, oder nur den Durchschnitt aller Jurierenden?",
+      ),
+    );
+    var actions = el("div", "modalactions");
+    var withOwnBtn = el("button", "btn", "Mit eigenen Punkten");
+    withOwnBtn.type = "button";
+    withOwnBtn.addEventListener("click", function () {
+      closeModal("printNotesModal");
+      buildPrintSheet(false);
+      window.print();
+    });
+    var avgOnlyBtn = el("button", "btn ghost", "Nur Durchschnitt");
+    avgOnlyBtn.type = "button";
+    avgOnlyBtn.addEventListener("click", function () {
+      closeModal("printNotesModal");
+      buildPrintSheet(true);
+      window.print();
+    });
+    actions.appendChild(withOwnBtn);
+    actions.appendChild(avgOnlyBtn);
+    box.appendChild(actions);
+  });
+}
+
 function buildPrintSheet(hideOwn) {
   var root = document.getElementById("printSheet");
   root.innerHTML = "";
@@ -6865,16 +6898,7 @@ document
   });
 document
   .getElementById("menuPrintNotes")
-  .addEventListener("click", function () {
-    buildPrintSheet(false);
-    window.print();
-  });
-document
-  .getElementById("menuPrintNotesAvgOnly")
-  .addEventListener("click", function () {
-    buildPrintSheet(true);
-    window.print();
-  });
+  .addEventListener("click", openPrintNotesModal);
 document.getElementById("btnSpreadOpen").addEventListener("click", function () {
   var next = !spreadOpen;
   fetch(
