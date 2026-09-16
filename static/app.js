@@ -5450,7 +5450,7 @@ function buildPrintSheet() {
     totTr.appendChild(el("td", null, String(personPunkte(s))));
     scoreTable.appendChild(totTr);
     var finalTr = el("tr", "tot");
-    finalTr.appendChild(el("td", "l", "Ø Gesamt (alle Jurys)"));
+    finalTr.appendChild(el("td", "l", "Ø Gesamt (alle Jurierenden)"));
     var final = avgRound(totVals);
     finalTr.appendChild(el("td", null, final === null ? "–" : String(final)));
     scoreTable.appendChild(finalTr);
@@ -5496,7 +5496,7 @@ function buildPrintSheet() {
     totTr.appendChild(el("td", null, String(teamPunkte(t))));
     scoreTable.appendChild(totTr);
     var finalTr = el("tr", "tot");
-    finalTr.appendChild(el("td", "l", "Ø Gesamt (alle Jurys)"));
+    finalTr.appendChild(el("td", "l", "Ø Gesamt (alle Jurierenden)"));
     var final = avgRound(totVals);
     finalTr.appendChild(el("td", null, final === null ? "–" : String(final)));
     scoreTable.appendChild(finalTr);
