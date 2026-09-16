@@ -32,12 +32,17 @@ to obtain the debates result.
    opts to share it.
 6. Judges can adjust their points if the discussion brings them to reevaluate
 7. After a final result is obtained, the chair sees the result and can export
-  it to the tabbing software (only on desktop via the bookmarklet currently)
+  it to the tabbing software [OpentabV2](https://github.com/julmaxi/open_tab_v2)
 
 ### Mobile version
 
+The mobile version of Mittelmaß is available [online](https://opd.krapp.io/) or as a bubblewrap-packaged apk for android devices on our [releases page](https://github.com/JKRPP/Mittelmass/releases)
+
 Mobile users get a fast number-entry layout for rapid entry and comparisson
 of scores, consisting of four tabs:
+
+- **Namen**: Entry of individual speaker names for better tracking in scoring
+and discussions. Never shared with the server, only stored locally.
 
 - **Reden**: Entry of individual speakers points using a school-grade layouted
 number pad. Chairs can give deductions via buttons only available to them.
@@ -53,7 +58,8 @@ gives each teams total.
 Speeches and team point categories are shown ordered by highest to lowest
 spread. Tapping an individual speech or category shows its breakdown by
 judge and category. Also includes controls to make judges trainees or
-show / hide the spreads view.
+show / hide the spreads view. Submission to Opentab can be performed using
+this view.
 
 - **Spreads**: Scaled down version of the chair view for wings and trainees,
 does not show chair controls. View is disabled by default and can be enabled
@@ -71,6 +77,9 @@ screens that the user can switch through using the chrome bar on top, `alt`
 +`1,2,3,4` to switch to a view directly or `pgup` / `pgdown` to cycle to the
 previous/next tab:
 
+- **Namen**: A menu to enter speaker names. Speaker names are never stored
+or synced to the server and are only displayed to the user themselves for
+tracking purposes.
 - **Einzelreden**: One view for each individual speech, users can take notes
 for each indivdual speaker category and give points. Notes are not synced to
 the server and only saved in the users local storage. Users can switch to
@@ -83,6 +92,8 @@ same shortcut can be used to switch back to the speech the user had just opened.
 can rapidly enter all their scores using the `tab` key on their keyboard. Chairs
 can additionally click the dot labelled "Ab" to cycle between no deduction, small
 deduction and big deduction for each speaker.
+- **Allgemeine Notizen**: A space to place general notes about both teams in the
+debate, does not affect scoring
 - **Dashboard**: An overview for the chair to moderate the adjudication discussion.
 Shows a column of the average score and spread for each speech and team point category
 on the left, a column of the highest individual category spreads on the right and a large
@@ -91,6 +102,14 @@ can be inspected, showing each score from every judge. On the bottom, the comple
 as to be filled out and submitted to the tournament organizers can be seen live. Chairs can
 unlock the dashboard view (minus the right column) for all other judges using
 a button in the top chrome.
+- **Offline-Jurierende**: If a user has added offline judges (judges not using the software)
+via the chair or names view, they can add their complete scores in fields here.
+- **Opentab**: If the debate being judged is part of a tournament, the user can paste their
+ballot url to automatically align and submit the ballot to opentab. Authentication tokens
+are requested through the server via the users private url, but only ever stored in the users
+browser memory. The Opentab function is only available to chairs. Connecting to Opentab
+automatically fills free speaker names and enables dropdowns to select names as they appear
+on Opentab.
 
 The desktop version currently offers a bookmarklet to automatically export and
 fill in the ballot in the Opentab software.
@@ -194,11 +213,5 @@ Caddy handles the certificate and proxies websockets without extra config.
 
 ## Known limits
 
-- **Round setup is manual.** No draw, no speaker assignment, no cross-room tab.
-  Future work could automatically generate these from Opentab.
-- **Ballot export is one-way and manual.** The desktop Dashboard can copy a
-  ballot to the clipboard, and a bookmarklet (dragged in once) fills the
-  matching fields on the tabbing site's own entry page. This is not ideal as
-  it does not work on mobile and requires extensive setup.
 - **SQLite calls run inline in async handlers.** Could become an issue if the
   app is too widely used.
