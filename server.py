@@ -10,7 +10,9 @@ import time
 from collections import deque
 from contextlib import asynccontextmanager
 from typing import Optional
+from urllib.parse import urlsplit
 
+import httpx
 from fastapi import (
     FastAPI,
     HTTPException,
@@ -19,7 +21,12 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -934,6 +941,48 @@ async def set_timer(code: str, body: TimerAction, token: str = Query(...)):
         return {"ok": True, "timer": payload}
     finally:
         con.close()
+
+
+OPENTAB_ALLOWED_HOST = "api.debateresult.com"
+
+
+class OpenTabProxyRequest(BaseModel):
+    # Thin forward-only proxy for the OpenTab judge-ballot API
+    method: str = Field(pattern="^(GET|POST)$")
+    url: str
+    body: Optional[dict] = None
+    bearer: Optional[str] = None
+
+
+@app.post("/api/rooms/{code}/opentab/proxy")
+async def opentab_proxy(code: str, req: OpenTabProxyRequest, token: str = Query(...)):
+    code = code.upper()
+    con = db()
+    try:
+        me = auth(con, code, token)
+        if not me["is_chair"]:
+            raise HTTPException(403, "only the chair can do that")
+    finally:
+        con.close()
+    parsed = urlsplit(req.url)
+    if parsed.scheme != "https" or parsed.hostname != OPENTAB_ALLOWED_HOST:
+        raise HTTPException(400, "url must be https://" + OPENTAB_ALLOWED_HOST + "/...")
+    headers = {}
+    if req.bearer:
+        headers["Authorization"] = "Bearer " + req.bearer
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            if req.method == "GET":
+                r = await client.get(req.url, headers=headers)
+            else:
+                r = await client.post(req.url, json=req.body, headers=headers)
+    except httpx.HTTPError as e:
+        raise HTTPException(502, "OpenTab unreachable: " + str(e))
+    try:
+        data = r.json()
+    except ValueError:
+        data = None
+    return JSONResponse({"status": r.status_code, "data": data})
 
 
 @app.websocket("/ws/{code}")

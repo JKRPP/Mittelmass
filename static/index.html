@@ -272,6 +272,15 @@
                 <span class="navlabel">Offline-Jurierende</span
                 ><span class="navhint"></span>
               </button>
+              <button
+                data-dv="opentab"
+                aria-pressed="false"
+                tabindex="-1"
+                title="Namen aus OpenTab übernehmen und Ballot an OpenTab übermitteln"
+              >
+                <span class="navlabel">OpenTab</span
+                ><span class="navhint"></span>
+              </button>
             </div>
             <span class="sp"></span>
             <div class="dashjury hide" id="dashJury"></div>
@@ -418,10 +427,14 @@
             <div class="card" id="chairFinalCard">
               <h2>Endergebnis</h2>
               <div id="finalResult"></div>
-              <button class="btn ghost" id="btnBallot">Ballot anzeigen</button>
+              <button class="btn ghost" id="btnBallot">
+                Ballot anzeigen / übermitteln
+              </button>
               <div id="ballotWrap" class="hide" style="margin-top: 12px"></div>
             </div>
           </section>
+
+          <section id="v-opentabm" class="hide"></section>
 
           <div class="dockpad hide" id="dockSheet">
             <hr class="sep" />
@@ -452,6 +465,7 @@
         <div id="v-teampoints" class="hide"></div>
         <div id="v-notes" class="hide"></div>
         <div id="v-offline" class="hide"></div>
+        <div id="v-opentab" class="hide"></div>
       </div>
     </div>
 

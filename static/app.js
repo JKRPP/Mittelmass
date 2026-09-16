@@ -489,6 +489,49 @@ var notesSaveTimer = null;
 // functions already use a local `names` array for judge-name lists.
 var speakerNames = {};
 var namesSaveTimer = null;
+// OpenTab import/submit state - chair-only, browser-local (never sent to
+// our own server; see JUDGE_BALLOT_API.md). judgeMap maps an OpenTab
+// adjudicator uuid to a room judge id ("off:<id>" for an offline judge).
+// Round-scoped (per room code)
+var otState = {
+  debateId: "",
+  tournamentId: "",
+  ballot: null,
+  judgeMap: {},
+  // s -> the OpenTab member uuid the chair picked for that fixed team-speech
+  // slot (indices 0-3) - speakerNames only stores the display text, so this
+  // is what otBuildSubmission() actually sends back as speeches[].speaker.
+  teamSpeakerUuid: {},
+};
+var otSaveTimer = null;
+function saveOtState() {
+  clearTimeout(otSaveTimer);
+  otSaveTimer = setTimeout(function () {
+    if (ME) LS.set("opd.opentab." + ME.code, otState);
+  }, 150);
+}
+// Registration tokens, keyed by OpenTab tournament_id - NOT room-scoped, so
+// pasting a ballot URL for a different round of the same tournament (a
+// different room) reuses the same saved token instead of asking again.
+// { tournamentId: token }
+function otLoadTokens() {
+  return LS.get("opd.opentab.tokens", {}) || {};
+}
+function otSaveToken(tournamentId, token) {
+  var all = otLoadTokens();
+  all[tournamentId] = token;
+  LS.set("opd.opentab.tokens", all);
+}
+function otForgetToken(tournamentId) {
+  var all = otLoadTokens();
+  delete all[tournamentId];
+  LS.set("opd.opentab.tokens", all);
+}
+// Transient (never persisted) - set once a pasted ballot URL's tournament
+// has no saved token, so the view shows the one-time registration step for
+// that tournament/debate instead of the plain ballot-URL field.
+var otPendingTournamentId = null;
+var otPendingDebateId = null;
 var ws = null,
   wsTries = 0,
   wsTimer = null,
@@ -536,6 +579,16 @@ function loadLocal() {
   seq = LS.get("opd.seq", 0) || 0;
   notes = LS.get("opd.notes." + ME.code, {}) || {};
   speakerNames = LS.get("opd.names." + ME.code, {}) || {};
+  otState = LS.get("opd.opentab." + ME.code, null) || {};
+  otState.debateId = otState.debateId || "";
+  otState.tournamentId = otState.tournamentId || "";
+  otState.ballot = otState.ballot || null;
+  otState.judgeMap = otState.judgeMap || {};
+  otState.teamSpeakerUuid = otState.teamSpeakerUuid || {};
+  // Transient, never persisted - don't let a pending registration step
+  // from a previously open room leak into this one.
+  otPendingTournamentId = null;
+  otPendingDebateId = null;
 }
 function getName(s) {
   return speakerNames["s" + s] || "";
@@ -577,6 +630,124 @@ function setTeamNote(t, groupKey, text) {
   notesSaveTimer = setTimeout(function () {
     if (ME) LS.set("opd.notes." + ME.code, notes);
   }, 300);
+}
+
+// --- OpenTab judge-ballot API (see JUDGE_BALLOT_API.md) ---------------
+// Client-only integration: the app never sends the OpenTab secret/token to
+// our own server, so these are plain browser fetch() calls against OpenTab
+// directly (its CORS is wide open - see the doc's overview).
+
+// The one OpenTab API deployment this integration talks to (confirmed
+// against JUDGE_BALLOT_API.md; distinct from tabs.debateresult.com, the
+// judge-facing frontend host in the URLs users actually paste). Hardcoded
+// rather than derived/editable from user input: server.py's opentab_proxy
+// only relays requests to this exact host, so a stray or malicious URL
+// can't turn the proxy into an open SSRF relay. Revisit if a second
+// OpenTab deployment ever needs supporting.
+var OPENTAB_API_BASE = "https://api.debateresult.com";
+// The registration secret is the last non-empty path segment of the
+// judge's private ballot URL.
+function otExtractSecret(url) {
+  try {
+    var parts = new URL(url).pathname.split("/").filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : "";
+  } catch (e) {
+    return "";
+  }
+}
+function otExtractDebateId(url) {
+  var m = String(url).match(
+    /\/debate\/([0-9a-fA-F-]{8}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{12})/,
+  );
+  return m ? m[1] : "";
+}
+function otExtractTournamentId(url) {
+  var m = String(url).match(
+    /\/tournament\/([0-9a-fA-F-]{8}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{12})/,
+  );
+  return m ? m[1] : "";
+}
+// Every OpenTab call follows the doc's integration guidance: any non-2xx
+// response, or a 2xx body missing the fields we need, is surfaced to the
+// caller as an Error rather than silently accepted or guessed at.
+//
+// Routed through our own server's /opentab/proxy rather than fetched
+// directly: OpenTab's CORS preflight response has no
+// Access-Control-Allow-Headers, so a browser can't send the
+// Authorization/Content-Type headers this needs - see server.py's
+// opentab_proxy(), which just relays bytes. Nothing here changes except
+// where the bytes travel; url/body/token shape stays OpenTab's own.
+function otRequest(method, url, body, token) {
+  return fetch("/api/rooms/" + ME.code + "/opentab/proxy?token=" + ME.token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      method: method,
+      url: url,
+      body: body === undefined ? null : body,
+      bearer: token || null,
+    }),
+  }).then(function (resp) {
+    if (!resp.ok) {
+      return resp.text().then(function (text) {
+        throw new Error("OpenTab-Proxy (" + resp.status + "): " + text);
+      });
+    }
+    return resp.json().then(function (envelope) {
+      var status = envelope.status;
+      var data = envelope.data;
+      if (status < 200 || status >= 300) {
+        var msg = (data && data.message) || JSON.stringify(data) || status;
+        var err = new Error("OpenTab-API (" + status + "): " + msg);
+        err.otStatus = status;
+        throw err;
+      }
+      return data;
+    });
+  });
+}
+function otRegister(secret) {
+  return otRequest("POST", OPENTAB_API_BASE + "/api/register", {
+    secret: secret,
+    link_current_user: false,
+  }).then(function (data) {
+    if (!data || !data.token || !data.tournament_id) {
+      throw new Error(
+        "OpenTab-API: unerwartete Antwort auf /api/register (API evtl. geändert)",
+      );
+    }
+    return data;
+  });
+}
+function otGetDebate(token, debateId) {
+  return otRequest(
+    "GET",
+    OPENTAB_API_BASE + "/api/debate/" + debateId,
+    undefined,
+    token,
+  ).then(function (data) {
+    if (!data || !data.ballot) {
+      throw new Error(
+        "OpenTab-API: unerwartete Antwort auf /api/debate/:id (API evtl. geändert)",
+      );
+    }
+    return data.ballot;
+  });
+}
+function otSubmit(token, debateId, ballot) {
+  return otRequest(
+    "POST",
+    OPENTAB_API_BASE + "/api/debate/" + debateId + "/submissions",
+    { ballot: ballot },
+    token,
+  ).then(function (data) {
+    if (!data || !data.submission_id) {
+      throw new Error(
+        "OpenTab-API: unerwartete Antwort auf /submissions (API evtl. geändert)",
+      );
+    }
+    return data;
+  });
 }
 
 // Save locally first, then push to db. points === null clears the cell
@@ -1988,6 +2159,48 @@ function teamPunkte(t) {
   }
   return Math.max(0, sum);
 }
+// personPunkte()/teamPunkte() above only read the locally-logged-in judge's
+// own `mine` map. These siblings compute the same totals for an arbitrary
+// room judge id (real or "off:"-prefixed offline judge), for the OpenTab
+// submit flow where the chair's browser builds a ballot on other judges'
+// behalf. Return null (not 0) when that judge hasn't fully scored yet, so
+// the caller can tell "not done" from "scored zero".
+function personPunkteFor(judgeId, s) {
+  if (isOfflineId(judgeId)) {
+    var v = (offlineScores[offlineRealId(judgeId)] || {})["s" + s];
+    return v === undefined ? null : v;
+  }
+  var sum = 0;
+  for (var c = 0; c < NC; c++) {
+    var cv = (remote[judgeId] || {})[kk("s" + s, CRITERIA[c].key)];
+    if (cv === undefined) return null;
+    sum += cv;
+  }
+  return Math.max(0, sum - deductionPoints(s));
+}
+function teamPunkteFor(judgeId, t) {
+  if (isOfflineId(judgeId)) {
+    var v = (offlineScores[offlineRealId(judgeId)] || {})["t" + t];
+    return v === undefined ? null : v;
+  }
+  var sum = 0;
+  for (var c = 0; c < NT; c++) {
+    var tv = (remote[judgeId] || {})[kk("t" + t, TEAMCATS[c].key)];
+    if (tv === undefined) return null;
+    sum += tv;
+  }
+  return Math.max(0, sum);
+}
+// Display name for any room judge id (real judge or "off:"-prefixed
+// offline judge) - the OpenTab submit UI's judge picker needs this outside
+// computeChairSummary's own private nameOf().
+function roomJudgeName(id) {
+  if (isOfflineId(id)) {
+    var oj = offlineJudges[offlineRealId(id)];
+    return (oj && oj.name) || "Offline-Juror:in";
+  }
+  return peers[id] ? peers[id].name : id;
+}
 // Speaker indices belonging to a team, in speaking order. Indices, not
 // SPEAKERS entries: "s"+s is the key every score/note/exclusion is stored
 // under, so callers always need the index anyway.
@@ -3065,7 +3278,9 @@ function renderChair() {
 
   // Ballot: one column per adjudicator (chair first), in speaking order.
   var btnBallot = document.getElementById("btnBallot");
-  btnBallot.textContent = ballotOpen ? "Ballot ausblenden" : "Ballot anzeigen";
+  btnBallot.textContent = ballotOpen
+    ? "Ballot ausblenden"
+    : "Ballot anzeigen / übermitteln";
   var ballotWrap = document.getElementById("ballotWrap");
   ballotWrap.classList.toggle("hide", !ballotOpen);
   if (ballotOpen) {
@@ -3074,6 +3289,14 @@ function renderChair() {
     scrollHost.appendChild(fullBallotTable(summary));
     ballotWrap.innerHTML = "";
     ballotWrap.appendChild(scrollHost);
+    var otSwitchBtn = el("button", "btn ghost", "Zu OpenTab wechseln");
+    otSwitchBtn.type = "button";
+    otSwitchBtn.style.marginTop = "10px";
+    otSwitchBtn.addEventListener("click", function () {
+      showView("opentabm");
+      render();
+    });
+    ballotWrap.appendChild(otSwitchBtn);
   }
 }
 
@@ -3119,6 +3342,7 @@ function effectiveDashboardView() {
     (!ME.is_chair || !Object.keys(offlineJudges).length)
   )
     return "schnell";
+  if (dashboardView === "opentab" && !ME.is_chair) return "schnell";
   if (
     dashboardView === "matrix" ||
     dashboardView === "sheet" ||
@@ -3132,6 +3356,7 @@ function effectiveDashboardView() {
 // status lost, or the chair since locked spreadOpen again).
 function effectiveMobileView() {
   if (view === "chair" && !ME.is_chair && !spreadOpen) return "namen";
+  if (view === "opentabm" && !ME.is_chair) return "namen";
   return view;
 }
 
@@ -3167,13 +3392,21 @@ function applyLayoutMode() {
   document
     .getElementById("v-offline")
     .classList.toggle("hide", !dash || ev !== "offline");
+  document
+    .getElementById("v-opentab")
+    .classList.toggle("hide", !dash || ev !== "opentab");
 
   if (dash) {
-    ["v-namen", "v-sheet", "v-team", "v-matrix", "v-chair"].forEach(
-      function (id) {
-        document.getElementById(id).classList.add("hide");
-      },
-    );
+    [
+      "v-namen",
+      "v-sheet",
+      "v-team",
+      "v-matrix",
+      "v-chair",
+      "v-opentabm",
+    ].forEach(function (id) {
+      document.getElementById(id).classList.add("hide");
+    });
     document.getElementById("dock").classList.add("hide");
     document.getElementById("dockSheet").classList.add("hide");
     document.getElementById("dockTeam").classList.add("hide");
@@ -3220,6 +3453,12 @@ function renderDashChrome() {
         "hide",
         !ME.is_chair || !Object.keys(offlineJudges).length,
       );
+    },
+  );
+  [].forEach.call(
+    document.querySelectorAll('#dashNav button[data-dv="opentab"]'),
+    function (b) {
+      b.classList.toggle("hide", !ME.is_chair);
     },
   );
 
@@ -3405,6 +3644,7 @@ document.getElementById("dashNav").addEventListener("click", function (e) {
   if (!b) return;
   if (b.dataset.dv === "dashboard" && !ME.is_chair && !spreadOpen) return;
   if (b.dataset.dv === "offline" && !ME.is_chair) return;
+  if (b.dataset.dv === "opentab" && !ME.is_chair) return;
   setDashboardView(b.dataset.dv);
   render();
 });
@@ -4018,7 +4258,8 @@ function dashFinalPanel(summary) {
     exportBtn.type = "button";
     exportBtn.tabIndex = -1;
     exportBtn.addEventListener("click", function () {
-      openBallotExportModal(summary);
+      setDashboardView("opentab");
+      render();
     });
     head.appendChild(exportBtn);
   }
@@ -4032,115 +4273,6 @@ function dashFinalPanel(summary) {
   return panel;
 }
 
-// Speech role/position in the OPD sense (government/opposition/non_aligned,
-// 0-indexed within that role) - derived purely from SPEAKERS' order and
-// team, so it survives SPEAKERS being reordered/relabeled rather than
-// depending on fixed array indices. This is the same role+position scheme
-// debateresult.com's ballot-entry form uses on its hidden speeches.N.role/
-// speeches.N.position fields, so a consumer (the bookmarklet) can match a
-// speech without caring what order our own SPEAKERS array happens to use.
-function speechRolePosition(s) {
-  var team = SPEAKERS[s].team;
-  var role =
-    team === 0 ? "government" : team === 1 ? "opposition" : "non_aligned";
-  var position = 0;
-  for (var i = 0; i < s; i++) {
-    if (SPEAKERS[i].team === team) position++;
-  }
-  return { role: role, position: position };
-}
-
-// Ballot-export payload: judgeIds is the chair-chosen column order; scores
-// are deduction-adjusted totals, null when missing/excluded so the
-// bookmarklet skips that field.
-function buildBallotExport(summary, judgeIds) {
-  var speeches = activeSpeakerIndices().map(function (s) {
-    var sp = SPEAKERS[s];
-    var rp = speechRolePosition(s);
-    return {
-      role: rp.role,
-      position: rp.position,
-      label: sp.label,
-      scores: judgeIds.map(function (id) {
-        var v = summary.remoteTotal(id, s);
-        return v !== null && summary.includedFor(id, "s" + s) ? v : null;
-      }),
-    };
-  });
-  var teams = {};
-  TEAMS.forEach(function (_, t) {
-    var key = t === 0 ? "government" : "opposition";
-    teams[key] = judgeIds.map(function (id) {
-      var v = summary.remoteTeamTotal(id, t);
-      return v !== null && summary.includedFor(id, "t" + t) ? v : null;
-    });
-  });
-  return {
-    app: "mittelmass",
-    version: 1,
-    judges: judgeIds.map(function (id) {
-      return summary.nameOf(id);
-    }),
-    speeches: speeches,
-    teams: teams,
-  };
-}
-
-// The bookmarklet's source, meant to run on the tabbing site's own
-// ballot-entry page - dragged to the bookmarks bar once, then clicked while
-// that page is open. It reads the clipboard payload buildBallotExport()
-// produced, matches each speech by role+position (the tabbing site's own
-// hidden speeches.N.role/speeches.N.position fields), and fills the number
-// inputs for the chosen judge order, leaving review and submission to a human.
-var BALLOT_BOOKMARKLET_SRC = [
-  "(function(){",
-  'function fail(m){alert("Ballot-Import: "+m);}',
-  "navigator.clipboard.readText().then(function(t){",
-  "var data;",
-  'try{data=JSON.parse(t);}catch(e){fail("Zwischenablage enthält kein gültiges Ballot-Export.");return;}',
-  'if(!data||data.app!=="mittelmass"||!data.speeches){fail("Zwischenablage enthält kein gültiges Ballot-Export.");return;}',
-  "var bySpeech={};",
-  '[].forEach.call(document.querySelectorAll(\'input[type="hidden"][name^="speeches."][name$=".role"]\'),function(r){',
-  "var m=/^speeches\\.(\\d+)\\.role$/.exec(r.name);",
-  "if(!m)return;",
-  "var p=document.querySelector('input[name=\"speeches.'+m[1]+'.position\"]');",
-  "if(!p)return;",
-  'bySpeech[r.value+"|"+p.value]=m[1];',
-  "});",
-  "var filled=0,missing=[];",
-  "function setVal(inp,v){",
-  "if(!inp||v===null||v===undefined)return;",
-  "inp.value=String(v);",
-  'inp.dispatchEvent(new Event("input",{bubbles:true}));',
-  'inp.dispatchEvent(new Event("change",{bubbles:true}));',
-  "filled++;",
-  "}",
-  "data.speeches.forEach(function(sp){",
-  'var n=bySpeech[sp.role+"|"+sp.position];',
-  "if(n===undefined){missing.push(sp.label);return;}",
-  "(sp.scores||[]).forEach(function(v,j){",
-  "setVal(document.querySelector('input[name=\"speeches.'+n+\".scores.\"+j+'\"]'),v);",
-  "});",
-  "});",
-  '["government","opposition"].forEach(function(key){',
-  "var arr=data.teams&&data.teams[key];",
-  "if(!arr)return;",
-  "arr.forEach(function(v,j){",
-  "setVal(document.querySelector('input[name=\"'+key+\".scores.\"+j+'\"]'),v);",
-  "});",
-  "});",
-  'var msg="Ballot eingetragen: "+filled+" Felder ausgefüllt.";',
-  'if(missing.length)msg+="\\nNicht gefunden: "+missing.join(", ");',
-  "alert(msg);",
-  "},function(){",
-  'fail("Zwischenablage konnte nicht gelesen werden (Berechtigung erteilt?).");',
-  "});",
-  "})();",
-].join("");
-
-function ballotBookmarkletHref() {
-  return "javascript:" + encodeURIComponent(BALLOT_BOOKMARKLET_SRC);
-}
 // Desktop-only cheat sheet for the Alt/Page keyboard shortcuts wired up
 // further down (dashNav cycling, Blatt speech stepping, Blatt<->Teampunkte
 // swap). Reuses the info-modal look but lists rows instead of one paragraph.
@@ -4222,103 +4354,6 @@ document.addEventListener("keydown", function (e) {
   e.preventDefault();
   openShortcutsModal();
 });
-
-// Appended to <body>, since #v-dashboard gets torn down on every render().
-function openBallotExportModal(summary) {
-  var order = chairFirstIds(summary.ids);
-  openModal("ballotExportModal", function (box) {
-    buildBallotExportBox(box, summary, order);
-  });
-}
-function buildBallotExportBox(box, summary, order) {
-  box.appendChild(el("h2", null, "Ballot exportieren"));
-  box.appendChild(
-    el(
-      "p",
-      "note",
-      "Die Ordnung der Juror:innen muss der in Opentab entsprechen.",
-    ),
-  );
-
-  var list = el("div", "ballotexportjudges");
-  function renderList() {
-    list.innerHTML = "";
-    order.forEach(function (id, i) {
-      var row = el("div", "ballotexportjrow");
-      row.appendChild(el("span", "n", String(i + 1) + "."));
-      row.appendChild(el("span", "nm", summary.nameOf(id)));
-      var up = el("button", "adj", "▲");
-      up.type = "button";
-      up.disabled = i === 0;
-      up.addEventListener("click", function () {
-        var tmp = order[i - 1];
-        order[i - 1] = order[i];
-        order[i] = tmp;
-        renderList();
-      });
-      var down = el("button", "adj", "▼");
-      down.type = "button";
-      down.disabled = i === order.length - 1;
-      down.addEventListener("click", function () {
-        var tmp = order[i + 1];
-        order[i + 1] = order[i];
-        order[i] = tmp;
-        renderList();
-      });
-      row.appendChild(up);
-      row.appendChild(down);
-      list.appendChild(row);
-    });
-  }
-  renderList();
-  box.appendChild(list);
-
-  box.appendChild(
-    el(
-      "p",
-      "note",
-      "Automatisches einfügen benötigt das Opentab bookmarklet. Einmalig einrichten: den Link in die Lesezeichenleiste ziehen. Danach auf der Ballot-Seite des Tabbing-Programms anklicken, um das Ballot einzufügen.",
-    ),
-  );
-  var bmLink = el("a", "bookmarklet", "📋 Ballot einfügen");
-  bmLink.href = ballotBookmarkletHref();
-  bmLink.title = "In die Lesezeichenleiste ziehen";
-  bmLink.addEventListener("click", function (e) {
-    // A direct click (vs. dragging) does nothing useful here - the notice
-    // explains why nothing happened.
-    e.preventDefault();
-    openInfoModal(
-      null,
-      "Den Link in die Lesezeichenleiste ziehen, nicht anklicken — er muss später auf der Ballot-Seite des Tabbing-Programms ausgeführt werden.",
-    );
-  });
-  box.appendChild(bmLink);
-
-  var actions = el("div", "modalactions");
-  var copyBtn = el("button", "btn", "In Zwischenablage kopieren");
-  copyBtn.type = "button";
-  copyBtn.addEventListener("click", function () {
-    var payload = buildBallotExport(summary, order);
-    copyText(JSON.stringify(payload))
-      .then(function () {
-        copyBtn.textContent = "Kopiert ✓";
-        setTimeout(function () {
-          copyBtn.textContent = "In Zwischenablage kopieren";
-        }, 1500);
-      })
-      .catch(function () {
-        copyBtn.textContent = "Kopieren fehlgeschlagen";
-      });
-  });
-  var closeBtn = el("button", "btn ghost", "Schließen");
-  closeBtn.type = "button";
-  closeBtn.addEventListener("click", function () {
-    closeModal("ballotExportModal");
-  });
-  actions.appendChild(copyBtn);
-  actions.appendChild(closeBtn);
-  box.appendChild(actions);
-}
 
 // Chair-only: how many reserved free-speaker slots are active. Lowering
 // never deletes scores; raising brings them back.
@@ -5629,6 +5664,553 @@ function renderNamenRoom() {
   root.appendChild(wrap);
 }
 
+// Maps every ballot.speeches[] entry OpenTab returns onto our own SPEAKERS
+// index: government/opposition position 0/1 are the two early speeches,
+// position 2+ is the closing speech; non_aligned speeches fill the active
+// free-speaker slots in position order. Returns {s: speech}.
+function otBuildSlotMap(ballot) {
+  var map = {};
+  var freeSpeeches = ballot.speeches
+    .filter(function (sp) {
+      return sp.role === "non_aligned";
+    })
+    .slice()
+    .sort(function (a, b) {
+      return a.position - b.position;
+    });
+  ballot.speeches.forEach(function (sp) {
+    if (sp.role === "non_aligned") return;
+    var s =
+      sp.role === "government"
+        ? sp.position === 0
+          ? 0
+          : sp.position === 1
+            ? 2
+            : 15
+        : sp.position === 0
+          ? 1
+          : sp.position === 1
+            ? 3
+            : 14;
+    map[s] = sp;
+  });
+  freeSpeeches.forEach(function (sp, i) {
+    var s = FREE_START + i;
+    if (s < FREE_START + MAX_FREE_SPEAKERS) map[s] = sp;
+  });
+  return map;
+}
+// Builds the SubmitBallotRequest.ballot payload for every judge currently
+// mapped in otState.judgeMap, pulling that judge's own computed totals via
+// personPunkteFor()/teamPunkteFor(). A judge missing a total (not fully
+// scored yet) simply gets no entry for that cell rather than a guessed 0.
+function otBuildSubmission(ballot, slotMap) {
+  var speeches = ballot.speeches.map(function (sp) {
+    var sIdx = null;
+    Object.keys(slotMap).forEach(function (s) {
+      if (slotMap[s] === sp) sIdx = +s;
+    });
+    var scores = {};
+    Object.keys(otState.judgeMap).forEach(function (uuid) {
+      var rid = otState.judgeMap[uuid];
+      if (!rid || sIdx === null) return;
+      var pts = personPunkteFor(rid, sIdx);
+      if (pts !== null) scores[uuid] = { type: "Aggregate", total: pts };
+    });
+    // Team speeches aren't pre-assigned to a member in the ballot
+    var speakerUuid =
+      (sIdx !== null && otState.teamSpeakerUuid[sIdx]) ||
+      (sp.speaker ? sp.speaker.uuid : null);
+    return {
+      speaker: speakerUuid,
+      role: sp.role,
+      position: sp.position,
+      scores: scores,
+      is_opt_out: !!sp.is_opt_out,
+    };
+  });
+  function teamPayload(team, t) {
+    var scores = {};
+    Object.keys(otState.judgeMap).forEach(function (uuid) {
+      var rid = otState.judgeMap[uuid];
+      if (!rid) return;
+      var pts = teamPunkteFor(rid, t);
+      if (pts !== null) scores[uuid] = { type: "Aggregate", total: pts };
+    });
+    return { team: team ? team.uuid : null, scores: scores };
+  }
+  return {
+    uuid: ballot.uuid,
+    speeches: speeches,
+    government: teamPayload(ballot.government, 0),
+    opposition: teamPayload(ballot.opposition, 1),
+    adjudicators: ballot.adjudicators.map(function (a) {
+      return a.uuid;
+    }),
+    president: ballot.president ? ballot.president.uuid : null,
+  };
+}
+function otStatusMsg(root, text, isError) {
+  var s = root.querySelector(".otstatus");
+  if (!s) return;
+  s.textContent = text || "";
+  s.classList.toggle("error", !!isError);
+}
+function otLabeledField(labelText, id, placeholder) {
+  var row = el("div", "otfield");
+  row.appendChild(el("div", "slbl", labelText));
+  var input = document.createElement("input");
+  input.type = "text";
+  input.id = id;
+  input.placeholder = placeholder || "";
+  row.appendChild(input);
+  return row;
+}
+// Clears a tournament's saved token and points the view back at the
+// registration step for it (with the debate id it already knew, so the
+// chair doesn't have to re-paste the ballot URL too) - shared by every
+// call site that can discover a stale/expired token.
+function otHandleStaleToken(tournamentId, debateId) {
+  otForgetToken(tournamentId);
+  otPendingTournamentId = tournamentId;
+  otPendingDebateId = debateId;
+  otState = {
+    debateId: "",
+    tournamentId: "",
+    ballot: null,
+    judgeMap: {},
+    teamSpeakerUuid: {},
+  };
+  saveOtState();
+}
+function otIsAuthError(err) {
+  return err && (err.otStatus === 401 || err.otStatus === 403);
+}
+// Chair puts in the ballot url; Check if secret exists and works,
+// otherwise prompt the user for registration url
+function otDoConnectFromBallotUrl(root) {
+  var url = document.getElementById("otBallotUrl").value.trim();
+  var debateId = otExtractDebateId(url);
+  var tournamentId = otExtractTournamentId(url);
+  if (!debateId || !tournamentId) {
+    otStatusMsg(
+      root,
+      "Bitte eine gültige Ballot-URL einfügen (…/tournament/…/debate/…).",
+      true,
+    );
+    return;
+  }
+  var saved = otLoadTokens()[tournamentId];
+  if (!saved) {
+    otPendingTournamentId = tournamentId;
+    otPendingDebateId = debateId;
+    renderOpenTab(root.id);
+    return;
+  }
+  otStatusMsg(root, "Verbinde…", false);
+  otGetDebate(saved, debateId)
+    .then(function (ballot) {
+      otState.debateId = debateId;
+      otState.tournamentId = tournamentId;
+      otState.ballot = ballot;
+      otState.judgeMap = {};
+      otState.teamSpeakerUuid = {};
+      saveOtState();
+      renderOpenTab(root.id);
+    })
+    .catch(function (err) {
+      if (otIsAuthError(err)) {
+        otHandleStaleToken(tournamentId, debateId);
+        renderOpenTab(root.id);
+        otStatusMsg(
+          root,
+          "Gespeicherter Zugang für dieses Turnier ist abgelaufen. Bitte Registrierungs-URL erneut einfügen.",
+          true,
+        );
+        return;
+      }
+      otStatusMsg(root, err.message || String(err), true);
+    });
+}
+// Prompt the user for a registration url and save the token
+function otDoRegisterAndConnect(root) {
+  var regUrl = document.getElementById("otRegUrl").value.trim();
+  var secret = otExtractSecret(regUrl);
+  if (!secret) {
+    otStatusMsg(root, "Bitte eine gültige Registrierungs-URL einfügen.", true);
+    return;
+  }
+  var tournamentId = otPendingTournamentId;
+  var debateId = otPendingDebateId;
+  otStatusMsg(root, "Verbinde…", false);
+  otRegister(secret)
+    .then(function (reg) {
+      otSaveToken(tournamentId, reg.token);
+      return otGetDebate(reg.token, debateId);
+    })
+    .then(function (ballot) {
+      otState.debateId = debateId;
+      otState.tournamentId = tournamentId;
+      otState.ballot = ballot;
+      otState.judgeMap = {};
+      otState.teamSpeakerUuid = {};
+      otPendingTournamentId = null;
+      otPendingDebateId = null;
+      saveOtState();
+      renderOpenTab(root.id);
+    })
+    .catch(function (err) {
+      otStatusMsg(root, err.message || String(err), true);
+    });
+}
+function otDoRefresh(root) {
+  if (!otState.ballot) return;
+  var saved = otLoadTokens()[otState.tournamentId];
+  if (!saved) {
+    otHandleStaleToken(otState.tournamentId, otState.debateId);
+    renderOpenTab(root.id);
+    otStatusMsg(
+      root,
+      "Kein gespeicherter Zugang mehr für dieses Turnier. Bitte Registrierungs-URL erneut einfügen.",
+      true,
+    );
+    return;
+  }
+  otStatusMsg(root, "Aktualisiere…", false);
+  otGetDebate(saved, otState.debateId)
+    .then(function (ballot) {
+      otState.ballot = ballot;
+      saveOtState();
+      renderOpenTab(root.id);
+    })
+    .catch(function (err) {
+      if (otIsAuthError(err)) {
+        otHandleStaleToken(otState.tournamentId, otState.debateId);
+        renderOpenTab(root.id);
+        otStatusMsg(
+          root,
+          "Gespeicherter Zugang für dieses Turnier ist abgelaufen. Bitte Registrierungs-URL erneut einfügen.",
+          true,
+        );
+        return;
+      }
+      otStatusMsg(root, err.message || String(err), true);
+    });
+}
+// "Trennen" only leaves this round's view/mapping. The tournament's saved
+// token stays put so the next room for the same tournament reuses it.
+function otDoDisconnect(root) {
+  otState = {
+    debateId: "",
+    tournamentId: "",
+    ballot: null,
+    judgeMap: {},
+    teamSpeakerUuid: {},
+  };
+  saveOtState();
+  renderOpenTab(root.id);
+}
+function otDoSubmit(root) {
+  if (!otState.ballot) return;
+  if (!Object.keys(otState.judgeMap).length) {
+    otStatusMsg(
+      root,
+      "Bitte zuerst mindestens eine:n Jurierende:n auswählen.",
+      true,
+    );
+    return;
+  }
+  var saved = otLoadTokens()[otState.tournamentId];
+  if (!saved) {
+    otHandleStaleToken(otState.tournamentId, otState.debateId);
+    renderOpenTab(root.id);
+    otStatusMsg(
+      root,
+      "Kein gespeicherter Zugang mehr für dieses Turnier. Bitte Registrierungs-URL erneut einfügen.",
+      true,
+    );
+    return;
+  }
+  var slotMap = otBuildSlotMap(otState.ballot);
+  var payload = otBuildSubmission(otState.ballot, slotMap);
+  otStatusMsg(root, "Sende Ballot…", false);
+  otSubmit(saved, otState.debateId, payload)
+    .then(function (res) {
+      otStatusMsg(
+        root,
+        "Ballot übermittelt (" + res.submission_id + ").",
+        false,
+      );
+      openInfoModal(
+        "Ballot übermittelt",
+        "Das Ballot wurde erfolgreich an OpenTab übermittelt.",
+      );
+    })
+    .catch(function (err) {
+      if (otIsAuthError(err)) {
+        otHandleStaleToken(otState.tournamentId, otState.debateId);
+        renderOpenTab(root.id);
+        otStatusMsg(
+          root,
+          "Gespeicherter Zugang für dieses Turnier ist abgelaufen. Bitte Registrierungs-URL erneut einfügen.",
+          true,
+        );
+        return;
+      }
+      otStatusMsg(root, err.message || String(err), true);
+    });
+}
+// Desktop "OpenTab" view (chair-only). Pulls names from the tournament's
+// own OpenTab instance and, after the round, submits each room judge's
+// computed totals back as that judge's OpenTab ballot.
+function renderOpenTab(rootId) {
+  var root = document.getElementById(rootId || "v-opentab");
+  if (!root) return;
+  if (dashEditGuard(root)) return;
+  root.innerHTML = "";
+
+  var wrap = el("div", "dashcol");
+
+  if (!ME.is_chair) {
+    wrap.appendChild(el("p", null, "Nur der Chair kann OpenTab verbinden."));
+    root.appendChild(wrap);
+    return;
+  }
+
+  if (!otState.ballot) {
+    var form = el("div", "otform");
+    form.appendChild(
+      el(
+        "p",
+        "otintro",
+        "Verbindet direkt mit dem OpenTab-Server dieses Turniers. Zugangsdaten werden nur in diesem Browser gespeichert.",
+      ),
+    );
+
+    if (otPendingTournamentId) {
+      form.appendChild(
+        el(
+          "p",
+          "otintro",
+          "Kein gespeicherter Zugang für dieses Turnier gefunden. Bitte einmalig die Registrierungs-URL (privater Ballot-Link) einfügen.",
+        ),
+      );
+      form.appendChild(
+        otLabeledField(
+          "Registrierungs-URL",
+          "otRegUrl",
+          "https://tabs.debateresult.com/register/…",
+        ),
+      );
+      form.appendChild(el("div", "otstatus"));
+      var registerBtn = el("button", "offlinejudgeadd", "Verbinden");
+      registerBtn.type = "button";
+      registerBtn.addEventListener("click", function () {
+        otDoRegisterAndConnect(root);
+      });
+      form.appendChild(registerBtn);
+      var cancelBtn = el("button", "juryab", "Andere Ballot-URL verwenden");
+      cancelBtn.type = "button";
+      cancelBtn.addEventListener("click", function () {
+        otPendingTournamentId = null;
+        otPendingDebateId = null;
+        renderOpenTab(root.id);
+      });
+      form.appendChild(cancelBtn);
+    } else {
+      form.appendChild(
+        otLabeledField(
+          "Ballot-URL",
+          "otBallotUrl",
+          "https://tabs.debateresult.com/tournament/…/debate/…",
+        ),
+      );
+      form.appendChild(el("div", "otstatus"));
+      var connectBtn = el("button", "offlinejudgeadd", "Verbinden");
+      connectBtn.type = "button";
+      connectBtn.addEventListener("click", function () {
+        otDoConnectFromBallotUrl(root);
+      });
+      form.appendChild(connectBtn);
+    }
+
+    wrap.appendChild(
+      schnellPanel(
+        otPendingTournamentId
+          ? "Registrierung erforderlich"
+          : "OpenTab verbinden",
+        form,
+      ),
+    );
+    root.appendChild(wrap);
+    return;
+  }
+
+  var ballot = otState.ballot;
+  var connBody = el("div", "otactions");
+  connBody.appendChild(
+    el(
+      "span",
+      "juryname",
+      (ballot.government ? ballot.government.name : "?") +
+        " vs. " +
+        (ballot.opposition ? ballot.opposition.name : "?"),
+    ),
+  );
+  var refreshBtn = el("button", "offlinejudgeadd", "Ballot neu laden");
+  refreshBtn.type = "button";
+  refreshBtn.addEventListener("click", function () {
+    otDoRefresh(root);
+  });
+  var disconnectBtn = el("button", "offlinejudgeadd", "Trennen");
+  disconnectBtn.type = "button";
+  disconnectBtn.addEventListener("click", function () {
+    otDoDisconnect(root);
+  });
+  connBody.appendChild(refreshBtn);
+  connBody.appendChild(disconnectBtn);
+  wrap.appendChild(schnellPanel("Verbunden mit OpenTab", connBody));
+
+  // Same ordering/formatting as the Offline-Jurierende table
+  var slotMap = otBuildSlotMap(ballot);
+  var speechWrap = el("div");
+  var speechTable = el("table", "schnelltable otspeechtable");
+  var speechTableHead = el("tr");
+  speechTableHead.appendChild(el("th", "l", "Rede"));
+  speechTableHead.appendChild(el("th", null, "Redner:in"));
+  speechTable.appendChild(speechTableHead);
+
+  var teamsByIdx = { 0: ballot.government, 1: ballot.opposition };
+  activeSpeakerIndices().forEach(function (s) {
+    var tr = el("tr");
+    var lbl = el("td", "l", speakerLabel(s));
+    var teamCls = teamClass(SPEAKERS[s].team);
+    if (teamCls) lbl.classList.add(teamCls);
+    tr.appendChild(lbl);
+    var td = el("td");
+    if (SPEAKERS[s].team === null) {
+      // Free speaker are pre assigned and can't be modified
+      var sp = slotMap[s];
+      td.appendChild(
+        el(
+          "span",
+          "otname",
+          sp && sp.speaker ? sp.speaker.name : "— keine Zuordnung —",
+        ),
+      );
+    } else {
+      // Team speech order isn't authoritative in OpenTab, so the chair
+      // picks who actually gave it.
+      var team = teamsByIdx[SPEAKERS[s].team];
+      var select = document.createElement("select");
+      var blank = document.createElement("option");
+      blank.value = "";
+      blank.textContent = "— auswählen —";
+      select.appendChild(blank);
+      (team ? team.members : []).forEach(function (m) {
+        var opt = document.createElement("option");
+        opt.value = m.uuid;
+        opt.textContent = m.name;
+        if (otState.teamSpeakerUuid[s] === m.uuid) opt.selected = true;
+        select.appendChild(opt);
+      });
+      select.addEventListener("change", function () {
+        if (!select.value) return;
+        var member = (team ? team.members : []).filter(function (m) {
+          return m.uuid === select.value;
+        })[0];
+        if (!member) return;
+        setName(s, member.name);
+        otState.teamSpeakerUuid[s] = member.uuid;
+        saveOtState();
+      });
+      td.appendChild(select);
+    }
+    tr.appendChild(td);
+    speechTable.appendChild(tr);
+  });
+  speechWrap.appendChild(speechTable);
+
+  var applyFreeBtn = el(
+    "button",
+    "offlinejudgeadd",
+    "Namen für fraktionsfreie Reden aus OpenTab übernehmen",
+  );
+  applyFreeBtn.type = "button";
+  applyFreeBtn.addEventListener("click", function () {
+    activeSpeakerIndices()
+      .filter(function (s) {
+        return teamOf(s) === null;
+      })
+      .forEach(function (s) {
+        var sp = slotMap[s];
+        if (sp && sp.speaker) setName(s, sp.speaker.name);
+      });
+    render();
+  });
+  var applyFreeWrap = el("div", "otactions");
+  applyFreeWrap.appendChild(applyFreeBtn);
+  speechWrap.appendChild(applyFreeWrap);
+  wrap.appendChild(schnellPanel("Redner:innen", speechWrap));
+
+  // Map judges to ballot names
+  var judgePanel = el("div");
+  judgePanel.appendChild(el("div", "otstatus"));
+  var judgeBody = el("div", "offlinejurywrap");
+  var roomJudgeIds = Object.keys(peers).concat(
+    Object.keys(offlineJudges).map(function (id) {
+      return OFFLINE_ID_PREFIX + id;
+    }),
+  );
+  var adjRows = ballot.adjudicators.slice();
+  if (
+    ballot.president &&
+    !adjRows.some(function (a) {
+      return a.uuid === ballot.president.uuid;
+    })
+  ) {
+    adjRows.push(ballot.president);
+  }
+  adjRows.forEach(function (adj) {
+    var row = el("div", "juryrow");
+    var label =
+      adj.name +
+      (ballot.president && ballot.president.uuid === adj.uuid
+        ? " (Vorsitz)"
+        : "");
+    row.appendChild(el("span", "juryname", label));
+    var select = document.createElement("select");
+    var blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "— Jurierende:n wählen —";
+    select.appendChild(blank);
+    roomJudgeIds.forEach(function (id) {
+      var opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = roomJudgeName(id);
+      if (otState.judgeMap[adj.uuid] === id) opt.selected = true;
+      select.appendChild(opt);
+    });
+    select.addEventListener("change", function () {
+      if (select.value) otState.judgeMap[adj.uuid] = select.value;
+      else delete otState.judgeMap[adj.uuid];
+      saveOtState();
+    });
+    row.appendChild(select);
+    judgeBody.appendChild(row);
+  });
+  judgePanel.appendChild(judgeBody);
+  var submitBtn = el("button", "otsubmitbtn", "Ballot absenden");
+  submitBtn.type = "button";
+  submitBtn.addEventListener("click", function () {
+    otDoSubmit(root);
+  });
+  judgePanel.appendChild(submitBtn);
+  wrap.appendChild(schnellPanel("Ballot absenden", judgePanel));
+
+  root.appendChild(wrap);
+}
+
 function render() {
   if (!ME) return;
   applyLayoutMode();
@@ -5641,6 +6223,7 @@ function render() {
     else if (ev === "teampoints") renderTeamPoints();
     else if (ev === "notes") renderNotes();
     else if (ev === "offline") renderOfflineJudges();
+    else if (ev === "opentab") renderOpenTab();
     else renderDashboard();
   } else {
     var mv = effectiveMobileView();
@@ -5649,6 +6232,7 @@ function render() {
     if (mv === "team") renderTeam();
     if (mv === "matrix") renderMatrix();
     if (mv === "chair") renderChair();
+    if (mv === "opentabm") renderOpenTab("v-opentabm");
   }
   paintBar();
 }
@@ -6044,9 +6628,11 @@ function showView(v) {
       x.setAttribute("aria-pressed", String(x.dataset.t === view));
     },
   );
-  ["namen", "sheet", "team", "matrix", "chair"].forEach(function (vv) {
-    document.getElementById("v-" + vv).classList.toggle("hide", vv !== view);
-  });
+  ["namen", "sheet", "team", "matrix", "chair", "opentabm"].forEach(
+    function (vv) {
+      document.getElementById("v-" + vv).classList.toggle("hide", vv !== view);
+    },
+  );
   document
     .getElementById("dockSheet")
     .classList.toggle("hide", view !== "sheet");
