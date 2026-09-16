@@ -2097,6 +2097,9 @@ function paintBar() {
   document
     .getElementById("menuResetBlattCols")
     .classList.toggle("hide", !isDesktopWidth());
+  document
+    .getElementById("menuPrintNotes")
+    .classList.toggle("hide", !isDesktopWidth());
   paintTimer();
 }
 
@@ -5399,6 +5402,121 @@ function renderBlatt() {
   }
 }
 
+// A printable sheet with all scores and notes (for handing to teams for
+// feedback purposes), most likely just to save as pdf.
+
+function buildPrintSheet() {
+  var root = document.getElementById("printSheet");
+  root.innerHTML = "";
+  var summary = computeChairSummary(false);
+
+  root.appendChild(el("h1", "printtitle", "Notizen · " + (ME ? ME.name : "")));
+
+  activeSpeakerIndices().forEach(function (s) {
+    var card = el("div", "printspeaker");
+    var heading = speakerLabel(s);
+    if (deductionLevel(s)) heading += " (Abzug: −" + deductionPoints(s) + ")";
+    card.appendChild(el("h2", "printspeakerlbl", heading));
+
+    var scoreTable = el("table", "printscores");
+    var head = el("tr");
+    head.appendChild(el("th", "l", "Kategorie"));
+    head.appendChild(el("th", null, "Meine Punkte"));
+    scoreTable.appendChild(head);
+    CRITERIA.forEach(function (c, ci) {
+      var tr = el("tr");
+      tr.appendChild(el("td", "l", c.label));
+      var v = sget(s, ci);
+      tr.appendChild(el("td", null, v === null ? "–" : String(v)));
+      scoreTable.appendChild(tr);
+    });
+    var totVals = summary.ids
+      .filter(function (id) {
+        return summary.includedFor(id, "s" + s);
+      })
+      .map(function (id) {
+        return summary.remoteTotal(id, s);
+      })
+      .filter(function (v) {
+        return v !== null;
+      });
+    var totTr = el("tr", "tot");
+    totTr.appendChild(el("td", "l", "Gesamt"));
+    totTr.appendChild(el("td", null, String(personPunkte(s))));
+    scoreTable.appendChild(totTr);
+    var finalTr = el("tr", "tot");
+    finalTr.appendChild(el("td", "l", "Ø Gesamt (alle Jurys)"));
+    var final = avgRound(totVals);
+    finalTr.appendChild(el("td", null, final === null ? "–" : String(final)));
+    scoreTable.appendChild(finalTr);
+    card.appendChild(scoreTable);
+
+    BLATT_GROUPS.forEach(function (group) {
+      var note = getNote(s, group.key);
+      if (!note) return;
+      var noteBlock = el("div", "printnote");
+      noteBlock.appendChild(el("div", "printnotelbl", group.label));
+      noteBlock.appendChild(el("div", "printnotetext", note));
+      card.appendChild(noteBlock);
+    });
+
+    root.appendChild(card);
+  });
+
+  TEAMS.forEach(function (tm, t) {
+    var card = el("div", "printspeaker");
+    card.appendChild(el("h2", "printspeakerlbl", "Teampunkte " + tm));
+
+    var scoreTable = el("table", "printscores");
+    var head = el("tr");
+    head.appendChild(el("th", "l", "Kategorie"));
+    head.appendChild(el("th", null, "Meine Punkte"));
+    scoreTable.appendChild(head);
+    TEAMCATS.forEach(function (cat, ci) {
+      var tr = el("tr");
+      tr.appendChild(el("td", "l", cat.label));
+      var v = tget(t, ci);
+      tr.appendChild(el("td", null, v === null ? "–" : String(v)));
+      scoreTable.appendChild(tr);
+    });
+    var totVals = summary.ids
+      .filter(function (id) {
+        return summary.includedFor(id, "t" + t);
+      })
+      .map(function (id) {
+        return summary.remoteTeamTotal(id, t);
+      });
+    var totTr = el("tr", "tot");
+    totTr.appendChild(el("td", "l", "Gesamt"));
+    totTr.appendChild(el("td", null, String(teamPunkte(t))));
+    scoreTable.appendChild(totTr);
+    var finalTr = el("tr", "tot");
+    finalTr.appendChild(el("td", "l", "Ø Gesamt (alle Jurys)"));
+    var final = avgRound(totVals);
+    finalTr.appendChild(el("td", null, final === null ? "–" : String(final)));
+    scoreTable.appendChild(finalTr);
+    card.appendChild(scoreTable);
+
+    TEAMCATS.forEach(function (cat) {
+      var note = getTeamNote(t, cat.key);
+      if (!note) return;
+      var noteBlock = el("div", "printnote");
+      noteBlock.appendChild(el("div", "printnotelbl", cat.label));
+      noteBlock.appendChild(el("div", "printnotetext", note));
+      card.appendChild(noteBlock);
+    });
+    var general = getTeamNote(t, "general");
+    if (general) {
+      var generalBlock = el("div", "printnote");
+      generalBlock.appendChild(el("div", "printnotelbl", "Allgemein"));
+      generalBlock.appendChild(el("div", "printnotetext", general));
+      card.appendChild(generalBlock);
+    }
+
+    root.appendChild(card);
+  });
+}
+
 // Team-first sibling to Blatt - both teams' 7 categories + notes on one screen, no paging.
 function teamPointsHintText(v, max) {
   if (v === null) return "–";
@@ -6730,6 +6848,12 @@ document
       localStorage.removeItem("blattColWidths");
     } catch (e) {}
     render();
+  });
+document
+  .getElementById("menuPrintNotes")
+  .addEventListener("click", function () {
+    buildPrintSheet();
+    window.print();
   });
 document.getElementById("btnSpreadOpen").addEventListener("click", function () {
   var next = !spreadOpen;

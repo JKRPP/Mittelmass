@@ -2233,3 +2233,71 @@ select {
   border-radius: var(--radius);
   margin: 4px 0 10px;
 }
+
+/* Printable feedback sheet (built by buildPrintSheet). Hidden on screen -
+   only #printSheet is shown, and everything else in #app is hidden, once
+   window.print() is triggered from the ⋮ menu. */
+#printSheet {
+  display: none;
+}
+@media print {
+  #app {
+    display: none !important;
+  }
+  #printSheet {
+    display: block !important;
+    color: #000;
+    background: #fff;
+    font-family: "Georgia", "Iowan Old Style", "Times New Roman", serif;
+  }
+  .printtitle {
+    font-size: 18px;
+    margin: 0 0 14px;
+  }
+  .printspeaker {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 22px;
+  }
+  .printspeaker + .printspeaker {
+    break-before: page;
+    page-break-before: always;
+  }
+  .printspeakerlbl {
+    font-size: 15px;
+    border-bottom: 1px solid #000;
+    padding-bottom: 4px;
+    margin: 0 0 8px;
+  }
+  .printscores {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+  .printscores th,
+  .printscores td {
+    border: 1px solid #999;
+    padding: 3px 6px;
+    text-align: right;
+  }
+  .printscores th.l,
+  .printscores td.l {
+    text-align: left;
+  }
+  .printscores tr.tot {
+    font-weight: bold;
+  }
+  .printnote {
+    margin: 6px 0;
+  }
+  .printnotelbl {
+    font-size: 11px;
+    font-weight: bold;
+    color: #333;
+  }
+  .printnotetext {
+    font-size: 12px;
+    white-space: pre-wrap;
+  }
+}
