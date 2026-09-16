@@ -2086,9 +2086,6 @@ function paintBar() {
     ? ME.name + (ME.is_chair ? " · Chair" : "") + " · " + ME.code
     : "";
   document
-    .getElementById("menuFreeSpeakers")
-    .classList.toggle("hide", !ME || !ME.is_chair);
-  document
     .getElementById("menuGradeInput")
     .classList.toggle("hide", !isDesktopWidth());
   document
@@ -4430,11 +4427,6 @@ function buildFreeSpeakersBox(box) {
   box.appendChild(actions);
   return input;
 }
-document
-  .getElementById("menuFreeSpeakers")
-  .addEventListener("click", function () {
-    openFreeSpeakersModal();
-  });
 
 function dashColC(summary) {
   var col = el("div", "dashcol dashcol-c");
@@ -5875,6 +5867,13 @@ function renderNamenRoom() {
       free.appendChild(namenSeat(s, i + 1 + ". Rede"));
     });
   }
+  if (ME.is_chair) {
+    var freeCountBtn = el("button", "juryab freectrl", "Anzahl FFRs ändern");
+    freeCountBtn.type = "button";
+    freeCountBtn.tabIndex = -1;
+    freeCountBtn.addEventListener("click", openFreeSpeakersModal);
+    free.appendChild(freeCountBtn);
+  }
   lower.appendChild(free);
 
   var jury = el("div", "roomtable jury");
@@ -7092,6 +7091,9 @@ document
     offlineJudgesOpen = !offlineJudgesOpen;
     render();
   });
+document
+  .getElementById("btnFreeSpeakers")
+  .addEventListener("click", openFreeSpeakersModal);
 document.getElementById("themeBtn").addEventListener("click", cycleTheme);
 document
   .getElementById("menuGradeInput")

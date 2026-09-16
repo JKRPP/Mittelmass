@@ -2034,6 +2034,10 @@ body.blattresizing .blattcol {
   padding: 0;
   flex: 0 0 auto;
 }
+.freectrl {
+  display: block;
+  margin-top: 10px;
+}
 .juryab:hover {
   color: var(--live);
 }
