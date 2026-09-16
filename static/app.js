@@ -2100,6 +2100,9 @@ function paintBar() {
   document
     .getElementById("menuPrintNotes")
     .classList.toggle("hide", !isDesktopWidth());
+  document
+    .getElementById("menuPrintNotesAvgOnly")
+    .classList.toggle("hide", !isDesktopWidth());
   paintTimer();
 }
 
@@ -5410,7 +5413,7 @@ function renderBlatt() {
 // A printable sheet with all scores and notes (for handing to teams for
 // feedback purposes), most likely just to save as pdf.
 
-function buildPrintSheet() {
+function buildPrintSheet(hideOwn) {
   var root = document.getElementById("printSheet");
   root.innerHTML = "";
   var summary = computeChairSummary(false);
@@ -5426,15 +5429,16 @@ function buildPrintSheet() {
     var scoreTable = el("table", "printscores");
     var head = el("tr");
     head.appendChild(el("th", "l", "Kategorie"));
-    head.appendChild(el("th", null, "Meine Punkte"));
+    if (!hideOwn) head.appendChild(el("th", null, "Meine Punkte"));
     scoreTable.appendChild(head);
-    CRITERIA.forEach(function (c, ci) {
-      var tr = el("tr");
-      tr.appendChild(el("td", "l", c.label));
-      var v = sget(s, ci);
-      tr.appendChild(el("td", null, v === null ? "–" : String(v)));
-      scoreTable.appendChild(tr);
-    });
+    if (!hideOwn)
+      CRITERIA.forEach(function (c, ci) {
+        var tr = el("tr");
+        tr.appendChild(el("td", "l", c.label));
+        var v = sget(s, ci);
+        tr.appendChild(el("td", null, v === null ? "–" : String(v)));
+        scoreTable.appendChild(tr);
+      });
     var totVals = summary.ids
       .filter(function (id) {
         return summary.includedFor(id, "s" + s);
@@ -5445,10 +5449,12 @@ function buildPrintSheet() {
       .filter(function (v) {
         return v !== null;
       });
-    var totTr = el("tr", "tot");
-    totTr.appendChild(el("td", "l", "Gesamt"));
-    totTr.appendChild(el("td", null, String(personPunkte(s))));
-    scoreTable.appendChild(totTr);
+    if (!hideOwn) {
+      var totTr = el("tr", "tot");
+      totTr.appendChild(el("td", "l", "Gesamt"));
+      totTr.appendChild(el("td", null, String(personPunkte(s))));
+      scoreTable.appendChild(totTr);
+    }
     var finalTr = el("tr", "tot");
     finalTr.appendChild(el("td", "l", "Ø Gesamt (alle Jurierenden)"));
     var final = avgRound(totVals);
@@ -5475,15 +5481,16 @@ function buildPrintSheet() {
     var scoreTable = el("table", "printscores");
     var head = el("tr");
     head.appendChild(el("th", "l", "Kategorie"));
-    head.appendChild(el("th", null, "Meine Punkte"));
+    if (!hideOwn) head.appendChild(el("th", null, "Meine Punkte"));
     scoreTable.appendChild(head);
-    TEAMCATS.forEach(function (cat, ci) {
-      var tr = el("tr");
-      tr.appendChild(el("td", "l", cat.label));
-      var v = tget(t, ci);
-      tr.appendChild(el("td", null, v === null ? "–" : String(v)));
-      scoreTable.appendChild(tr);
-    });
+    if (!hideOwn)
+      TEAMCATS.forEach(function (cat, ci) {
+        var tr = el("tr");
+        tr.appendChild(el("td", "l", cat.label));
+        var v = tget(t, ci);
+        tr.appendChild(el("td", null, v === null ? "–" : String(v)));
+        scoreTable.appendChild(tr);
+      });
     var totVals = summary.ids
       .filter(function (id) {
         return summary.includedFor(id, "t" + t);
@@ -5491,10 +5498,12 @@ function buildPrintSheet() {
       .map(function (id) {
         return summary.remoteTeamTotal(id, t);
       });
-    var totTr = el("tr", "tot");
-    totTr.appendChild(el("td", "l", "Gesamt"));
-    totTr.appendChild(el("td", null, String(teamPunkte(t))));
-    scoreTable.appendChild(totTr);
+    if (!hideOwn) {
+      var totTr = el("tr", "tot");
+      totTr.appendChild(el("td", "l", "Gesamt"));
+      totTr.appendChild(el("td", null, String(teamPunkte(t))));
+      scoreTable.appendChild(totTr);
+    }
     var finalTr = el("tr", "tot");
     finalTr.appendChild(el("td", "l", "Ø Gesamt (alle Jurierenden)"));
     var final = avgRound(totVals);
@@ -6857,7 +6866,13 @@ document
 document
   .getElementById("menuPrintNotes")
   .addEventListener("click", function () {
-    buildPrintSheet();
+    buildPrintSheet(false);
+    window.print();
+  });
+document
+  .getElementById("menuPrintNotesAvgOnly")
+  .addEventListener("click", function () {
+    buildPrintSheet(true);
     window.print();
   });
 document.getElementById("btnSpreadOpen").addEventListener("click", function () {
