@@ -28,6 +28,16 @@ jobs:
           accept-android-sdk-licenses: true
           packages: ""
 
+      - name: Point Bubblewrap's SDK root at the installed cmdline-tools
+        # Bubblewrap's own validatePath() only accepts an SDK root that has
+        # tools/ or bin/ directly inside it (a legacy layout) - but
+        # setup-android installs cmdline-tools under a versioned subfolder
+        # (not always "latest"). Symlink whichever bin/ that resolved to
+        # onto the SDK root so Bubblewrap's check passes.
+        run: |
+          cmdline_bin=$(find "$ANDROID_SDK_ROOT/cmdline-tools" -maxdepth 2 -type d -name bin | head -n1)
+          ln -s "$cmdline_bin" "$ANDROID_SDK_ROOT/bin"
+
       - name: Install Bubblewrap
         run: npm install -g @bubblewrap/cli
 
