@@ -5364,6 +5364,7 @@ function renderBlatt() {
   var noteTab = 1;
   var scoreTab = 1 + BLATT_GROUPS.length;
   var savedWidths = getBlattColWidths();
+  var unpinnedCols = [];
   BLATT_GROUPS.forEach(function (group, i) {
     var scoreTabStart = scoreTab;
     scoreTab += group.critIdx.length;
@@ -5378,9 +5379,13 @@ function renderBlatt() {
     if (i > 0)
       body.appendChild(blattResizer(body.lastChild, BLATT_GROUPS[i - 1].key));
     body.appendChild(col);
+    if (!isLast && !savedWidths[group.key]) unpinnedCols.push(col);
     noteTab++;
   });
   root.appendChild(body);
+  unpinnedCols.forEach(function (col) {
+    col.style.flex = "0 0 " + col.getBoundingClientRect().width + "px";
+  });
 
   if (ME.is_chair) {
     var dedu = el("div", "dedu");
