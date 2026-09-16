@@ -2094,6 +2094,9 @@ function paintBar() {
   document
     .getElementById("shortcutsBtn")
     .classList.toggle("hide", !isDesktopWidth());
+  document
+    .getElementById("menuResetBlattCols")
+    .classList.toggle("hide", !isDesktopWidth());
   paintTimer();
 }
 
@@ -5151,9 +5154,10 @@ function blattNotesField(s, group, tabIdx) {
 // makes the browser fall back to plain DOM order for "next focusable", so
 // notes must also come first in the DOM - CSS `order` restores the usual
 // scores-on-top-notes-below layout.
-function blattColumn(s, group, scoreTabStart, noteTabIdx) {
+function blattColumn(s, group, scoreTabStart, noteTabIdx, width) {
   var col = el("div", "blattcol");
   if (group.critIdx.length > 1) col.classList.add("blattcol-wide");
+  if (width) col.style.flex = "0 0 " + width + "px";
   col.appendChild(blattNotesField(s, group, noteTabIdx));
   var scores = el("div", "blattscores");
   group.critIdx.forEach(function (c, i) {
@@ -5161,6 +5165,77 @@ function blattColumn(s, group, scoreTabStart, noteTabIdx) {
   });
   col.appendChild(scores);
   return col;
+}
+
+// User-dragged Blatt column widths, keyed by BLATT_GROUPS[].key. The last
+// group never gets a stored width - it always soaks up remaining space.
+function getBlattColWidths() {
+  try {
+    return JSON.parse(localStorage.getItem("blattColWidths") || "{}");
+  } catch (e) {
+    return {};
+  }
+}
+function setBlattColWidth(key, w) {
+  var widths = getBlattColWidths();
+  widths[key] = w;
+  try {
+    localStorage.setItem("blattColWidths", JSON.stringify(widths));
+  } catch (e) {}
+}
+
+// Every Blatt column keeps at least this much width, so dragging one
+// column can never push a sibling (or itself) out of the visible body.
+// The unresized last column (Sachverstand & Urteilskraft, .blattcol-wide)
+// holds two score fields instead of one, so its floor is double - matches
+// the min-width set on .blattcol-wide in style.css.
+var BLATT_COL_MIN = 150;
+
+// Drag handle placed between two Blatt columns; resizes the column to its
+// left by tracking the pointer, then persists the result via
+// setBlattColWidth. Mirrors a standard split-pane resizer.
+function blattResizer(leftCol, groupKey) {
+  var handle = el("div", "blattresizer");
+  handle.addEventListener("mousedown", function (e) {
+    e.preventDefault();
+    var startX = e.clientX;
+    var startWidth = leftCol.getBoundingClientRect().width;
+    var body = leftCol.parentNode;
+    var cols = body.querySelectorAll(".blattcol");
+    var lastCol = cols[cols.length - 1];
+    // Only the last column is flex:1 (fills leftover space) - every other
+    // column between leftCol and it is a fixed px width that won't shrink
+    // to make room, so it counts fully against the available max.
+    var otherFixedWidth = 0;
+    cols.forEach(function (c) {
+      if (c !== leftCol && c !== lastCol)
+        otherFixedWidth += c.getBoundingClientRect().width;
+    });
+    var resizers = body.querySelectorAll(".blattresizer").length;
+    document.body.classList.add("blattresizing");
+    function onMove(ev) {
+      var maxWidth =
+        body.getBoundingClientRect().width -
+        otherFixedWidth -
+        BLATT_COL_MIN * 2 -
+        resizers * 6;
+      var w = Math.min(
+        Math.max(BLATT_COL_MIN, startWidth + (ev.clientX - startX)),
+        maxWidth,
+      );
+      leftCol.style.flex = "0 0 " + w + "px";
+    }
+    function onUp() {
+      document.body.classList.remove("blattresizing");
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      var w = leftCol.getBoundingClientRect().width;
+      setBlattColWidth(groupKey, w);
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+  return handle;
 }
 
 function renderBlatt() {
@@ -5253,10 +5328,21 @@ function renderBlatt() {
   // Notes get the first BLATT_GROUPS.length tab stops, scores follow.
   var noteTab = 1;
   var scoreTab = 1 + BLATT_GROUPS.length;
-  BLATT_GROUPS.forEach(function (group) {
+  var savedWidths = getBlattColWidths();
+  BLATT_GROUPS.forEach(function (group, i) {
     var scoreTabStart = scoreTab;
     scoreTab += group.critIdx.length;
-    body.appendChild(blattColumn(cs, group, scoreTabStart, noteTab));
+    var isLast = i === BLATT_GROUPS.length - 1;
+    var col = blattColumn(
+      cs,
+      group,
+      scoreTabStart,
+      noteTab,
+      isLast ? null : savedWidths[group.key],
+    );
+    if (i > 0)
+      body.appendChild(blattResizer(body.lastChild, BLATT_GROUPS[i - 1].key));
+    body.appendChild(col);
     noteTab++;
   });
   root.appendChild(body);
@@ -6603,6 +6689,14 @@ document.getElementById("btnCopy").addEventListener("click", function () {
 document.getElementById("menuCopyLink").addEventListener("click", function () {
   copyRoomLink(this, location.origin + "/r/" + ME.code);
 });
+document
+  .getElementById("menuResetBlattCols")
+  .addEventListener("click", function () {
+    try {
+      localStorage.removeItem("blattColWidths");
+    } catch (e) {}
+    render();
+  });
 document.getElementById("btnSpreadOpen").addEventListener("click", function () {
   var next = !spreadOpen;
   fetch(

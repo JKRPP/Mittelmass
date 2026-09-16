@@ -1640,7 +1640,7 @@ tr.deducted td.l {
   flex: 1;
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  min-width: 80px;
   border-right: 1px solid var(--line);
   background: var(--card);
 }
@@ -1649,6 +1649,23 @@ tr.deducted td.l {
 }
 .blattcol-wide {
   flex: 2;
+  min-width: 160px;
+}
+.blattresizer {
+  flex: 0 0 6px;
+  cursor: col-resize;
+  background: transparent;
+}
+.blattresizer:hover,
+body.blattresizing .blattresizer {
+  background: var(--live);
+}
+body.blattresizing {
+  cursor: col-resize;
+  user-select: none;
+}
+body.blattresizing .blattcol {
+  pointer-events: none;
 }
 .blattscores {
   flex: 0 0 auto;
