@@ -1969,15 +1969,22 @@ function cycleTheme() {
 }
 
 // Personal, per-device preference: type a school grade (e.g. "2+") instead
-// of raw points on Blatt/Teampunkte, seeing the resulting points below
-// instead of the usual points->grade hint.
-function gradeInputMode() {
-  return !!LS.get("opd.gradeInput", false);
+// of raw points on Blatt/Teampunkte/Schnelleingabe, seeing the resulting
+// points below instead of the usual points->grade hint. Set independently
+// for speaker criteria (Redepunkte) and team categories (Teampunkte).
+var GRADE_INPUT_LS_KEY = {
+  speaker: "opd.gradeInputSpeaker",
+  team: "opd.gradeInputTeam",
+};
+function gradeInputMode(kind) {
+  return !!LS.get(GRADE_INPUT_LS_KEY[kind], false);
+}
+function setGradeInputMode(kind, on) {
+  LS.set(GRADE_INPUT_LS_KEY[kind], !!on);
 }
 function applyGradeInputLabel() {
   var b = document.getElementById("menuGradeInput");
-  if (b)
-    b.textContent = "Eingabemodus: " + (gradeInputMode() ? "Noten" : "Punkte");
+  if (b) b.textContent = "Eingabemodus";
 }
 
 function applyTimerDisplayLabel() {
@@ -2005,10 +2012,36 @@ function toggleBellVoice() {
   applyBellVoiceLabel();
   testBell();
 }
-function toggleGradeInput() {
-  LS.set("opd.gradeInput", !gradeInputMode());
-  applyGradeInputLabel();
-  render();
+function openGradeInputModal() {
+  openModal("gradeInputModal", function (box) {
+    box.appendChild(el("h2", null, "Eingabemodus"));
+    box.appendChild(gradeInputModeRow("Redepunkte", "speaker"));
+    box.appendChild(gradeInputModeRow("Teampunkte", "team"));
+    box.appendChild(modalCloseRow("gradeInputModal", "Schließen"));
+  });
+}
+function gradeInputModeRow(label, kind) {
+  var row = el("div", "gradeinputrow");
+  row.appendChild(el("div", "gradeinputlbl", label));
+  var opts = el("div", "gradeinputopts");
+  ["Punkte", "Noten"].forEach(function (optLabel, i) {
+    var on = i === 1;
+    var btn = el("button", "btn ghost", optLabel);
+    btn.type = "button";
+    btn.classList.toggle("on", gradeInputMode(kind) === on);
+    btn.addEventListener("click", function () {
+      setGradeInputMode(kind, on);
+      applyGradeInputLabel();
+      render();
+      [].forEach.call(opts.querySelectorAll("button"), function (b) {
+        b.classList.remove("on");
+      });
+      btn.classList.add("on");
+    });
+    opts.appendChild(btn);
+  });
+  row.appendChild(opts);
+  return row;
 }
 
 // Resumes a session if a judge reconnects
@@ -4295,7 +4328,7 @@ var SHORTCUTS = [
 var MORE_FEATURES = [
   [
     "Eingabemodus: Noten/Punkte",
-    "Im Menü (oben Rechts) kannst du den Eingabe Modus von Punkten (9,12,15 etc.) auf Noten (3+, 1-, 1+ etc.) umschalten. Bereits eingegebene Werte werden automatisch umgerechnet.",
+    "Im Menü (oben Rechts) kannst du den Eingabe Modus für Redepunkte und Teampunkte getrennt von Punkten (9,12,15 etc.) auf Noten (3+, 1-, 1+ etc.) umschalten. Bereits eingegebene Werte werden automatisch umgerechnet.",
   ],
   [
     "Abzüge",
@@ -4554,11 +4587,11 @@ function gradeTextInput(opts) {
 // write too, so what ends up on screen is always the normalised value.
 // max is the field's own scale: 20 for the speaker criteria's Notenskala,
 // the category's max for a team category.
-function commitScoreField(inp, max, target, criterion, refresh) {
+function commitScoreField(inp, max, target, criterion, kind, refresh) {
   var raw = inp.value.trim();
   if (raw === "") return;
   var n;
-  if (gradeInputMode()) {
+  if (gradeInputMode(kind)) {
     n = pointsFromGrade(raw, max);
   } else {
     n = Math.round(Number(raw));
@@ -4579,16 +4612,16 @@ function commitScoreField(inp, max, target, criterion, refresh) {
 // fine-tuning a value happens on Blatt/Teampunkte, or by switching back to
 // points mode here.
 function schnellSpeakerInput(s, c) {
-  var inp = gradeInputMode() ? gradeTextInput() : schnellNumberInput();
+  var inp = gradeInputMode("speaker") ? gradeTextInput() : schnellNumberInput();
   function refresh() {
     var v = sget(s, c);
     inp.value =
-      v === null ? "" : gradeInputMode() ? gradeMarkFor(v) : String(v);
+      v === null ? "" : gradeInputMode("speaker") ? gradeMarkFor(v) : String(v);
     updateSchnellSpeakerRow(s);
   }
   refresh();
   inp.addEventListener("change", function () {
-    commitScoreField(inp, 20, "s" + s, CRITERIA[c].key, refresh);
+    commitScoreField(inp, 20, "s" + s, CRITERIA[c].key, "speaker", refresh);
   });
   return inp;
 }
@@ -4596,16 +4629,20 @@ function schnellSpeakerInput(s, c) {
 // Team categories are stored in their own point scale (e.g. 0-25).
 function schnellTeamInput(t, catIdx) {
   var cat = TEAMCATS[catIdx];
-  var inp = gradeInputMode() ? gradeTextInput() : schnellNumberInput();
+  var inp = gradeInputMode("team") ? gradeTextInput() : schnellNumberInput();
   function refresh() {
     var v = tget(t, catIdx);
     inp.value =
-      v === null ? "" : gradeInputMode() ? gradeMarkFor(v, cat.max) : String(v);
+      v === null
+        ? ""
+        : gradeInputMode("team")
+          ? gradeMarkFor(v, cat.max)
+          : String(v);
     updateSchnellTeamRow(t);
   }
   refresh();
   inp.addEventListener("change", function () {
-    commitScoreField(inp, cat.max, "t" + t, cat.key, refresh);
+    commitScoreField(inp, cat.max, "t" + t, cat.key, "team", refresh);
   });
   return inp;
 }
@@ -5039,7 +5076,7 @@ function blattHintText(v) {
 
 function updateBlattScore(s, c) {
   var v = sget(s, c);
-  var grade = gradeInputMode();
+  var grade = gradeInputMode("speaker");
   var valEl = document.getElementById("blatt-val-" + s + "-" + c);
   var hintEl = document.getElementById("blatt-hint-" + s + "-" + c);
   var minusEl = document.getElementById("blatt-minus-" + s + "-" + c);
@@ -5083,7 +5120,7 @@ function blattScoreField(s, c, tabIdx) {
   var wrap = el("div", "blattscore");
   wrap.appendChild(el("div", "blattlbl", CRITERIA[c].label));
 
-  var grade = gradeInputMode();
+  var grade = gradeInputMode("speaker");
   var onEnter = function (inp) {
     if (allSpeakerScoresFilled(s)) advanceToNextSpeech();
     else focusNextNumberInput(inp);
@@ -5095,7 +5132,7 @@ function blattScoreField(s, c, tabIdx) {
   var v = sget(s, c);
   if (v !== null) inp.value = grade ? gradeMarkFor(v) : String(v);
   inp.addEventListener("change", function () {
-    commitScoreField(inp, 20, "s" + s, CRITERIA[c].key, function () {
+    commitScoreField(inp, 20, "s" + s, CRITERIA[c].key, "speaker", function () {
       updateBlattScore(s, c);
     });
   });
@@ -5566,7 +5603,7 @@ function teamPointsHintText(v, max) {
 function updateTeamPointsScore(t, catIdx) {
   var cat = TEAMCATS[catIdx];
   var v = tget(t, catIdx);
-  var grade = gradeInputMode();
+  var grade = gradeInputMode("team");
   var valEl = document.getElementById("teampoints-val-t" + t + "-c" + catIdx);
   var hintEl = document.getElementById("teampoints-hint-t" + t + "-c" + catIdx);
   var minusEl = document.getElementById(
@@ -5599,7 +5636,7 @@ function teamPointsScoreField(t, catIdx, tabIdx) {
   var wrap = el("div", "blattscore");
   wrap.appendChild(el("div", "blattlbl", cat.label + " (max " + cat.max + ")"));
 
-  var grade = gradeInputMode();
+  var grade = gradeInputMode("team");
   var fieldOpts = { extraClass: "blattinput", width: false };
   var inp = grade ? gradeTextInput(fieldOpts) : schnellNumberInput(fieldOpts);
   inp.id = "teampoints-val-t" + t + "-c" + catIdx;
@@ -5607,7 +5644,7 @@ function teamPointsScoreField(t, catIdx, tabIdx) {
   var v = tget(t, catIdx);
   if (v !== null) inp.value = grade ? gradeMarkFor(v, cat.max) : String(v);
   inp.addEventListener("change", function () {
-    commitScoreField(inp, cat.max, "t" + t, cat.key, function () {
+    commitScoreField(inp, cat.max, "t" + t, cat.key, "team", function () {
       updateTeamPointsScore(t, catIdx);
     });
   });
@@ -7097,7 +7134,7 @@ document
 document.getElementById("themeBtn").addEventListener("click", cycleTheme);
 document
   .getElementById("menuGradeInput")
-  .addEventListener("click", toggleGradeInput);
+  .addEventListener("click", openGradeInputModal);
 document
   .getElementById("menuTimerDisplay")
   .addEventListener("click", toggleTimerCountUp);

@@ -2242,6 +2242,30 @@ select {
   border-radius: var(--radius);
   margin: 4px 0 10px;
 }
+.gradeinputrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.gradeinputrow:first-of-type {
+  border-top: none;
+}
+.gradeinputlbl {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.gradeinputopts {
+  display: flex;
+  gap: 6px;
+}
+.gradeinputopts .btn.on {
+  color: var(--warn);
+  border-color: var(--warn);
+  font-weight: 500;
+}
 
 /* Printable feedback sheet (built by buildPrintSheet). Hidden on screen -
    only #printSheet is shown, and everything else in #app is hidden, once
