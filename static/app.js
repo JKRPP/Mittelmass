@@ -372,6 +372,42 @@ function pointsFromGrade(mark, max) {
 function gradeHintText(v) {
   return v === null ? "–" : v + " Punkte";
 }
+// Scans the text notes of a team category to provide a hint for the average
+// grade and associated points.
+var NOTE_GRADE_TOKEN_RE = /[1-6][+-]?/g;
+function noteGradeTokens(text) {
+  var tokens = [];
+  NOTE_GRADE_TOKEN_RE.lastIndex = 0;
+  var m;
+  while ((m = NOTE_GRADE_TOKEN_RE.exec(text))) {
+    var tok = m[0];
+    var before = text.charAt(m.index - 1);
+    var after = text.charAt(m.index + tok.length);
+    if (/[0-9]/.test(before)) continue; // part of a bigger number, e.g. "20"
+    if (tok.length === 1 && /[0-9]/.test(after)) continue; // ditto
+    if (after === "." || after === ":") continue; // list marker, e.g. "1."
+    tokens.push(tok);
+  }
+  return tokens;
+}
+function noteGradeAverageHint(text, max) {
+  var tokens = noteGradeTokens(text);
+  if (!tokens.length) return "";
+  var sum = 0;
+  tokens.forEach(function (tok) {
+    sum += GRADE_TO_POINTS[tok];
+  });
+  var avg = Math.round(sum / tokens.length);
+  var mark = markOf(avg).mark;
+  var pts = mid(convert(avg, max));
+  return (
+    "Schnitt der Noten in Notizen: " +
+    (mark && mark.trim() ? mark : avg) +
+    " (" +
+    pts +
+    " Pkt.)"
+  );
+}
 // Speaker names are free text a judge types in, and the two result tables
 // below are built as HTML strings (the one place this codebase does that) -
 // so anything user-typed has to go through here on the way in.
@@ -5685,16 +5721,26 @@ function teamPointsScoreField(t, catIdx, tabIdx) {
 }
 
 function teamPointsNotesField(t, cat, tabIdx) {
+  var wrap = el("div", "teampointsnotewrap");
   var ta = el("textarea", "blattnotes");
   ta.placeholder = "Notizen zu " + cat.label + " …";
   ta.value = getTeamNote(t, cat.key);
   ta.tabIndex = tabIdx;
   ta.id = "teampoints-note-t" + t + "-" + cat.key;
+  var hint = el("div", "notegradehint");
+  hint.id = "teampoints-notehint-t" + t + "-" + cat.key;
+  function refreshHint() {
+    hint.textContent = noteGradeAverageHint(ta.value, cat.max);
+  }
+  refreshHint();
   ta.addEventListener("input", function () {
     applyNoteAutoReplace(ta);
     setTeamNote(t, cat.key, ta.value);
+    refreshHint();
   });
-  return ta;
+  wrap.appendChild(ta);
+  wrap.appendChild(hint);
+  return wrap;
 }
 
 // Notes precede the score in the DOM (see blattColumn's comment for why);

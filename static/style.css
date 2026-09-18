@@ -1751,6 +1751,22 @@ body.blattresizing .blattcol {
 .blattnotes:focus-visible {
   outline-offset: -2px;
 }
+.teampointsnotewrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  order: 2;
+}
+.teampointsnotewrap .blattnotes {
+  order: 0;
+}
+.notegradehint {
+  flex: 0 0 auto;
+  padding: 0 18px 10px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
 #v-blatt .dedu {
   flex: 0 0 auto;
   padding: 10px 28px;
