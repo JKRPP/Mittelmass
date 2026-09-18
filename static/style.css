@@ -4,12 +4,12 @@
   --ink-3: #8b8f98;
   --paper: #ffffff;
   --card: #ffffff;
-  --line: #dfdcd5;
+  --line: #575757;
   --line-2: #c6c2b8;
   --live: #1d611b;
   --live-bg: #e2efec;
   --live-line: #a5a5a5;
-  --warn: #8a4a1a;
+  --warn: #a01800;
   --warn-bg: #f6ebe1;
   --danger: #b3261e;
   --danger-bg: #fbe9e7;
@@ -164,7 +164,7 @@ body {
   gap: 6px;
   padding: 3px 8px;
   border: 1px solid var(--line-2);
-  border-radius: 999px;
+  border-radius: 0px;
   cursor: pointer;
   flex: 0 0 auto;
   max-width: 46vw;
@@ -441,7 +441,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 11px;
+  padding: 0px 11px;
   border-radius: var(--radius);
   cursor: pointer;
   border: 1px solid transparent;
@@ -1519,7 +1519,6 @@ tr.deducted td.l {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   text-align: left;
-  border-top: 1px solid var(--line);
 }
 .schnellsub {
   font-size: 10px;
