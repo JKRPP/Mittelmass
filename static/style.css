@@ -24,16 +24,16 @@
   --dark-ink: #eceae6;
   --dark-ink-2: #a4a8b0;
   --dark-ink-3: #71757d;
-  --dark-paper: #000000;
-  --dark-card: #1c1e22;
+  --dark-paper: #161616;
+  --dark-card: #202020;
   --dark-line: #2e3138;
   --dark-line-2: #41454d;
   --dark-live: #96cb7e;
   --dark-live-bg: #1a3216;
   --dark-live-line: #2f6a60;
-  --dark-warn: #d8a273;
+  --dark-warn: #ff8874;
   --dark-warn-bg: #33251a;
-  --dark-danger: #f2938c;
+  --dark-danger: #fc7169;
   --dark-danger-bg: #3a1f1d;
 }
 
@@ -410,7 +410,7 @@ body {
   border: 1px solid var(--line-2);
   background: transparent;
   color: var(--ink-2);
-  border-radius: 8px;
+  border-radius: 0px;
   width: 34px;
   height: 32px;
   font-size: 16px;
