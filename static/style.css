@@ -1971,13 +1971,13 @@ body.blattresizing .blattcol {
 .roomstage {
   display: flex;
   flex-direction: column;
-  gap: 34px;
+  gap: 10px;
 }
 .facingrow,
 .lowerrow {
   display: flex;
   justify-content: center;
-  gap: 60px;
+  gap: 10px;
 }
 .roomtable {
   width: 240px;

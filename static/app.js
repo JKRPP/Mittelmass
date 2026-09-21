@@ -433,14 +433,14 @@ var TEAM_MAX = TEAMCATS.reduce(function (a, c) {
 function labelOf(target, criterion) {
   if (target[0] === "s") {
     var s = speakerLabel(+target.slice(1));
-    if (criterion === "abz") return s + " · Abzüge";
+    if (criterion === "abz") return s + " - Abzüge";
     for (var i = 0; i < CRITERIA.length; i++)
-      if (CRITERIA[i].key === criterion) return s + " · " + CRITERIA[i].label;
+      if (CRITERIA[i].key === criterion) return s + " - " + CRITERIA[i].label;
   } else {
     var t = TEAMS[+target.slice(1)];
-    if (criterion === "abz") return t + " · Abzüge";
+    if (criterion === "abz") return t + " - Abzüge";
     for (var j = 0; j < TEAMCATS.length; j++)
-      if (TEAMCATS[j].key === criterion) return t + " · " + TEAMCATS[j].label;
+      if (TEAMCATS[j].key === criterion) return t + " - " + TEAMCATS[j].label;
   }
   return target + "/" + criterion;
 }
@@ -2143,16 +2143,16 @@ function paintBar() {
   d.className = "dot " + (online ? "on" : "off");
   s.textContent =
     ME && ME.pendingCreate
-      ? "Offline-Raum · wird erstellt, sobald Verbindung besteht"
+      ? "Offline-Raum - wird erstellt, sobald Verbindung besteht"
       : online
         ? pending
           ? pending + " ausstehend"
           : "Synchronisiert"
         : pending
-          ? "offline · " + pending + " gespeichert"
+          ? "offline - " + pending + " gespeichert"
           : "offline";
   document.getElementById("whoami").textContent = ME
-    ? ME.name + (ME.is_chair ? " · Chair" : "") + " · " + ME.code
+    ? ME.name + (ME.is_chair ? " - Chair" : "") + " - " + ME.code
     : "";
   document
     .getElementById("menuGradeInput")
@@ -2395,7 +2395,7 @@ function renderSheet() {
     activeOrdinal(cs) +
     " von " +
     activeSpeakerCount() +
-    (z !== null ? " · Zwischensumme " + z : "");
+    (z !== null ? " - Zwischensumme " + z : "");
   document.getElementById("prev").disabled = prevActiveSpeaker(cs) === -1;
   document.getElementById("next").disabled = nextActiveSpeaker(cs) === -1;
 
@@ -2568,7 +2568,7 @@ function renderMatrix() {
         '<td class="' +
           (v === null ? "mt" : "") +
           '">' +
-          (v === null ? "·" : v) +
+          (v === null ? "-" : v) +
           "</td>",
       );
     }
@@ -2577,15 +2577,15 @@ function renderMatrix() {
       '<td class="' +
         (z === null ? "mt" : "tot") +
         '">' +
-        (z === null ? "·" : z) +
+        (z === null ? "-" : z) +
         "</td>",
     );
-    h.push('<td class="mt">' + (deductionPoints(s) || "·") + "</td>");
+    h.push('<td class="mt">' + (deductionPoints(s) || "-") + "</td>");
     h.push(
       '<td class="' +
         (z === null ? "mt" : "tot") +
         '">' +
-        (z === null ? "·" : personPunkte(s)) +
+        (z === null ? "-" : personPunkte(s)) +
         "</td></tr>",
     );
   });
@@ -2678,7 +2678,7 @@ function chairFirstIds(ids) {
   });
 }
 // Mean of a list of numbers; null for an empty list, so callers can render
-// "·" without a separate check. avgRound() is the display variant - the
+// "-" without a separate check. avgRound() is the display variant - the
 // tables that print a raw mean format it themselves (toFixed(1)).
 function mean(vals) {
   if (!vals.length) return null;
@@ -2777,7 +2777,7 @@ function computeChairSummary(includeHidden) {
       spread: mx - mn,
       avg: mean(vals),
       n: vals.length,
-      detail: names.join(" · "),
+      detail: names.join(" - "),
       judges: judges,
       key: target + "/" + criterion,
     });
@@ -2839,7 +2839,7 @@ function computeChairSummary(includeHidden) {
       }).map(function (c) {
         return c.key;
       });
-      var gc = scanGroup("t" + t, keys, tm + " · " + g);
+      var gc = scanGroup("t" + t, keys, tm + " - " + g);
       if (gc) groupCells.push(gc);
     });
   });
@@ -2870,7 +2870,7 @@ function computeChairSummary(includeHidden) {
       spread: mx - mn,
       avg: mean(vals),
       n: vals.length,
-      detail: names.join(" · "),
+      detail: names.join(" - "),
       judges: judges,
       key: "s" + s,
     });
@@ -2973,7 +2973,7 @@ function finalResultHTML(summary) {
         (r.avg === null ? "mt" : "tot") +
         (isBest ? " best" : "") +
         '">' +
-        (r.avg === null ? "·" : r.avg.toFixed(1)) +
+        (r.avg === null ? "-" : r.avg.toFixed(1)) +
         '</td><td class="mt">' +
         r.n +
         "</td></tr>",
@@ -2989,7 +2989,7 @@ function finalResultHTML(summary) {
       r.grand !== null &&
       r.grand === summary.bestGrand;
     var grandLabel =
-      r.grand === null ? "·" : r.grand.toFixed(1) + (r.partial ? " *" : "");
+      r.grand === null ? "-" : r.grand.toFixed(1) + (r.partial ? " *" : "");
     fh.push(
       '<tr><td class="l' +
         (isBest ? " best" : "") +
@@ -2998,7 +2998,7 @@ function finalResultHTML(summary) {
         '</td><td class="' +
         (r.teamAvg === null ? "mt" : "") +
         '">' +
-        (r.teamAvg === null ? "·" : r.teamAvg.toFixed(1)) +
+        (r.teamAvg === null ? "-" : r.teamAvg.toFixed(1)) +
         '</td><td class="' +
         (r.grand === null ? "mt" : "tot") +
         (isBest ? " best" : "") +
@@ -3048,7 +3048,7 @@ function fullBallotTable(summary) {
       tds = [];
     chairFirst.forEach(function (id) {
       var v = summary.remoteTotal(id, s);
-      var td = el("td", null, v === null ? "·" : String(v));
+      var td = el("td", null, v === null ? "-" : String(v));
       tr.appendChild(td);
       vals.push(summary.includedFor(id, "s" + s) ? v : null);
       tds.push(td);
@@ -3057,7 +3057,7 @@ function fullBallotTable(summary) {
       return v !== null;
     });
     var avg = avgRound(scored);
-    var avgTd = el("td", "tot", avg === null ? "·" : String(avg));
+    var avgTd = el("td", "tot", avg === null ? "-" : String(avg));
     tr.appendChild(avgTd);
     table.appendChild(tr);
     speakerMeta.push({ vals: vals, avg: avg, tds: tds, avgTd: avgTd, tr: tr });
@@ -3077,7 +3077,7 @@ function fullBallotTable(summary) {
       if (summary.includedFor(id, "t" + t)) vals.push(v);
     });
     var avg = avgRound(vals);
-    tr.appendChild(el("td", "tot", avg === null ? "·" : String(avg)));
+    tr.appendChild(el("td", "tot", avg === null ? "-" : String(avg)));
     table.appendChild(tr);
   });
 
@@ -3105,7 +3105,7 @@ function fullBallotTable(summary) {
         speakerSum += v;
       });
       var grand = complete ? teamPts + speakerSum : null;
-      var td = el("td", "tot", grand === null ? "·" : String(grand));
+      var td = el("td", "tot", grand === null ? "-" : String(grand));
       tr.appendChild(td);
       vals.push(summary.includedFor(id, "t" + t) ? grand : null);
       tds.push(td);
@@ -3114,7 +3114,7 @@ function fullBallotTable(summary) {
       return v !== null;
     });
     var avg = avgRound(scored);
-    var avgTd = el("td", "tot", avg === null ? "·" : String(avg));
+    var avgTd = el("td", "tot", avg === null ? "-" : String(avg));
     tr.appendChild(avgTd);
     table.appendChild(tr);
     teamMeta.push({ vals: vals, avg: avg, tds: tds, avgTd: avgTd, tr: tr });
@@ -3191,8 +3191,8 @@ function renderChair() {
           "span",
           "n",
           j.name +
-            (j.is_chair ? " · Chair" : "") +
-            (j.hidden ? " · (Trainee)" : ""),
+            (j.is_chair ? " - Chair" : "") +
+            (j.hidden ? " - (Trainee)" : ""),
         ),
       );
       row.appendChild(el("span", "p", j.filled + " / " + expectedCellCount()));
@@ -3213,7 +3213,7 @@ function renderChair() {
         el(
           "span",
           "n",
-          j.name + " · Offline" + (j.hidden ? " · (Trainee)" : ""),
+          j.name + " - Offline" + (j.hidden ? " - (Trainee)" : ""),
         ),
       );
       row.appendChild(
@@ -3259,7 +3259,7 @@ function renderChair() {
       var row = el("div", "totrow" + (c.spread >= 5 ? " hot" : ""));
       row.appendChild(el("span", "lb", c.label));
       row.appendChild(
-        el("span", "sv", "ø " + c.avg.toFixed(1) + " · n " + c.n),
+        el("span", "sv", "ø " + c.avg.toFixed(1) + " - n " + c.n),
       );
       row.appendChild(el("span", "big", "±" + c.spread));
       grp.appendChild(row);
@@ -3276,7 +3276,7 @@ function renderChair() {
             el(
               "div",
               "bklbl",
-              x.label.split(" · ").pop() +
+              x.label.split(" - ").pop() +
                 ": ø " +
                 x.avg.toFixed(1) +
                 " (±" +
@@ -3309,7 +3309,7 @@ function renderChair() {
       var row = el("div", "totrow" + (c.spread >= 5 ? " hot" : ""));
       row.appendChild(el("span", "lb", c.label));
       row.appendChild(
-        el("span", "sv", "ø " + c.avg.toFixed(1) + " · n " + c.n),
+        el("span", "sv", "ø " + c.avg.toFixed(1) + " - n " + c.n),
       );
       row.appendChild(el("span", "big", "±" + c.spread));
       grp.appendChild(row);
@@ -3327,7 +3327,7 @@ function renderChair() {
           el(
             "div",
             "bklbl",
-            x.label.split(" · ").pop() +
+            x.label.split(" - ").pop() +
               ": ø " +
               x.avg.toFixed(1) +
               " (±" +
@@ -3610,10 +3610,10 @@ function renderDashChrome() {
     judgeIds.length +
     offlineVisibleIds.length +
     " Judges" +
-    (traineeCount ? " · " + traineeCount + " Trainees" : "") +
-    " · " +
+    (traineeCount ? " - " + traineeCount + " Trainees" : "") +
+    " - " +
     onlineCount +
-    " Online · " +
+    " Online - " +
     completeCount +
     " Vollständig";
   var summarySpan = el("span", "dashjsummary", summary);
@@ -3667,8 +3667,8 @@ function renderJuryPanel() {
         "span",
         "n",
         j.name +
-          (j.is_chair ? " · Chair" : "") +
-          (j.hidden ? " · Trainee" : ""),
+          (j.is_chair ? " - Chair" : "") +
+          (j.hidden ? " - Trainee" : ""),
       ),
     );
     row.appendChild(el("span", "p", j.filled + " / " + expectedCellCount()));
@@ -3679,7 +3679,7 @@ function renderJuryPanel() {
     var row = el("div", "jrow");
     row.appendChild(el("span", "dot off"));
     row.appendChild(
-      el("span", "n", j.name + " · Offline" + (j.hidden ? " · Trainee" : "")),
+      el("span", "n", j.name + " - Offline" + (j.hidden ? " - Trainee" : "")),
     );
     row.appendChild(
       el(
@@ -3889,7 +3889,7 @@ document.addEventListener("keydown", function (e) {
 
 function dashSpreadBadge(spread) {
   if (spread === null || spread === undefined)
-    return el("span", "dashbadge", "·");
+    return el("span", "dashbadge", "-");
   return el("span", "dashbadge" + (spread >= 5 ? " hot" : ""), "±" + spread);
 }
 
@@ -3917,7 +3917,7 @@ function dashSpeakerGroup(label, teamVal, summary, spreadSummary) {
     var row = el("div", "dashspk " + teamCls + (sel ? " sel" : ""));
     row.appendChild(el("span", "lb", speakerLabel(s)));
     var avg = summary.speakerRows[s].avg;
-    row.appendChild(el("span", "vl", avg === null ? "·" : avg.toFixed(1)));
+    row.appendChild(el("span", "vl", avg === null ? "-" : avg.toFixed(1)));
     var tot = spreadSummary.totals.filter(function (t) {
       return t.key === "s" + s;
     })[0];
@@ -3973,10 +3973,10 @@ function dashTeamGroupRows(summary, spreadSummary) {
     summary.teamGroups.forEach(function (g) {
       var teamCls = teamClass(t);
       var gc = summary.groupCells.filter(function (x) {
-        return x.key === "t" + t + "/grp-" + tm + " · " + g;
+        return x.key === "t" + t + "/grp-" + tm + " - " + g;
       })[0];
       var spreadGc = spreadSummary.groupCells.filter(function (x) {
-        return x.key === "t" + t + "/grp-" + tm + " · " + g;
+        return x.key === "t" + t + "/grp-" + tm + " - " + g;
       })[0];
       var sel =
         dashboardSelected.kind === "team" &&
@@ -3984,7 +3984,7 @@ function dashTeamGroupRows(summary, spreadSummary) {
         dashboardSelected.grp === g;
       var row = el("div", "dashspk " + teamCls + (sel ? " sel" : ""));
       row.appendChild(el("span", "lb", g));
-      row.appendChild(el("span", "vl", gc ? gc.avg.toFixed(1) : "·"));
+      row.appendChild(el("span", "vl", gc ? gc.avg.toFixed(1) : "-"));
       row.appendChild(dashSpreadBadge(spreadGc ? spreadGc.spread : null));
       row.addEventListener("click", function () {
         dashboardSelected = { kind: "team", t: t, grp: g };
@@ -4058,10 +4058,10 @@ function dashSpreadPanel(title, list) {
         "dashrow" + (c.spread >= 5 ? " hot" : "") + (sel ? " sel" : ""),
       );
       row.appendChild(dashSpreadBadge(c.spread));
-      var parts = c.label.split(" · ");
+      var parts = c.label.split(" - ");
       var mid = el("div", "dashrowlbl");
       mid.appendChild(el("div", "dashrowmain", parts[0]));
-      mid.appendChild(el("div", "dashrowsub", parts.slice(1).join(" · ")));
+      mid.appendChild(el("div", "dashrowsub", parts.slice(1).join(" - ")));
       row.appendChild(mid);
       row.appendChild(dashJudgeChips(c.judges));
       if (target) {
@@ -4114,7 +4114,7 @@ function dashColB(summary) {
   col.appendChild(dashFreigebenButton());
   col.appendChild(
     dashSpreadPanel(
-      "Abweichungen · Reden",
+      "Abweichungen - Reden",
       summary.cells.filter(function (c) {
         return c.key.charAt(0) === "s";
       }),
@@ -4122,7 +4122,7 @@ function dashColB(summary) {
   );
   col.appendChild(
     dashSpreadPanel(
-      "Abweichungen · Teampunkte",
+      "Abweichungen - Teampunkte",
       summary.cells.filter(function (c) {
         return c.key.charAt(0) === "t";
       }),
@@ -4135,7 +4135,7 @@ function dashSpreadCell(spread) {
   return el(
     "td",
     "tot" + (spread !== null && spread >= 5 ? " spreadhot" : ""),
-    spread === null ? "·" : "±" + spread,
+    spread === null ? "-" : "±" + spread,
   );
 }
 
@@ -4186,7 +4186,7 @@ function dashComparisonTable(summary, spec) {
     tr.appendChild(el("td", "l", r.label));
     var vals = [];
     chairFirst.forEach(function (id) {
-      // Offline judges never have per-criterion data - "n.a.", not "·"
+      // Offline judges never have per-criterion data - "n.a.", not "-"
       // (which means "not yet scored" for a real judge).
       var v = isOfflineId(id)
         ? undefined
@@ -4195,13 +4195,13 @@ function dashComparisonTable(summary, spec) {
         el(
           "td",
           isHiddenId(id) ? "trainee" : null,
-          v === undefined ? (isOfflineId(id) ? "n.a." : "·") : String(v),
+          v === undefined ? (isOfflineId(id) ? "n.a." : "-") : String(v),
         ),
       );
       if (counts(id) && v !== undefined) vals.push(v);
     });
     var avg = avgRound(vals);
-    tr.appendChild(el("td", "tot", avg === null ? "·" : String(avg)));
+    tr.appendChild(el("td", "tot", avg === null ? "-" : String(avg)));
     tr.appendChild(dashSpreadCell(cell ? cell.spread : null));
     table.appendChild(tr);
   });
@@ -4215,13 +4215,13 @@ function dashComparisonTable(summary, spec) {
       el(
         "td",
         "tot" + (isHiddenId(id) ? " trainee" : ""),
-        v === null ? (isOfflineId(id) ? "n.a." : "·") : String(v),
+        v === null ? (isOfflineId(id) ? "n.a." : "-") : String(v),
       ),
     );
     if (counts(id) && v !== null) totVals.push(v);
   });
   var totAvg = avgRound(totVals);
-  totTr.appendChild(el("td", "tot", totAvg === null ? "·" : String(totAvg)));
+  totTr.appendChild(el("td", "tot", totAvg === null ? "-" : String(totAvg)));
   totTr.appendChild(dashSpreadCell(spec.totalSpread));
 
   // Anything that belongs between the rows and the total (the speaker
@@ -4287,7 +4287,7 @@ function dashTeamBallotTable(summary, t, grp) {
     },
     totalSpread: spreadOfKey(
       summary.groupCells,
-      "t" + t + "/grp-" + TEAMS[t] + " · " + grp,
+      "t" + t + "/grp-" + TEAMS[t] + " - " + grp,
     ),
   });
 }
@@ -4310,7 +4310,7 @@ function dashTeamBallotPanel(summary, t, grp) {
   var panel = el("div", "dashpanel");
   panel.classList.add(teamClass(t));
   var head = el("div", "dashpanelhead");
-  head.appendChild(el("h2", null, TEAMS[t] + " · " + grp));
+  head.appendChild(el("h2", null, TEAMS[t] + " - " + grp));
   head.appendChild(el("div", "sub", "Wertungsvergleich"));
   panel.appendChild(head);
   var body = el("div", "dashpanelbody dashpanelbody-table");
@@ -4358,7 +4358,7 @@ var SHORTCUTS = [
   ["Alt + I", "Wechsel von Einzelrede zu Interaktionen der Gegenseite"],
   ["Alt + T", "Timer öffnen/schließen"],
 ];
-// Features that exist but aren't announced by a visible label - a plain "·"
+// Features that exist but aren't announced by a visible label - a plain "-"
 // in a table cell, a menu entry easy to skim past, etc. Same audience as
 // SHORTCUTS: someone who knows OPD but not this particular tool.
 var MORE_FEATURES = [
@@ -4688,9 +4688,9 @@ function updateSchnellSpeakerRow(s) {
   var sumCell = document.getElementById("schnell-sum-" + s);
   var abCell = document.getElementById("schnell-ab-" + s);
   var pCell = document.getElementById("schnell-p-" + s);
-  if (sumCell) sumCell.textContent = z === null ? "·" : String(z);
+  if (sumCell) sumCell.textContent = z === null ? "-" : String(z);
   if (abCell) {
-    var abVal = deductionPoints(s) || "·";
+    var abVal = deductionPoints(s) || "-";
     var abBtn = abCell.querySelector(".schnellab");
     if (abBtn) {
       abBtn.textContent = abVal;
@@ -4699,7 +4699,7 @@ function updateSchnellSpeakerRow(s) {
       abCell.textContent = abVal;
     }
   }
-  if (pCell) pCell.textContent = z === null ? "·" : String(personPunkte(s));
+  if (pCell) pCell.textContent = z === null ? "-" : String(personPunkte(s));
   // The speaker's own total feeds that team's Reden/Gesamt columns too.
   var team = SPEAKERS[s].team;
   if (team !== null) updateSchnellTeamRow(team);
@@ -4727,7 +4727,7 @@ function schnellSpeakerRow(s, teamCls) {
     tr.appendChild(td);
   }
   var z = zwischensumme(s);
-  var sumTd = el("td", "tot", z === null ? "·" : String(z));
+  var sumTd = el("td", "tot", z === null ? "-" : String(z));
   sumTd.id = "schnell-sum-" + s;
   tr.appendChild(sumTd);
   var abTd = el("td", "mt");
@@ -4736,7 +4736,7 @@ function schnellSpeakerRow(s, teamCls) {
     var abBtn = el(
       "button",
       "schnellab" + (deductionLevel(s) ? " on" : ""),
-      deductionPoints(s) || "·",
+      deductionPoints(s) || "-",
     );
     abBtn.type = "button";
     abBtn.tabIndex = -1;
@@ -4747,10 +4747,10 @@ function schnellSpeakerRow(s, teamCls) {
     });
     abTd.appendChild(abBtn);
   } else {
-    abTd.textContent = deductionPoints(s) || "·";
+    abTd.textContent = deductionPoints(s) || "-";
   }
   tr.appendChild(abTd);
-  var pTd = el("td", "tot", z === null ? "·" : String(personPunkte(s)));
+  var pTd = el("td", "tot", z === null ? "-" : String(personPunkte(s)));
   pTd.id = "schnell-p-" + s;
   tr.appendChild(pTd);
   return tr;
@@ -5107,7 +5107,7 @@ var BLATT_GROUPS = [
 function blattHintText(v) {
   if (v === null) return "–";
   var m = markOf(v);
-  return m.name ? m.name + " · " + m.mark : "–";
+  return m.name ? m.name + " - " + m.mark : "–";
 }
 
 function updateBlattScore(s, c) {
@@ -5516,7 +5516,7 @@ function buildPrintSheet(hideOwn) {
   root.innerHTML = "";
   var summary = computeChairSummary(false);
 
-  root.appendChild(el("h1", "printtitle", "Notizen · " + (ME ? ME.name : "")));
+  root.appendChild(el("h1", "printtitle", "Notizen - " + (ME ? ME.name : "")));
 
   activeSpeakerIndices().forEach(function (s) {
     var card = el("div", "printspeaker");
@@ -5633,7 +5633,7 @@ function buildPrintSheet(hideOwn) {
 function teamPointsHintText(v, max) {
   if (v === null) return "–";
   var m = markOf(katOf(v, max));
-  return m.name ? m.name + " · " + m.mark : "–";
+  return m.name ? m.name + " - " + m.mark : "–";
 }
 
 function updateTeamPointsScore(t, catIdx) {
@@ -5969,7 +5969,7 @@ function renderNamenRoom() {
       el(
         "span",
         "juryname",
-        j.name + (j.is_chair ? " · Chair" : j.hidden ? " · Trainee" : ""),
+        j.name + (j.is_chair ? " - Chair" : j.hidden ? " - Trainee" : ""),
       ),
     );
     // Only the chair can flip a wing to trainee (and back) - the server
@@ -5996,7 +5996,7 @@ function renderNamenRoom() {
       el(
         "span",
         "juryname",
-        j.name + " · Offline" + (j.hidden ? " · Trainee" : ""),
+        j.name + " - Offline" + (j.hidden ? " - Trainee" : ""),
       ),
     );
     if (ME.is_chair) {
@@ -6650,7 +6650,7 @@ function renderRecentRooms() {
         "meta",
         (r.filled || 0) +
           " Punkte eingetragen" +
-          (r.judges ? " · " + r.judges + " Judges" : ""),
+          (r.judges ? " - " + r.judges + " Judges" : ""),
       ),
     );
     meta.appendChild(
