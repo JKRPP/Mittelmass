@@ -264,6 +264,25 @@ async def rate_limit(request: Request, call_next):
     return await call_next(request)
 
 
+# Cache policy for the page and static files. Without an explicit
+# Cache-Control the browser guesses a freshness lifetime from Last-Modified
+# and keeps using an old app.js/style.css after a deploy until a hard
+# refresh. "no-cache" still lets it keep the file, but it revalidates on
+# every load (a cheap 304 via ETag when nothing changed). Font files never
+# change under the same name, so they may be cached for good.
+@app.middleware("http")
+async def cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/api/"):
+        return response
+    if path.startswith("/static/fonts/"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    else:
+        response.headers.setdefault("Cache-Control", "no-cache")
+    return response
+
+
 # Helper functions
 
 
