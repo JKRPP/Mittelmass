@@ -308,7 +308,7 @@ var NOTEN = [
   },
   {
     a: "Mangelhaft",
-    b: "deutliche Schwächen",
+    b: "Deutliche Schwächen",
     cells: [1, 2, 3],
     marks: ["5-", "5", "5+"],
   },
@@ -2363,15 +2363,57 @@ function el(tag, cls, txt) {
   if (txt !== undefined) e.textContent = txt;
   return e;
 }
-function judgeChips(judges) {
-  var host = el("div", "bkjudges");
-  judges.forEach(function (j) {
-    var chip = el("span", "chip");
-    chip.appendChild(document.createTextNode(j.name + " "));
-    chip.appendChild(el("b", null, String(j.v)));
-    host.appendChild(chip);
+function spreadDetailTable(total, catCells) {
+  var names = total.judges.map(function (j) {
+    return j.name;
   });
-  return host;
+  catCells.forEach(function (x) {
+    x.judges.forEach(function (j) {
+      if (names.indexOf(j.name) === -1) names.push(j.name);
+    });
+  });
+  var tbl = el("table", "dtbl");
+  var head = el("tr");
+  head.appendChild(el("th", "l", ""));
+  names.forEach(function (n) {
+    head.appendChild(el("th", null, n));
+  });
+  head.appendChild(el("th", null, "±"));
+  tbl.appendChild(head);
+  function addRow(label, x, cls) {
+    var byName = {},
+      vals = [];
+    x.judges.forEach(function (j) {
+      byName[j.name] = j.v;
+      vals.push(j.v);
+    });
+    var hi = Math.max.apply(null, vals),
+      lo = Math.min.apply(null, vals);
+    var tr = el("tr", cls);
+    tr.appendChild(el("td", "l", label));
+    names.forEach(function (n) {
+      var v = byName[n];
+      var mark =
+        v === undefined || !x.spread
+          ? null
+          : v === hi
+            ? "hi"
+            : v === lo
+              ? "lo"
+              : null;
+      tr.appendChild(el("td", mark, v === undefined ? "–" : String(v)));
+    });
+    tr.appendChild(el("td", "mt", String(x.spread)));
+    tbl.appendChild(tr);
+  }
+  catCells.forEach(function (x) {
+    addRow(x.label.split(" - ").pop(), x);
+  });
+  addRow("Gesamt", total, "dsum");
+  var scroll = el("div");
+  scroll.style.overflowX = "auto";
+  scroll.appendChild(tbl);
+  return scroll;
 }
 
 function buildPad(host, scaleMax, onPick) {
@@ -2602,7 +2644,7 @@ function renderMatrix() {
   CRITERIA.forEach(function (c) {
     h.push("<th>" + c.short + "</th>");
   });
-  h.push("<th>Σ</th><th>Ab</th><th>P</th></tr>");
+  h.push("<th>Ab</th><th>Σ</th></tr>");
   activeSpeakerIndices().forEach(function (s) {
     var sp = SPEAKERS[s];
     var lbl = sp.label
@@ -2632,13 +2674,6 @@ function renderMatrix() {
       );
     }
     var z = zwischensumme(s);
-    h.push(
-      '<td class="' +
-        (z === null ? "mt" : "tot") +
-        '">' +
-        (z === null ? "-" : z) +
-        "</td>",
-    );
     h.push('<td class="mt">' + (deductionPoints(s) || "-") + "</td>");
     h.push(
       '<td class="' +
@@ -2684,6 +2719,9 @@ function renderMatrix() {
 var openSpread = {};
 var ballotOpen = false;
 var offlineJudgesOpen = false;
+// Mobile chair: the room card (share link, judges, room buttons) starts
+// collapsed to one row so the spreads come first.
+var chairRoomOpen = false;
 var spreadOpen = false;
 function updateChairTab() {
   var tab = document.getElementById("tabChair");
@@ -3018,7 +3056,7 @@ function computeChairSummary(includeHidden) {
 // card and the desktop dashboard's final-result panel.
 function finalResultHTML(summary) {
   var fh = [
-    '<table class="finalTbl"><tr><th class="l">Redner:in</th><th>Ø Punkte</th><th>n</th></tr>',
+    '<table class="finalTbl"><tr><th class="l">Redner:in</th><th>Ø Punkte</th></tr>',
   ];
   summary.speakerRows.forEach(function (r, s) {
     if (!isActiveSpeaker(s)) return;
@@ -3035,8 +3073,6 @@ function finalResultHTML(summary) {
         (isBest ? " best" : "") +
         '">' +
         (r.avg === null ? "-" : r.avg.toFixed(1)) +
-        '</td><td class="mt">' +
-        r.n +
         "</td></tr>",
     );
   });
@@ -3233,6 +3269,22 @@ function renderChair() {
 
   if (ME.is_chair) {
     document.getElementById("chCode").textContent = ME.code;
+    var peerIds = Object.keys(peers);
+    var onlineCount = peerIds.filter(function (id) {
+      return peers[id].online;
+    }).length;
+    document.getElementById("chairRoomSum").textContent =
+      peerIds.length +
+      Object.keys(offlineJudges).length +
+      " Jurierende · " +
+      onlineCount +
+      " online";
+    document
+      .getElementById("chairRoomBody")
+      .classList.toggle("hide", !chairRoomOpen);
+    document
+      .getElementById("chairRoomToggle")
+      .setAttribute("aria-expanded", String(chairRoomOpen));
     var url = location.origin + "/r/" + ME.code;
     document.getElementById("shareUrl").value = url;
 
@@ -3326,28 +3378,14 @@ function renderChair() {
       grp.appendChild(row);
       var wrap = el("div", "bkwrap");
       wrap.style.display = openSpread[c.key] ? "block" : "none";
-      wrap.appendChild(judgeChips(c.judges));
-      cells
-        .filter(function (x) {
-          return x.key.indexOf(c.key + "/") === 0;
-        })
-        .forEach(function (x) {
-          var cat = el("div", "bkcat");
-          cat.appendChild(
-            el(
-              "div",
-              "bklbl",
-              x.label.split(" - ").pop() +
-                ": ø " +
-                x.avg.toFixed(1) +
-                " (±" +
-                x.spread +
-                ")",
-            ),
-          );
-          cat.appendChild(judgeChips(x.judges));
-          wrap.appendChild(cat);
-        });
+      wrap.appendChild(
+        spreadDetailTable(
+          c,
+          cells.filter(function (x) {
+            return x.key.indexOf(c.key + "/") === 0;
+          }),
+        ),
+      );
       grp.appendChild(wrap);
       th.appendChild(grp);
       row.addEventListener("click", function () {
@@ -3377,28 +3415,14 @@ function renderChair() {
 
       var wrap = el("div", "bkwrap");
       wrap.style.display = openSpread[c.key] ? "block" : "none";
-      wrap.appendChild(judgeChips(c.judges));
-      c.catKeys.forEach(function (ck) {
-        var x = cells.filter(function (x) {
-          return x.key === ck;
-        })[0];
-        if (!x) return; // that category doesn't have 2+ judges yet
-        var cat = el("div", "bkcat");
-        cat.appendChild(
-          el(
-            "div",
-            "bklbl",
-            x.label.split(" - ").pop() +
-              ": ø " +
-              x.avg.toFixed(1) +
-              " (±" +
-              x.spread +
-              ")",
-          ),
-        );
-        cat.appendChild(judgeChips(x.judges));
-        wrap.appendChild(cat);
+      // Categories without 2+ judges yet have no cell - skipped.
+      var catCells = cells.filter(function (x) {
+        return c.catKeys.indexOf(x.key) !== -1;
       });
+      catCells.sort(function (a, b) {
+        return c.catKeys.indexOf(a.key) - c.catKeys.indexOf(b.key);
+      });
+      wrap.appendChild(spreadDetailTable(c, catCells));
       grp.appendChild(wrap);
       sh.appendChild(grp);
 
@@ -7232,6 +7256,12 @@ window.addEventListener("popstate", function () {
     showLobby();
   }
 });
+document
+  .getElementById("chairRoomToggle")
+  .addEventListener("click", function () {
+    chairRoomOpen = !chairRoomOpen;
+    render();
+  });
 document.getElementById("btnBallot").addEventListener("click", function () {
   ballotOpen = !ballotOpen;
   render();

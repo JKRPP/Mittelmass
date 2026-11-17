@@ -6,9 +6,14 @@
   --card: #ffffff;
   --line: #575757;
   --line-2: #c6c2b8;
-  --live: #1d611b;
+  --live: #000000;
   --live-bg: #e4ece4;
   --live-line: #99b898;
+  --ok: #1d611b;
+  --ok-bg: #e4ece4;
+  --ok-line: #99b898;
+  --best: #1d611b;
+  --best-bg: #e4ece4;
   --warn: #a01800;
   --warn-bg: #f6e8e6;
   --danger: #a01800;
@@ -27,6 +32,11 @@
   --dark-live: #96cb7e;
   --dark-live-bg: #384233;
   --dark-live-line: #556d4a;
+  --dark-ok: #96cb7e;
+  --dark-ok-bg: #384233;
+  --dark-ok-line: #556d4a;
+  --dark-best: #96cb7e;
+  --dark-best-bg: #384233;
   --dark-warn: #ff8874;
   --dark-warn-bg: #48332f;
   --dark-danger: #ff8874;
@@ -45,6 +55,11 @@
     --live: var(--dark-live);
     --live-bg: var(--dark-live-bg);
     --live-line: var(--dark-live-line);
+    --ok: var(--dark-ok);
+    --ok-bg: var(--dark-ok-bg);
+    --ok-line: var(--dark-ok-line);
+    --best: var(--dark-best);
+    --best-bg: var(--dark-best-bg);
     --warn: var(--dark-warn);
     --warn-bg: var(--dark-warn-bg);
     --danger: var(--dark-danger);
@@ -62,6 +77,11 @@
   --live: var(--dark-live);
   --live-bg: var(--dark-live-bg);
   --live-line: var(--dark-live-line);
+  --ok: var(--dark-ok);
+  --ok-bg: var(--dark-ok-bg);
+  --ok-line: var(--dark-ok-line);
+  --best: var(--dark-best);
+  --best-bg: var(--dark-best-bg);
   --warn: var(--dark-warn);
   --warn-bg: var(--dark-warn-bg);
   --danger: var(--dark-danger);
@@ -255,9 +275,9 @@ body {
   color: var(--ink-3);
 }
 .timerwidget.live {
-  border-color: var(--live-line);
-  background: var(--live-bg);
-  color: var(--live);
+  border-color: var(--ok-line);
+  background: var(--ok-bg);
+  color: var(--ok);
 }
 .timerwidget.warn {
   border-color: var(--line-2);
@@ -304,6 +324,11 @@ body {
 #app:not(.dashboard-mode) .timerclock {
   margin-left: auto;
 }
+/* Idle shows only "Timer" in the clock (label hidden), so the clock needs
+   the right-hand auto margin itself to stay centred. */
+#app:not(.dashboard-mode) .timerwidget.idle .timerclock {
+  margin-right: auto;
+}
 #app:not(.dashboard-mode) .timerlabel {
   flex: 0 1 auto;
   min-width: 0;
@@ -349,7 +374,7 @@ body {
   top: 0;
   bottom: 0;
   width: 0;
-  background: var(--live);
+  background: var(--ok);
 }
 .timerbarfill.warn {
   background: var(--warn);
@@ -431,7 +456,7 @@ body {
   flex: 0 0 8px;
 }
 .dot.on {
-  background: var(--live);
+  background: var(--ok);
 }
 .dot.off {
   background: var(--warn);
@@ -480,8 +505,7 @@ body {
 #v-sheet .card.team-free,
 #v-team .card.team-free {
   --team-accent: var(--team-free);
-  /* White on the Fraktionsfrei yellow is too faint - dark text instead. */
-  --team-on: #16171a;
+  --team-on: #ffffff;
 }
 /* Namen (mobile) */
 .namelbl {
@@ -593,17 +617,17 @@ body {
   font-weight: 400;
 }
 .crit.live {
-  background: var(--live-bg);
-  border-color: var(--live-line);
+  background: var(--live);
+  border-color: var(--live);
 }
 .crit.live .nm,
 .crit.live .vl,
 .crit.live .mk,
 .crit.live .adj {
-  color: var(--live);
+  color: var(--paper);
 }
 .crit.live .adj {
-  border-color: var(--live-line);
+  border-color: color-mix(in srgb, var(--paper) 50%, transparent);
 }
 .crit.live .nm {
   font-weight: 500;
@@ -619,6 +643,11 @@ hr.sep {
   border: 0;
   border-top: 1px solid var(--line);
   margin: 8px 0;
+}
+/* The rule between the score rows and the Notenskala keypad is the soft
+   line colour, so the two read as one tool rather than two sections. */
+.dockpad > hr.sep {
+  border-top-color: var(--line-2);
 }
 .recentroom {
   display: flex;
@@ -872,7 +901,7 @@ td.tot {
 td.best,
 td.l.best {
   font-weight: 700;
-  color: var(--live);
+  color: var(--best);
 }
 
 .jrow {
@@ -1000,9 +1029,15 @@ p.note {
   height: 21px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.6;
+  /* Hand-drawn icons (traced from handdrawn/*.png on a 20-unit grid) - thinner
+     than a typical icon set so the small heads don't fill in at 21px. */
+  stroke-width: 1.2;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+/* Parts drawn with a heavier marker in the sketch (the Team tabletop). */
+.tabicon .heavy {
+  stroke-width: 2.2;
 }
 .legalrow {
   text-align: center;
@@ -1097,6 +1132,69 @@ textarea:focus-visible {
   padding: 9px 0;
   cursor: pointer;
 }
+/* Spread at/above the threshold: the whole row is tinted, bleeding a little
+   past the text so the tint doesn't hug the label. */
+.totrow.hot {
+  background: var(--warn-bg);
+  margin: 0 -8px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+/* Tap-to-open spread detail: judges x criteria (spreadDetailTable). */
+.dtbl {
+  margin: 4px 0 2px;
+}
+.dtbl th,
+.dtbl td {
+  font-size: 12px;
+  padding: 3px 2px;
+}
+.dtbl td.hi {
+  color: var(--best);
+  font-weight: 600;
+}
+.dtbl td.lo {
+  color: var(--warn);
+  font-weight: 600;
+}
+.dtbl tr.dsum td {
+  border-top: 1px solid var(--line-2);
+  font-weight: 600;
+}
+/* Chair room card: one tappable row (Raum CODE + judge count) that opens
+   the share link, judge list and room buttons. */
+.roomhead {
+  margin: 0;
+}
+.roomhead button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 2px 0;
+  cursor: pointer;
+}
+.roomhead button > span:first-child {
+  flex: 1;
+}
+.roomsum {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink-3);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.roomhead button[aria-expanded="true"] .dedchev {
+  transform: rotate(180deg);
+}
+#chairRoomBody {
+  margin-top: 10px;
+}
 .totrow .lb {
   flex: 1;
   font-size: 14px;
@@ -1115,15 +1213,15 @@ textarea:focus-visible {
 .finalTbl {
   margin-top: 8px;
 }
+/* Number columns sit at the right edge, so Ø Punkte, Ø Team and Gesamt
+   line up down the card. */
+.finalTbl th:not(.l),
+.finalTbl td:not(.l) {
+  text-align: right;
+}
 
 .bkwrap {
   padding: 2px 0 8px;
-}
-.bkjudges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
 }
 .chip {
   font-size: 12px;
@@ -1133,22 +1231,6 @@ textarea:focus-visible {
   border: 1px solid var(--line-2);
   color: var(--ink-2);
   white-space: nowrap;
-}
-.chip b {
-  color: var(--ink);
-  font-weight: 500;
-}
-.bkcat {
-  margin-top: 8px;
-}
-.bkcat .bklbl {
-  font-size: 12px;
-  color: var(--ink-3);
-  margin-bottom: 4px;
-}
-.bkcat .bklbl b {
-  color: var(--ink-2);
-  font-weight: 500;
 }
 
 /* Desktop chair dashboard */
@@ -1455,8 +1537,8 @@ input.offlinejudgename {
   font-size: 10px;
   padding: 2px 6px;
   border-radius: 0px;
-  background: var(--live-bg);
-  color: var(--live);
+  background: var(--ok-bg);
+  color: var(--ok);
 }
 .dashbadge.hot {
   background: var(--warn);
@@ -1547,10 +1629,10 @@ input.offlinejudgename {
   font-weight: 700;
 }
 .ballottable tr.rowbest td {
-  background: var(--live-bg);
+  background: var(--best-bg);
 }
 #v-dashboard .ballottable tr.rowbest:hover td {
-  background: color-mix(in srgb, var(--ink) 10%, var(--live-bg));
+  background: color-mix(in srgb, var(--ink) 10%, var(--best-bg));
 }
 
 /* Deductions - shared by Übersicht/Schnelleingabe rows and the ballot tables. */

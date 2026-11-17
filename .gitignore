@@ -30,3 +30,7 @@ store_icon.png
 *.apk
 *.apk.idsig
 *.aab
+
+# Handdrawn references for svg files, excluded to reduce size of repo
+
+handdrawn/
