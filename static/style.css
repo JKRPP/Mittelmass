@@ -1,40 +1,36 @@
 :root {
   --ink: #16171a;
-  --ink-2: #54575e;
+  --ink-2: #4b4d53;
   --ink-3: #8b8f98;
   --paper: #ffffff;
   --card: #ffffff;
   --line: #575757;
   --line-2: #c6c2b8;
   --live: #1d611b;
-  --live-bg: #e2efec;
-  --live-line: #a5a5a5;
+  --live-bg: #e4ece4;
+  --live-line: #99b898;
   --warn: #a01800;
-  --warn-bg: #f6ebe1;
-  --danger: #b3261e;
-  --danger-bg: #fbe9e7;
+  --warn-bg: #f6e8e6;
+  --danger: #a01800;
+  --danger-bg: #f6e8e6;
   --radius: 0px;
-  --team-gov: #2f8f3c;
+  --team-gov: #1f5f27;
   --team-opp: #c23b3b;
   --team-free: #c99a1e;
-  /* Raw dark-palette values, defined once - both the "system preference"
-     block below (@media, only when data-theme isn't explicitly "light")
-     and the "explicit dark toggle" block reference these instead of
-     repeating the hex values, so the two can't drift out of sync. */
   --dark-ink: #eceae6;
-  --dark-ink-2: #a4a8b0;
+  --dark-ink-2: #b5b5b7;
   --dark-ink-3: #71757d;
   --dark-paper: #161616;
   --dark-card: #202020;
   --dark-line: #2e3138;
   --dark-line-2: #41454d;
   --dark-live: #96cb7e;
-  --dark-live-bg: #1a3216;
-  --dark-live-line: #2f6a60;
+  --dark-live-bg: #384233;
+  --dark-live-line: #556d4a;
   --dark-warn: #ff8874;
-  --dark-warn-bg: #33251a;
-  --dark-danger: #fc7169;
-  --dark-danger-bg: #3a1f1d;
+  --dark-warn-bg: #48332f;
+  --dark-danger: #ff8874;
+  --dark-danger-bg: #48332f;
 }
 
 :root:not([data-theme="light"]) {
@@ -71,6 +67,30 @@
   --danger: var(--dark-danger);
   --danger-bg: var(--dark-danger-bg);
 }
+/* Source Serif 4 (variable, 400-700), self-hosted so it works offline -
+   both files are in sw.js's SHELL. License: static/fonts/OFL.txt. */
+@font-face {
+  font-family: "Source Serif 4";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(/static/fonts/source-serif-4-latin.woff2) format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Source Serif 4";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(/static/fonts/source-serif-4-latin-ext.woff2) format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+    U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
@@ -83,7 +103,7 @@ body {
 body {
   background: var(--paper);
   color: var(--ink);
-  font-family: "Georgia", "Iowan Old Style", "Times New Roman", serif;
+  font-family: "Source Serif 4", Georgia, serif;
   font-size: 16px;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
@@ -124,6 +144,67 @@ body {
 }
 .card + .card {
   margin-top: 10px;
+}
+/* Mobile layout only (desktop sets .dashboard-mode on #app): cards drop
+   their box and stacked cards are separated by a single rule instead. */
+#app:not(.dashboard-mode) .card {
+  background: transparent;
+  border-color: transparent;
+  padding: 10px 0;
+}
+#app:not(.dashboard-mode) .card + .card {
+  border-top-color: var(--line-2);
+  padding-top: 14px;
+}
+#app:not(.dashboard-mode) .card > h2,
+#app:not(.dashboard-mode) th {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+#v-sheet .dedu {
+  padding-left: 4px;
+  padding-right: 4px;
+  flex-direction: column;
+  align-items: stretch;
+}
+/* Mobile Abzüge: a toggle row (current level shown on the right) that
+   opens the three options below it. */
+.dedtoggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.dedtoggle > span:first-child {
+  flex: 1;
+}
+.dedstate {
+  color: var(--warn);
+  font-weight: 500;
+}
+.dedchev {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+.dedtoggle[aria-expanded="true"] .dedchev {
+  transform: rotate(180deg);
+}
+.dedopts {
+  display: flex;
+  gap: 6px;
+  padding-bottom: 4px;
+}
+.dedopts .dedopt {
+  flex: 1;
 }
 #lobbyTitle {
   text-align: center;
@@ -214,6 +295,22 @@ body {
   cursor: pointer;
   white-space: nowrap;
   flex: 0 0 auto;
+}
+#app:not(.dashboard-mode) .timerwidget {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+}
+#app:not(.dashboard-mode) .timerclock {
+  margin-left: auto;
+}
+#app:not(.dashboard-mode) .timerlabel {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-right: auto;
+}
+#app:not(.dashboard-mode) .timerwidget:not(.hide) ~ .sp {
+  flex: 0;
 }
 .timertypes {
   display: flex;
@@ -353,24 +450,38 @@ body {
   margin: 0;
   flex: 1;
   font-size: 17px;
-  font-weight: 500;
+  font-weight: 700;
   letter-spacing: -0.01em;
 }
-#v-sheet .card,
-#v-team .card {
-  border-top: 3px solid transparent;
+#v-sheet .card .hd,
+#v-team .card .hd {
+  background: var(--team-accent, transparent);
+  color: var(--team-on, var(--ink));
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: var(--radius);
+}
+#v-sheet .card .hd .navbtn,
+#v-team .card .hd .navbtn {
+  color: inherit;
+  border-color: currentColor;
+  border-color: color-mix(in srgb, currentColor 45%, transparent);
 }
 #v-sheet .card.team-gov,
 #v-team .card.team-gov {
-  border-top-color: var(--team-gov);
+  --team-accent: var(--team-gov);
+  --team-on: #ffffff;
 }
 #v-sheet .card.team-opp,
 #v-team .card.team-opp {
-  border-top-color: var(--team-opp);
+  --team-accent: var(--team-opp);
+  --team-on: #ffffff;
 }
 #v-sheet .card.team-free,
 #v-team .card.team-free {
-  border-top-color: var(--team-free);
+  --team-accent: var(--team-free);
+  /* White on the Fraktionsfrei yellow is too faint - dark text instead. */
+  --team-on: #16171a;
 }
 /* Namen (mobile) */
 .namelbl {
@@ -382,7 +493,7 @@ body {
    tab most judges land on, so it doubles as the room's title screen. */
 .roomtitle {
   font-size: 36px;
-  font-weight: 500;
+  font-weight: 700;
   letter-spacing: -0.01em;
   margin: 4px 0 10px;
   text-align: center;
@@ -395,15 +506,6 @@ body {
   color: var(--team-opp);
 }
 .seat .slbl.team-free {
-  color: var(--team-free);
-}
-.team-gov .hd h1 {
-  color: var(--team-gov);
-}
-.team-opp .hd h1 {
-  color: var(--team-opp);
-}
-.team-free .hd h1 {
   color: var(--team-free);
 }
 .navbtn {
@@ -441,7 +543,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0px 11px;
+  padding: 0px 4px;
   border-radius: var(--radius);
   cursor: pointer;
   border: 1px solid transparent;
@@ -454,7 +556,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 32px;
+  min-height: 29px;
 }
 .crit .mk {
   font-size: 12px;
@@ -472,10 +574,10 @@ body {
   background: transparent;
   color: var(--ink-2);
   font: inherit;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  font-size: 17px;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius);
+  font-size: 15px;
   line-height: 1;
   cursor: pointer;
   padding: 0;
@@ -507,9 +609,11 @@ body {
   font-weight: 500;
 }
 .grp {
-  font-size: 11px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   color: var(--ink-3);
-  margin: 10px 0 2px 11px;
+  margin: 10px 0 2px 4px;
 }
 hr.sep {
   border: 0;
@@ -562,9 +666,16 @@ hr.sep {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 5px 11px;
+  padding: 5px 4px;
+  margin-top: 10px;
   font-size: 13px;
   color: var(--ink-2);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+.sum > span:first-child {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 .sum b {
   font-weight: 500;
@@ -602,7 +713,7 @@ hr.sep {
   display: flex;
   align-items: stretch;
   gap: 8px;
-  margin-bottom: 5px;
+  margin-bottom: 4px;
 }
 .notelbl {
   width: 96px;
@@ -612,7 +723,7 @@ hr.sep {
   justify-content: center;
 }
 .notelbl .a {
-  font-size: 13px;
+  font-size: 11px;
   color: var(--ink-2);
   line-height: 1.2;
 }
@@ -625,7 +736,7 @@ hr.sep {
   flex: 1;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 5px;
+  gap: 4px;
 }
 .notekeys.notekeys-fill {
   display: flex;
@@ -640,7 +751,7 @@ hr.sep {
   font: inherit;
   border-radius: var(--radius);
   cursor: pointer;
-  min-height: 44px;
+  min-height: 39px;
   padding: 4px 0;
   display: flex;
   flex-direction: column;
@@ -658,7 +769,7 @@ hr.sep {
 }
 .key:active {
   background: var(--live-bg);
-  border-color: var(--live);
+  /*border-color: var(--live);*/
 }
 .key:active .n,
 .key:active .m {
@@ -823,7 +934,7 @@ td.l.best {
 }
 h2 {
   font-size: 15px;
-  font-weight: 500;
+  font-weight: 700;
   margin: 0 0 10px;
 }
 p.note {
@@ -867,19 +978,31 @@ p.note {
 }
 .tabs button {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
   border: 0;
   background: transparent;
   color: var(--ink-3);
   font: inherit;
-  font-size: 12px;
-  padding: 7px 2px;
+  font-size: 11px;
+  padding: 6px 2px;
   border-radius: 0px;
   cursor: pointer;
 }
 .tabs button[aria-pressed="true"] {
   color: var(--live);
-  background: var(--live-bg);
-  font-weight: 500;
+  font-weight: 600;
+}
+.tabicon {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .legalrow {
   text-align: center;
@@ -936,7 +1059,8 @@ textarea:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 2px 11px 4px;
+  padding: 2px 4px 4px;
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
 }
 .exclbtn {
   border: 0;

@@ -5,6 +5,8 @@ var SHELL = [
   "/static/style.css",
   "/static/manifest.json",
   "/static/favicon.png",
+  "/static/fonts/source-serif-4-latin.woff2",
+  "/static/fonts/source-serif-4-latin-ext.woff2",
 ];
 
 self.addEventListener("install", function (e) {
@@ -12,7 +14,7 @@ self.addEventListener("install", function (e) {
   e.waitUntil(
     caches.open(CACHE).then(function (c) {
       return c.addAll(SHELL);
-    })
+    }),
   );
 });
 
@@ -28,12 +30,12 @@ self.addEventListener("activate", function (e) {
             })
             .map(function (k) {
               return caches.delete(k);
-            })
+            }),
         );
       })
       .then(function () {
         return self.clients.claim();
-      })
+      }),
   );
 });
 
@@ -57,6 +59,6 @@ self.addEventListener("fetch", function (e) {
           });
         return cached || fetched;
       });
-    })
+    }),
   );
 });

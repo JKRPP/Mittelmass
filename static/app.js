@@ -296,7 +296,7 @@ var NOTEN = [
   },
   {
     a: "Solide",
-    b: "ausgewogen",
+    b: "Ausgewogen",
     cells: [7, 8, 9],
     marks: ["3-", "3", "3+"],
   },
@@ -2023,6 +2023,22 @@ function applyGradeInputLabel() {
   if (b) b.textContent = "Eingabemodus";
 }
 
+// Personal, per-device preference for the mobile Notenskala keypad.
+function keyGradeFirst() {
+  return !!LS.get("opd.keyGradeFirst", false);
+}
+function applyKeyLabelLabel() {
+  var b = document.getElementById("menuKeyLabel");
+  if (b)
+    b.textContent =
+      "Tasten: " + (keyGradeFirst() ? "Noten zuerst" : "Punkte zuerst");
+}
+function toggleKeyGradeFirst() {
+  LS.set("opd.keyGradeFirst", !keyGradeFirst());
+  applyKeyLabelLabel();
+  render();
+}
+
 function applyTimerDisplayLabel() {
   var b = document.getElementById("menuTimerDisplay");
   if (b)
@@ -2136,18 +2152,42 @@ function acquireWakeLock() {
     .catch(function () {});
 }
 
+// "x ausstehend" only shows once writes have been unconfirmed for the specified delay
+var PENDING_TEXT_DELAY_MS = 100;
+var pendingSince = 0,
+  pendingTextTimer = null;
+function pendingTextDue() {
+  if (!pending) {
+    pendingSince = 0;
+    clearTimeout(pendingTextTimer);
+    pendingTextTimer = null;
+    return false;
+  }
+  if (!pendingSince) {
+    pendingSince = Date.now();
+    pendingTextTimer = setTimeout(function () {
+      pendingTextTimer = null;
+      paintBar();
+    }, PENDING_TEXT_DELAY_MS);
+  }
+  return Date.now() - pendingSince >= PENDING_TEXT_DELAY_MS;
+}
 function paintBar() {
   var d = document.getElementById("cdot"),
     s = document.getElementById("cstate");
   if (!d) return;
   d.className = "dot " + (online ? "on" : "off");
+  var showPending = pendingTextDue();
+  // Fully synced shows no text (the green dot says it) - text only appears
+  // while changes are pending (for longer than a normal ack) or the
+  // connection is down.
   s.textContent =
     ME && ME.pendingCreate
       ? "Offline-Raum - wird erstellt, sobald Verbindung besteht"
       : online
-        ? pending
+        ? showPending
           ? pending + " ausstehend"
-          : "Synchronisiert"
+          : ""
         : pending
           ? "offline - " + pending + " gespeichert"
           : "offline";
@@ -2157,6 +2197,9 @@ function paintBar() {
   document
     .getElementById("menuGradeInput")
     .classList.toggle("hide", !isDesktopWidth());
+  document
+    .getElementById("menuKeyLabel")
+    .classList.toggle("hide", isDesktopWidth());
   document
     .getElementById("shortcutsBtn")
     .classList.toggle("hide", !isDesktopWidth());
@@ -2193,6 +2236,8 @@ function deductionLevel(s) {
 function deductionPoints(s) {
   return DED_POINTS[deductionLevel(s)] || 0;
 }
+// Whether the mobile Reden card's Abzüge options are expanded (UI only).
+var deduOpen = false;
 
 // Judge exclusions
 var myExclusions = {}; // target -> true
@@ -2335,8 +2380,7 @@ function buildPad(host, scaleMax, onPick) {
     function (n) {
       var row = el("div", "noterow"),
         lbl = el("div", "notelbl");
-      lbl.appendChild(el("div", "a", n.a));
-      if (n.b) lbl.appendChild(el("div", "b", n.b));
+      lbl.appendChild(el("div", "a", n.b || n.a));
       row.appendChild(lbl);
       // Fewer than 3 cells (top/bottom rows) - stretch them to fill the
       // row's width instead of leaving blank filler columns.
@@ -2344,10 +2388,18 @@ function buildPad(host, scaleMax, onPick) {
         "div",
         "notekeys" + (n.cells.length < 3 ? " notekeys-fill" : ""),
       );
+      var gradeFirst = keyGradeFirst();
       n.cells.forEach(function (v, j) {
         var b = el("button", "key");
-        b.appendChild(el("div", "n", String(mid(convert(v, scaleMax)))));
-        b.appendChild(el("div", "m", n.marks[j] || "Kat. " + v));
+        var pts = String(mid(convert(v, scaleMax)));
+        var mark = (n.marks[j] || "").trim();
+        if (gradeFirst && mark) {
+          b.appendChild(el("div", "n", mark));
+          b.appendChild(el("div", "m", pts + " P."));
+        } else {
+          b.appendChild(el("div", "n", pts));
+          b.appendChild(el("div", "m", n.marks[j] || "Kat. " + v));
+        }
         b.addEventListener("click", function () {
           onPick(v);
         });
@@ -2423,9 +2475,16 @@ function renderSheet() {
   var deduRow = document.getElementById("deduRow");
   deduRow.classList.toggle("hide", !ME.is_chair);
   var lvl = deductionLevel(cs);
+  var lvlLabel = "";
   [].forEach.call(deduRow.querySelectorAll(".dedopt"), function (b) {
     b.classList.toggle("on", b.dataset.lvl === lvl);
+    if (lvl && b.dataset.lvl === lvl) lvlLabel = b.textContent;
   });
+  document.getElementById("deduState").textContent = lvlLabel;
+  document.getElementById("deduOpts").classList.toggle("hide", !deduOpen);
+  document
+    .getElementById("deduToggle")
+    .setAttribute("aria-expanded", String(deduOpen));
   document.getElementById("spkTot").textContent = String(personPunkte(cs));
   var spkDed = document.getElementById("spkDed");
   spkDed.textContent = lvl ? "(−" + deductionPoints(cs) + ")" : "";
@@ -2630,7 +2689,9 @@ function updateChairTab() {
   var tab = document.getElementById("tabChair");
   var show = ME.is_chair || spreadOpen;
   tab.classList.toggle("hide", !show);
-  tab.textContent = ME.is_chair ? "Chair" : "Spreads";
+  document.getElementById("tabChairLabel").textContent = ME.is_chair
+    ? "Chair"
+    : "Spreads";
 }
 function hiddenToggleMessage(name, goingHidden) {
   return goingHidden
@@ -4244,7 +4305,7 @@ function spreadOfKey(list, key) {
 function dashBallotTable(summary, s) {
   return dashComparisonTable(summary, {
     target: "s" + s,
-    rowHead: "Kriterium",
+    rowHead: "Kategorie",
     rows: CRITERIA,
     totalLabel: "Gesamt",
     totalFor: function (id) {
@@ -7102,9 +7163,16 @@ document.getElementById("tnext").addEventListener("click", function () {
     render();
   }
 });
+// Mobile Abzüge options stay collapsed behind the "Abzüge" toggle (deduOpen)
 document.getElementById("deduRow").addEventListener("click", function (e) {
+  if (e.target.closest("#deduToggle")) {
+    deduOpen = !deduOpen;
+    render();
+    return;
+  }
   var b = e.target.closest(".dedopt");
   if (!b) return;
+  deduOpen = false;
   setDeduction(cs, b.dataset.lvl);
 });
 document.getElementById("exclBtn").addEventListener("click", function () {
@@ -7185,6 +7253,9 @@ document
   .getElementById("menuTimerDisplay")
   .addEventListener("click", toggleTimerCountUp);
 document
+  .getElementById("menuKeyLabel")
+  .addEventListener("click", toggleKeyGradeFirst);
+document
   .getElementById("menuBellVoice")
   .addEventListener("click", toggleBellVoice);
 document.getElementById("undoBtn").addEventListener("click", function () {
@@ -7249,6 +7320,7 @@ window.addEventListener("appinstalled", function () {
   }
   applyTheme(LS.get("opd.theme", "light"));
   applyGradeInputLabel();
+  applyKeyLabelLabel();
   applyTimerDisplayLabel();
   applyBellVoiceLabel();
   // Only an explicit /r/CODE link auto-resumes a session - landing on the
