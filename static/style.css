@@ -1252,8 +1252,18 @@ body {
 }
 /* The mobile top bar (connection dot/state + ⋮ menu) stays visible and
    carries the desktop nav + room/judges info too, so it's a single bar. */
+/* Desktop: a tinted strip with folder tabs (.dashnav) sitting on its bottom
+   rule - the active tab takes the page background and covers that rule, so
+   it reads as joined to the view below. No bottom padding: the tabs reach
+   the rule, and everything else in the bar centres on their height. */
+/* On desktop .viewport holds only the bar (the mobile views in it are
+   hidden), so drop its mobile inset and let the tint run edge to edge. */
+#app.dashboard-mode .viewport {
+  padding: 0;
+}
 #app.dashboard-mode .bar {
-  padding: 10px 24px;
+  padding: 8px 24px 0;
+  background: color-mix(in srgb, var(--ink) 5%, var(--paper));
   border-bottom: 1px solid var(--line);
 }
 #v-dashboard.hide {
@@ -1268,7 +1278,8 @@ body {
 }
 .dashnav {
   display: flex;
-  gap: 4px;
+  align-self: flex-end;
+  gap: 3px;
   margin-left: 10px;
 }
 .dashnav button {
@@ -1277,19 +1288,32 @@ body {
   align-items: center;
   gap: 1px;
   border: 1px solid var(--line-2);
-  background: transparent;
+  border-bottom: 0;
+  border-radius: 3px 3px 0 0;
+  background: color-mix(in srgb, var(--ink) 10%, var(--paper));
   color: var(--ink-2);
   font: inherit;
-  font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 0px;
+  font-size: 11px;
+  white-space: nowrap;
+  padding: 5px 12px;
   cursor: pointer;
 }
+.dashnav button:hover {
+  color: var(--ink);
+}
+/* 1px lower than its siblings, onto the bar's bottom rule, so the page
+   background runs through into the view. */
 .dashnav button[aria-pressed="true"] {
-  color: var(--live);
-  background: var(--live-bg);
-  border-color: var(--live-line);
-  font-weight: 500;
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--line);
+  font-weight: 600;
+  margin-bottom: -1px;
+  padding-bottom: 6px;
+}
+/* Dashed frame for tabs that have no hand drawing yet (see initDashNavIcons). */
+.tabicon .tabiconph {
+  stroke-dasharray: 1.6 1.8;
 }
 .navhint {
   font-size: 9px;
@@ -2002,9 +2026,6 @@ body.blattresizing .blattcol {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  background: var(--line);
-  padding: 2px;
 }
 .teampointssec {
   flex: 1;
@@ -2013,6 +2034,9 @@ body.blattresizing .blattcol {
   min-height: 0;
   background: var(--card);
 }
+.teampointssec + .teampointssec {
+  border-top: 1px solid var(--line-2);
+}
 .teampointssechead {
   flex: 0 0 auto;
   display: flex;
@@ -2020,7 +2044,7 @@ body.blattresizing .blattcol {
   justify-content: space-between;
   gap: 14px;
   padding: 6px 24px 5px;
-  border-bottom: 3px solid var(--line-2);
+  border-bottom: 1px solid var(--line-2);
 }
 .teampointssec.team-gov .teampointssechead {
   border-bottom-color: var(--team-gov);

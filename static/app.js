@@ -3623,9 +3623,11 @@ function renderDashChrome() {
   );
 
   // Alt+1..9 jump to a #dashNav tab by its position among currently visible
-  // buttons (see the keydown handler below) - show that position as small
-  // text under the tab label so the shortcut stays discoverable and correct
-  // even as tabs like "Dashboard"/"Offline-Jurierende" show or hide.
+  // buttons (see the keydown handler below) - show that position in the
+  // tab's tooltip (the icon takes the room under the label) so the shortcut
+  // stays discoverable and correct even as tabs like "Dashboard"/
+  // "Offline-Jurierende" show or hide. data-tip keeps the original title so
+  // repeated renders don't stack suffixes.
   var visibleTabs = [].filter.call(
     document.querySelectorAll("#dashNav button[data-dv]"),
     function (b) {
@@ -3633,8 +3635,8 @@ function renderDashChrome() {
     },
   );
   visibleTabs.forEach(function (b, i) {
-    var hint = b.querySelector(".navhint");
-    if (hint) hint.textContent = "Alt+" + (i + 1);
+    if (b.dataset.tip === undefined) b.dataset.tip = b.title;
+    b.title = b.dataset.tip + " (Alt+" + (i + 1) + ")";
   });
 
   var jury = document.getElementById("dashJury");
@@ -3799,6 +3801,44 @@ document.addEventListener("click", function (e) {
     return;
   closeJuryPanel();
 });
+var DASHNAV_ICON_FROM = {
+  namen: "namen",
+  blatt: "sheet",
+  teampoints: "team",
+  schnell: "matrix",
+  dashboard: "chair",
+};
+function initDashNavIcons() {
+  var NS = "http://www.w3.org/2000/svg";
+  [].forEach.call(
+    document.querySelectorAll("#dashNav button[data-dv]"),
+    function (b) {
+      var t = DASHNAV_ICON_FROM[b.dataset.dv];
+      var src =
+        t &&
+        document.querySelector('#tabs button[data-t="' + t + '"] .tabicon');
+      var icon;
+      if (src) {
+        icon = src.cloneNode(true);
+      } else {
+        icon = document.createElementNS(NS, "svg");
+        icon.setAttribute("class", "tabicon");
+        icon.setAttribute("viewBox", "0 0 20 20");
+        icon.setAttribute("aria-hidden", "true");
+        var r = document.createElementNS(NS, "rect");
+        r.setAttribute("class", "tabiconph");
+        r.setAttribute("x", "3.5");
+        r.setAttribute("y", "3.5");
+        r.setAttribute("width", "13");
+        r.setAttribute("height", "13");
+        r.setAttribute("rx", "1.5");
+        icon.appendChild(r);
+      }
+      b.insertBefore(icon, b.firstChild);
+    },
+  );
+}
+initDashNavIcons();
 document.getElementById("dashNav").addEventListener("click", function (e) {
   var b = e.target.closest("button[data-dv]");
   if (!b) return;
