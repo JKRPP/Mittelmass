@@ -1372,7 +1372,10 @@ body {
   gap: 3px;
   margin-left: 10px;
 }
-.dashnav button {
+/* Folder tabs: the top-row nav and the dashboard's section tabs
+   (.dashtabs, see the Dashboard block further down) share one look. */
+.dashnav button,
+.dashtabs > button {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1388,10 +1391,12 @@ body {
   padding: 5px 12px;
   cursor: pointer;
 }
-.dashnav button:hover {
+.dashnav button:hover,
+.dashtabs > button:hover {
   color: var(--ink);
 }
-.dashnav button[aria-pressed="true"] {
+.dashnav button[aria-pressed="true"],
+.dashtabs > button[aria-pressed="true"] {
   background: var(--team-accent, var(--paper));
   color: var(--team-on, var(--ink));
   border-color: var(--team-accent, var(--line));
@@ -1717,10 +1722,12 @@ input.offlinejudgename {
   font-weight: 500;
 }
 
-#v-dashboard .ballottable tr:hover td {
+/* Child cells only (> td): a hovered Wertung row must not tint the
+   comparison table nested inside its expanded row. */
+#v-dashboard .ballottable tr:hover > td {
   background: color-mix(in srgb, var(--ink) 8%, var(--card));
 }
-#v-dashboard .ballottable tr.hot:hover td {
+#v-dashboard .ballottable tr.hot:hover > td {
   background: color-mix(in srgb, var(--ink) 10%, var(--warn-bg));
 }
 .ballottable td.spreadhot {
@@ -1743,7 +1750,7 @@ input.offlinejudgename {
 .ballottable tr.rowbest td {
   background: var(--best-bg);
 }
-#v-dashboard .ballottable tr.rowbest:hover td {
+#v-dashboard .ballottable tr.rowbest:hover > td {
   background: color-mix(in srgb, var(--ink) 10%, var(--best-bg));
 }
 
@@ -1755,7 +1762,7 @@ tr.deducted td {
 tr.deducted td.l {
   font-weight: 500;
 }
-#v-dashboard .ballottable tr.deducted:hover td {
+#v-dashboard .ballottable tr.deducted:hover > td {
   background: color-mix(in srgb, var(--ink) 10%, var(--danger-bg));
 }
 
@@ -1771,41 +1778,248 @@ tr.deducted td.l {
   font-weight: 500;
 }
 
+/* Dashboard: one page on the paper background - folder tabs (Wertung /
+   Ballot, sharing the .dashnav button look) over one table at a time. */
+/* Shared by every view built with dashTabbedSheet() in app.js (Dashboard,
+   Komplette Wertung, Offline-Jurierende, OpenTab): the sheet scrolls, the
+   view root around it is just a flex column. */
+.dashsheet {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px 24px 40px;
+}
+.dashtabs,
+.dashtabbody {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+/* The strip's rule runs the full width of the view (the negative margin
+   cancels .dashsheet's 24px side padding), while its padding keeps the
+   tabs and buttons in line with the centred, max-1100px table below:
+   24px + whatever the table is inset on each side (100% = the sheet's
+   content width here). */
+.dashtabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  border-bottom: 1px solid var(--line);
+  max-width: none;
+  margin: 0 -24px;
+  padding: 0 calc(24px + max(0px, (100% - 1100px) / 2));
+}
+.dashtabs > button {
+  font-size: 13px;
+  padding: 6px 18px;
+}
+.dashtabs > button[aria-pressed="true"] {
+  padding-bottom: 7px;
+}
+/* The strip's right side reaches down to the line, so the Freigeben button
+   can sit on it as a small folder tab; everything else there (trainee
+   toggle, Ballot links, OpenTab's connection line) keeps a gap above it. */
+.dashtabsaside {
+  margin-left: auto;
+  align-self: stretch;
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+}
+.dashtabsaside > :not(.dashfrei) {
+  margin-bottom: 7px;
+}
+.dashfrei {
+  border: 1px solid var(--line-2);
+  border-bottom: 0;
+  border-radius: 3px 3px 0 0;
+  background: color-mix(in srgb, var(--ink) 10%, var(--paper));
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 12px 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dashfrei:hover {
+  color: var(--ink);
+}
+.dashfrei.on {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+.dashtabbody {
+  padding-top: 18px;
+}
+/* Wertung table: team group header rows, team-coloured names, and the
+   opened row's Wertungsvergleich nested right below it. */
+.dashwtable tr.dashwgrp > td {
+  padding: 16px 10px 4px;
+  border: 0;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: left;
+}
+.dashwtable tr.dashwgrp:first-child > td,
+.dashwtable tr:first-child + tr.dashwgrp > td {
+  padding-top: 6px;
+}
+.dashwtable tr.dashwgrp.team-gov > td,
+.dashwrow.team-gov .dashwname {
+  color: var(--team-gov);
+}
+.dashwtable tr.dashwgrp.team-opp > td,
+.dashwrow.team-opp .dashwname {
+  color: var(--team-opp);
+}
+.dashwtable tr.dashwgrp.team-free > td,
+.dashwrow.team-free .dashwname {
+  color: var(--team-free);
+}
+#v-dashboard .dashwtable tr.dashwgrp:hover > td {
+  background: none;
+}
+.dashwrow {
+  cursor: pointer;
+}
+.dashwrow > td {
+  padding-top: 6px;
+  padding-bottom: 6px;
+  border-top: 1px solid var(--line-2);
+}
+.dashwrow > td.l {
+  padding-left: 4px;
+}
+.dashcaret {
+  display: inline-block;
+  width: 1.1em;
+  color: var(--ink-3);
+}
+.dashwrow.open > td {
+  background: color-mix(in srgb, var(--ink) 6%, var(--card));
+}
+.dashwrow.open .dashwname {
+  font-weight: 600;
+}
+.dashwtable td.dashhot {
+  color: var(--warn);
+  font-size: 12px;
+}
+/* Auffällig is a note about the row, not another score - set it apart
+   from the number columns with a rule and extra room. */
+.dashwtable td.dashhot,
+.dashwtable th.dashhot {
+  border-left: 1px solid var(--line-2);
+  padding-left: 16px;
+}
+.dashwtable th.dashhot {
+  color: var(--ink-3);
+}
+/* The Spread column (just before Auffällig) gets the same room on its
+   right as Auffällig has on its left, so the rule sits between them. */
+.dashwtable tr:first-child > th:nth-last-child(2),
+.dashwrow > td:nth-last-child(2) {
+  padding-right: 16px;
+}
+.dashwtable tr.dashwexp > td {
+  padding: 4px 0 16px 28px;
+  text-align: left;
+  background: color-mix(in srgb, var(--ink) 3%, var(--card));
+}
+#v-dashboard .dashwtable tr.dashwexp:hover > td {
+  background: color-mix(in srgb, var(--ink) 3%, var(--card));
+}
+.dashwtable tr.dashwexp table {
+  width: auto;
+  min-width: 60%;
+}
+
+/* Einzelergebnisse: one column per judge plus the panel's average column.
+   Lines group into totals / outcome / best speech, split by a heavier rule. */
+.dasheinzel th {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  padding: 4px 10px 6px;
+}
+.dasheinzel td {
+  padding: 5px 10px;
+  border-top: 1px solid var(--line-2);
+}
+.dasheinzel td.l {
+  font-size: 13px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.dasheinzel tr.dasheinzelsep > td {
+  border-top: 2px solid var(--line-2);
+}
+.dasheinzel .dashpanelcol {
+  background: color-mix(in srgb, var(--ink) 4%, var(--paper));
+}
+#v-dashboard .dasheinzel tr:hover > td.dashpanelcol {
+  background: color-mix(in srgb, var(--ink) 10%, var(--paper));
+}
+.dasheinzel .tot {
+  font-weight: 600;
+  color: var(--ink);
+}
+.dashteamname.team-gov,
+.dashwinner.team-gov {
+  color: var(--team-gov);
+}
+.dashteamname.team-opp,
+.dashwinner.team-opp {
+  color: var(--team-opp);
+}
+.dashteamname.team-free {
+  color: var(--team-free);
+}
+.dashwinner {
+  font-weight: 700;
+}
+.dashtie {
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.dashneg {
+  color: var(--warn);
+}
+/* Best speech: "2. FFR · 70", one line per speech when several tie. */
+.dashbestspeech {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dashbestentry {
+  display: block;
+  white-space: nowrap;
+}
+
 /* Schnelleingabe */
 #v-schnell {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: auto;
-  padding: 14px 28px;
+  display: flex;
+  flex-direction: column;
   background: var(--paper);
 }
 #v-schnell.hide {
   display: none;
 }
-#v-schnell > .dashcol {
-  max-width: 1100px;
-  margin: 0 auto;
-  gap: 14px;
-}
 
 /* Offline-Jury: same page chrome as Schnelleingabe (#v-schnell above) - a
-   centered column on the paper background, not the card background. */
+   tabbed sheet (.dashsheet, see dashTabbedSheet) on the paper background. */
 #v-offline {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: auto;
-  padding: 14px 28px;
+  display: flex;
+  flex-direction: column;
   background: var(--paper);
 }
 #v-offline.hide {
   display: none;
-}
-#v-offline > .dashcol {
-  max-width: 1100px;
-  margin: 0 auto;
-  gap: 14px;
 }
 .schnelltable th {
   font-size: 11px;
@@ -2353,18 +2567,12 @@ body.blattresizing .blattcol {
 #v-opentab {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: auto;
-  padding: 14px 28px;
+  display: flex;
+  flex-direction: column;
   background: var(--paper);
 }
 #v-opentab.hide {
   display: none;
-}
-#v-opentab > .dashcol {
-  max-width: 1100px;
-  margin: 0 auto;
-  gap: 14px;
 }
 #v-opentabm .dashpanel {
   border-radius: 14px;

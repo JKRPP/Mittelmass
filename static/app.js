@@ -110,16 +110,55 @@ var CRITERIA = [
   { key: "urt", label: "Urteilskraft", short: "Urt" },
 ];
 var TEAMS = ["Regierung", "Opposition"];
+// .short: compact name for tight spots (the dashboard's Auffällig column),
+// matching CRITERIA's .short.
 var TEAMCATS = [
-  { key: "eroef", label: "Eröffnungsrede", max: 25, grp: "Strategie" },
-  { key: "ergae", label: "Ergänzungsrede", max: 25, grp: "Strategie" },
-  { key: "schlu", label: "Schlussrede", max: 25, grp: "Strategie" },
-  { key: "zreden", label: "Zwischenreden", max: 30, grp: "Interaktion" },
-  { key: "zfrag", label: "Zwischenfragen", max: 30, grp: "Interaktion" },
-  { key: "zrufe", label: "Zwischenrufe", max: 15, grp: "Interaktion" },
+  {
+    key: "eroef",
+    label: "Eröffnungsrede",
+    short: "Eröff.",
+    max: 25,
+    grp: "Strategie",
+  },
+  {
+    key: "ergae",
+    label: "Ergänzungsrede",
+    short: "Ergän.",
+    max: 25,
+    grp: "Strategie",
+  },
+  {
+    key: "schlu",
+    label: "Schlussrede",
+    short: "Schluss",
+    max: 25,
+    grp: "Strategie",
+  },
+  {
+    key: "zreden",
+    label: "Zwischenreden",
+    short: "Zw.-Red.",
+    max: 30,
+    grp: "Interaktion",
+  },
+  {
+    key: "zfrag",
+    label: "Zwischenfragen",
+    short: "Zw.-Fr.",
+    max: 30,
+    grp: "Interaktion",
+  },
+  {
+    key: "zrufe",
+    label: "Zwischenrufe",
+    short: "Zw.-Ruf",
+    max: 15,
+    grp: "Interaktion",
+  },
   {
     key: "ueber",
     label: "Überzeugungskraft",
+    short: "Überz.",
     max: 50,
     grp: "Überzeugungskraft",
   },
@@ -568,6 +607,8 @@ function otForgetToken(tournamentId) {
 // that tournament/debate instead of the plain ballot-URL field.
 var otPendingTournamentId = null;
 var otPendingDebateId = null;
+// API base of the OpenTab server the pending ballot URL came from.
+var otPendingApiBase = null;
 var ws = null,
   wsTries = 0,
   wsTimer = null,
@@ -621,10 +662,14 @@ function loadLocal() {
   otState.ballot = otState.ballot || null;
   otState.judgeMap = otState.judgeMap || {};
   otState.teamSpeakerUuid = otState.teamSpeakerUuid || {};
+  // Connections saved before more than one OpenTab server was supported
+  // were all to debateresult.com.
+  otState.apiBase = otState.apiBase || OPENTAB_DEFAULT_API;
   // Transient, never persisted - don't let a pending registration step
   // from a previously open room leak into this one.
   otPendingTournamentId = null;
   otPendingDebateId = null;
+  otPendingApiBase = null;
 }
 function getName(s) {
   return speakerNames["s" + s] || "";
@@ -673,14 +718,41 @@ function setTeamNote(t, groupKey, text) {
 // our own server, so these are plain browser fetch() calls against OpenTab
 // directly (its CORS is wide open - see the doc's overview).
 
-// The one OpenTab API deployment this integration talks to (confirmed
-// against JUDGE_BALLOT_API.md; distinct from tabs.debateresult.com, the
-// judge-facing frontend host in the URLs users actually paste). Hardcoded
-// rather than derived/editable from user input: server.py's opentab_proxy
-// only relays requests to this exact host, so a stray or malicious URL
-// can't turn the proxy into an open SSRF relay. Revisit if a second
-// OpenTab deployment ever needs supporting.
-var OPENTAB_API_BASE = "https://api.debateresult.com";
+// The OpenTab deployments this integration talks to: the judge-facing host
+// in the URLs chairs paste ("tabs.") -> that deployment's API ("api.").
+// A fixed list rather than derived from user input: server.py's
+// opentab_proxy only relays to these API hosts (OPENTAB_ALLOWED_HOSTS - keep
+// both lists in step), so a stray or malicious URL can't turn the proxy
+// into an open SSRF relay. To support another deployment, add it in both.
+var OPENTAB_SERVERS = {
+  "tabs.debateresult.com": "https://api.debateresult.com",
+  "tabs.opentab2.limperg.de": "https://api.opentab2.limperg.de",
+};
+var OPENTAB_DEFAULT_API = "https://api.debateresult.com";
+// The API base for a pasted OpenTab URL, or null for an unknown host.
+function otApiBaseFor(url) {
+  try {
+    var host = new URL(url).hostname.toLowerCase();
+    return Object.prototype.hasOwnProperty.call(OPENTAB_SERVERS, host)
+      ? OPENTAB_SERVERS[host]
+      : null;
+  } catch (e) {
+    return null;
+  }
+}
+function otUnknownServerMsg(url) {
+  var host = "";
+  try {
+    host = new URL(url).hostname;
+  } catch (e) {}
+  return (
+    "Unbekannter OpenTab-Server" +
+    (host ? " (" + host + ")" : "") +
+    ". Unterstützt: " +
+    Object.keys(OPENTAB_SERVERS).join(", ") +
+    "."
+  );
+}
 // The registration secret is the last non-empty path segment of the
 // judge's private ballot URL.
 function otExtractSecret(url) {
@@ -742,8 +814,8 @@ function otRequest(method, url, body, token) {
     });
   });
 }
-function otRegister(secret) {
-  return otRequest("POST", OPENTAB_API_BASE + "/api/register", {
+function otRegister(apiBase, secret) {
+  return otRequest("POST", apiBase + "/api/register", {
     secret: secret,
     link_current_user: false,
   }).then(function (data) {
@@ -755,10 +827,10 @@ function otRegister(secret) {
     return data;
   });
 }
-function otGetDebate(token, debateId) {
+function otGetDebate(apiBase, token, debateId) {
   return otRequest(
     "GET",
-    OPENTAB_API_BASE + "/api/debate/" + debateId,
+    apiBase + "/api/debate/" + debateId,
     undefined,
     token,
   ).then(function (data) {
@@ -770,10 +842,10 @@ function otGetDebate(token, debateId) {
     return data.ballot;
   });
 }
-function otSubmit(token, debateId, ballot) {
+function otSubmit(apiBase, token, debateId, ballot) {
   return otRequest(
     "POST",
-    OPENTAB_API_BASE + "/api/debate/" + debateId + "/submissions",
+    apiBase + "/api/debate/" + debateId + "/submissions",
     { ballot: ballot },
     token,
   ).then(function (data) {
@@ -2858,6 +2930,16 @@ function computeChairSummary(includeHidden) {
     }
     return sum;
   }
+  // Has this judge entered any team points for team t? Averages skip judges
+  // who haven't, instead of counting their empty entry as 0.
+  function teamEntered(id, t) {
+    if (isOfflineId(id))
+      return (offlineScores[offlineRealId(id)] || {})["t" + t] !== undefined;
+    var r = remote[id] || {};
+    return TEAMCATS.some(function (c) {
+      return r[kk("t" + t, c.key)] !== undefined;
+    });
+  }
 
   var cells = [];
   function scan(target, criterion, label) {
@@ -3000,10 +3082,15 @@ function computeChairSummary(includeHidden) {
     return isActiveSpeaker(s) && r.avg !== null && r.avg > m ? r.avg : m;
   }, -Infinity);
 
+  // A team's Ø total is the sum of the averages: Ø team points (over the
+  // judges who entered any and didn't take them out) plus each of its
+  // speeches' Ø (over the judges who scored it and didn't take it out). The
+  // Ballot's "Gesamt" Ø, the mobile Endergebnis and Einzelergebnisse' panel
+  // column all read it from here.
   var teamRows = TEAMS.map(function (tm, t) {
     var vals = [];
     ids.forEach(function (id) {
-      if (!includedFor(id, "t" + t)) return;
+      if (!includedFor(id, "t" + t) || !teamEntered(id, t)) return;
       vals.push(remoteTeamTotal(id, t));
     });
     var teamAvg = mean(vals);
@@ -3045,6 +3132,7 @@ function computeChairSummary(includeHidden) {
     nameOf: nameOf,
     remoteTotal: remoteTotal,
     remoteTeamTotal: remoteTeamTotal,
+    teamEntered: teamEntered,
     cells: cells,
     groupCells: groupCells,
     teamGroups: TEAMGROUPS,
@@ -3174,9 +3262,10 @@ function fullBallotTable(summary) {
     tr.appendChild(el("td", "l tot", "Teampunkte " + teamAbbr));
     var vals = [];
     chairFirst.forEach(function (id) {
+      var entered = summary.teamEntered(id, t);
       var v = summary.remoteTeamTotal(id, t);
-      tr.appendChild(el("td", "tot", String(v)));
-      if (summary.includedFor(id, "t" + t)) vals.push(v);
+      tr.appendChild(el("td", "tot", entered ? String(v) : "-"));
+      if (entered && summary.includedFor(id, "t" + t)) vals.push(v);
     });
     var avg = avgRound(vals);
     tr.appendChild(el("td", "tot", avg === null ? "-" : String(avg)));
@@ -3212,11 +3301,19 @@ function fullBallotTable(summary) {
       vals.push(summary.includedFor(id, "t" + t) ? grand : null);
       tds.push(td);
     });
-    var scored = vals.filter(function (v) {
-      return v !== null;
-    });
-    var avg = avgRound(scored);
-    var avgTd = el("td", "tot", avg === null ? "-" : String(avg));
+    // Ø = the sum of the averages above it (summary.teamRows), not the
+    // average of the complete judge totals in this row - so a judge who
+    // hasn't finished every speech still counts for the parts they have.
+    // "*" while one of the team's speeches has no score from anyone yet.
+    var row = summary.teamRows[t];
+    var avg = row.grand === null ? null : Math.round(row.grand * 100) / 100;
+    var avgTd = el(
+      "td",
+      "tot",
+      avg === null ? "-" : String(avg) + (row.partial ? " *" : ""),
+    );
+    if (row.partial)
+      avgTd.title = "Vorläufig - noch nicht alle Reden dieses Teams bewertet";
     tr.appendChild(avgTd);
     table.appendChild(tr);
     teamMeta.push({ vals: vals, avg: avg, tds: tds, avgTd: avgTd, tr: tr });
@@ -3575,6 +3672,10 @@ function applyLayoutMode() {
     document.getElementById("dock").classList.add("hide");
     document.getElementById("dockSheet").classList.add("hide");
     document.getElementById("dockTeam").classList.add("hide");
+    // Clears the inline bottom padding the mobile branch left on #viewport
+    // (the spacer for the fixed mobile tab bar) - otherwise widening the
+    // window from mobile back to desktop leaves a gap under the top bar.
+    syncDockSpacer();
   } else {
     document.getElementById("tabs").classList.remove("hide");
     // Restore dock (hidden by the desktop branch) on plain mobile - otherwise
@@ -4038,54 +4139,10 @@ document.addEventListener("keydown", function (e) {
   if (first) first.focus();
 });
 
-function dashSpreadBadge(spread) {
-  if (spread === null || spread === undefined)
-    return el("span", "dashbadge", "-");
-  return el("span", "dashbadge" + (spread >= 5 ? " hot" : ""), "±" + spread);
-}
-
-function dashJudgeChips(judges) {
-  var wrap = el("div", "dashchips");
-  judges.forEach(function (j) {
-    wrap.appendChild(el("span", "chip", j.name + " " + j.v));
-  });
-  return wrap;
-}
-
-// spreadSummary is a separate computeChairSummary() call (potentially with
-// includeHidden) used only for the spread badge - avg always stays on the
-// regular, trainees-excluded summary.
-function dashSpeakerGroup(label, teamVal, summary, spreadSummary) {
-  var wrap = el("div");
-  var rows = activeSpeakerIndices().filter(function (s) {
-    return SPEAKERS[s].team === teamVal;
-  });
-  if (!rows.length) return wrap;
-  wrap.appendChild(el("div", "dashgrp", label));
-  rows.forEach(function (s) {
-    var teamCls = teamClass(teamVal);
-    var sel = dashboardSelected.kind === "speaker" && dashboardSelected.s === s;
-    var row = el("div", "dashspk " + teamCls + (sel ? " sel" : ""));
-    row.appendChild(el("span", "lb", speakerLabel(s)));
-    var avg = summary.speakerRows[s].avg;
-    row.appendChild(el("span", "vl", avg === null ? "-" : avg.toFixed(1)));
-    var tot = spreadSummary.totals.filter(function (t) {
-      return t.key === "s" + s;
-    })[0];
-    row.appendChild(dashSpreadBadge(tot ? tot.spread : null));
-    row.addEventListener("click", function () {
-      dashboardSelected = { kind: "speaker", s: s };
-      renderDashboard();
-    });
-    wrap.appendChild(row);
-  });
-  return wrap;
-}
-
-// Local-only (not synced, not persisted) override for the Redner:innen/
-// Teampunkte spread: purely a display choice for whoever is looking at this
-// dashboard right now, so it stays a plain var rather than going through
-// LS like gradeInputMode does.
+// Local-only (not synced, not persisted) override for the Wertung tab's
+// spread and "Auffällig" columns: purely a display choice for whoever is
+// looking at this dashboard right now, so it stays a plain var rather than
+// going through LS like gradeInputMode does.
 var dashIncludeTrainees = false;
 function dashTraineeToggle() {
   var lbl = el("label", "dashtraineetoggle");
@@ -4101,146 +4158,27 @@ function dashTraineeToggle() {
   return lbl;
 }
 
-function dashSpeakerPanel(summary, spreadSummary) {
-  var panel = el("div", "dashpanel dashpanel-grow3");
-  var head = el("div", "dashpanelhead dashpanelhead-row");
-  head.appendChild(el("h2", null, "Redner:innen"));
-  head.appendChild(dashTraineeToggle());
-  panel.appendChild(head);
-  var body = el("div", "dashpanelbody");
-  body.appendChild(dashSpeakerGroup("Regierung", 0, summary, spreadSummary));
-  body.appendChild(dashSpeakerGroup("Opposition", 1, summary, spreadSummary));
-  body.appendChild(
-    dashSpeakerGroup("Fraktionsfrei", null, summary, spreadSummary),
-  );
-  panel.appendChild(body);
-  return panel;
-}
-
-function dashTeamGroupRows(summary, spreadSummary) {
-  var wrap = el("div");
-  TEAMS.forEach(function (tm, t) {
-    wrap.appendChild(el("div", "dashgrp", tm));
-    summary.teamGroups.forEach(function (g) {
-      var teamCls = teamClass(t);
-      var gc = summary.groupCells.filter(function (x) {
-        return x.key === "t" + t + "/grp-" + tm + " - " + g;
-      })[0];
-      var spreadGc = spreadSummary.groupCells.filter(function (x) {
-        return x.key === "t" + t + "/grp-" + tm + " - " + g;
-      })[0];
-      var sel =
-        dashboardSelected.kind === "team" &&
-        dashboardSelected.t === t &&
-        dashboardSelected.grp === g;
-      var row = el("div", "dashspk " + teamCls + (sel ? " sel" : ""));
-      row.appendChild(el("span", "lb", g));
-      row.appendChild(el("span", "vl", gc ? gc.avg.toFixed(1) : "-"));
-      row.appendChild(dashSpreadBadge(spreadGc ? spreadGc.spread : null));
-      row.addEventListener("click", function () {
-        dashboardSelected = { kind: "team", t: t, grp: g };
-        renderDashboard();
-      });
-      wrap.appendChild(row);
-    });
-  });
-  return wrap;
-}
-
-function dashTeamPanel(summary, spreadSummary) {
-  var panel = el("div", "dashpanel dashpanel-grow2");
-  var head = el("div", "dashpanelhead dashpanelhead-row");
-  head.appendChild(el("h2", null, "Teampunkte"));
-  head.appendChild(dashTraineeToggle());
-  panel.appendChild(head);
-  var body = el("div", "dashpanelbody");
-  body.appendChild(dashTeamGroupRows(summary, spreadSummary));
-  panel.appendChild(body);
-  return panel;
-}
-
-// summary stays the trainees-excluded math used everywhere else (ballot
-// tables, exports, mobile chair view) and still feeds the averages here;
-// only the spread badge in these two panels can switch to an alternate,
-// includeHidden summary via the local/unsynced dashIncludeTrainees toggle.
-function dashColA(summary) {
-  var col = el("div", "dashcol dashcol-a");
-  var spreadSummary = dashIncludeTrainees ? computeChairSummary(true) : summary;
-  col.appendChild(dashSpeakerPanel(summary, spreadSummary));
-  col.appendChild(dashTeamPanel(summary, spreadSummary));
-  return col;
-}
-
-// A cell's key is "s{s}/{critKey}" or "t{t}/{catKey}" - resolve it back to
-// the speaker or team-category the dashboard can select and focus.
-function dashRowTarget(key) {
-  var sm = /^s(\d+)\//.exec(key);
-  if (sm) return { kind: "speaker", s: parseInt(sm[1], 10) };
-  var tm = /^t(\d+)\/(.+)$/.exec(key);
-  if (tm) {
-    var cat = TEAMCATS.filter(function (c) {
-      return c.key === tm[2];
-    })[0];
-    if (cat) return { kind: "team", t: parseInt(tm[1], 10), grp: cat.grp };
-  }
-  return null;
-}
 function dashSameTarget(a, b) {
   if (!a || !b || a.kind !== b.kind) return false;
+  if (a.kind === "none") return false;
   return a.kind === "speaker" ? a.s === b.s : a.t === b.t && a.grp === b.grp;
 }
 
-function dashSpreadPanel(title, list) {
-  var panel = el("div", "dashpanel dashpanel-grow");
-  var head = el("div", "dashpanelhead");
-  head.appendChild(el("h2", null, title));
-  panel.appendChild(head);
-  var body = el("div", "dashpanelbody");
-  if (!list.length) {
-    body.appendChild(
-      el("p", "note", "Noch keine zwei vollständigen Wertungen."),
-    );
-  } else {
-    list.forEach(function (c) {
-      var target = dashRowTarget(c.key);
-      var sel = dashSameTarget(target, dashboardSelected);
-      var row = el(
-        "div",
-        "dashrow" + (c.spread >= 5 ? " hot" : "") + (sel ? " sel" : ""),
-      );
-      row.appendChild(dashSpreadBadge(c.spread));
-      var parts = c.label.split(" - ");
-      var mid = el("div", "dashrowlbl");
-      mid.appendChild(el("div", "dashrowmain", parts[0]));
-      mid.appendChild(el("div", "dashrowsub", parts.slice(1).join(" - ")));
-      row.appendChild(mid);
-      row.appendChild(dashJudgeChips(c.judges));
-      if (target) {
-        row.addEventListener("click", function () {
-          dashboardSelected = target;
-          renderDashboard();
-        });
-      }
-      body.appendChild(row);
-    });
-  }
-  panel.appendChild(body);
-  return panel;
-}
-
-// Reuses spreadOpen - opening it also gives wings the stripped dashboard (minus the right column).
+// Reuses spreadOpen - opening it also gives wings the dashboard (read-only:
+// the chair-only controls in dashDashboardAside stay hidden for them).
 function dashFreigebenButton() {
   var dob = el(
     "button",
-    "btn ghost dashjbtn" + (spreadOpen ? " on" : ""),
+    "dashfrei" + (spreadOpen ? " on" : ""),
     spreadOpen
-      ? "Dashboard für Wings / Trainees freigegeben"
-      : "Dashboard für Wings / Trainees gesperrt",
+      ? "Für Wings / Trainees freigegeben"
+      : "Für Wings / Trainees gesperrt",
   );
+  dob.type = "button";
   dob.tabIndex = -1;
   dob.title = spreadOpen
     ? "Wings verlieren wieder den Zugriff auf das Dashboard"
-    : "Wings erhalten Lesezugriff auf eine reduzierte Ansicht des Dashboards (Spreads)";
+    : "Wings erhalten Lesezugriff auf das Dashboard (Spreads und Ballot)";
   dob.addEventListener("click", function () {
     var next = !spreadOpen;
     fetch(
@@ -4260,26 +4198,221 @@ function dashFreigebenButton() {
   return dob;
 }
 
-function dashColB(summary) {
-  var col = el("div", "dashcol dashcol-b");
-  col.appendChild(dashFreigebenButton());
-  col.appendChild(
-    dashSpreadPanel(
-      "Abweichungen - Reden",
-      summary.cells.filter(function (c) {
-        return c.key.charAt(0) === "s";
-      }),
-    ),
-  );
-  col.appendChild(
-    dashSpreadPanel(
-      "Abweichungen - Teampunkte",
-      summary.cells.filter(function (c) {
-        return c.key.charAt(0) === "t";
-      }),
-    ),
-  );
-  return col;
+// Desktop views built as one page of folder-tabbed sections instead of
+// stacked panels (Dashboard, Komplette Wertung, Offline-Jurierende, OpenTab):
+// the tab strip (styled like #dashNav, see .dashtabs) over the active
+// section's body. Which tab is open is remembered per view, locally only.
+// sections: [{key, label, build() -> node}]; aside(curKey) -> node|null is
+// the strip's right-hand side (per-section actions). Returns the sheet,
+// to be appended to the view's root.
+var dashSectionByView = {};
+function dashTabbedSheet(viewKey, sections, aside, rerender) {
+  var cur = dashSectionByView[viewKey];
+  var active = sections.filter(function (s) {
+    return s.key === cur;
+  })[0];
+  if (!active) {
+    active = sections[0];
+    cur = active.key;
+  }
+  var sheet = el("div", "dashsheet");
+  var strip = el("div", "dashtabs");
+  sections.forEach(function (s) {
+    var b = el("button", null, s.label);
+    b.type = "button";
+    b.tabIndex = -1;
+    b.setAttribute("aria-pressed", String(s.key === cur));
+    b.addEventListener("click", function () {
+      dashSectionByView[viewKey] = s.key;
+      rerender();
+    });
+    strip.appendChild(b);
+  });
+  var side = aside && aside(cur);
+  if (side) {
+    side.classList.add("dashtabsaside");
+    strip.appendChild(side);
+  }
+  sheet.appendChild(strip);
+  // dashtabbody-<key> gives each section a hook for its own sizing rules.
+  var body = el("div", "dashtabbody dashtabbody-" + cur);
+  body.appendChild(active.build());
+  sheet.appendChild(body);
+  return sheet;
+}
+
+// Dashboard aside: the trainee toggle on Wertung, the chair's ballot actions
+// on Ballot, and Freigeben (chair only) on both.
+function dashDashboardAside(cur) {
+  var aside = el("div");
+  if (cur === "wertung") aside.appendChild(dashTraineeToggle());
+  if (cur === "ballot" && ME.is_chair) {
+    var addOfflineBtn = el("button", "exclbtn", "+ Offline-Juror:in");
+    addOfflineBtn.type = "button";
+    addOfflineBtn.tabIndex = -1;
+    addOfflineBtn.addEventListener("click", addOfflineJudgeAndOpenPanel);
+    aside.appendChild(addOfflineBtn);
+    var exportBtn = el("button", "exclbtn", "Ballot exportieren");
+    exportBtn.type = "button";
+    exportBtn.tabIndex = -1;
+    exportBtn.addEventListener("click", function () {
+      setDashboardView("opentab");
+      render();
+    });
+    aside.appendChild(exportBtn);
+  }
+  if (ME.is_chair) aside.appendChild(dashFreigebenButton());
+  return aside;
+}
+
+// "Auffällig" cell: the criteria/categories among keys (summary.cells keys,
+// "s3/spr" / "t1/zfrag") whose own spread is >= 5, largest first (cells is
+// already sorted by spread). Short names ("Kon ±7") unless full is set - the
+// full ones go in the cell's tooltip.
+function dashHotCats(spreadSummary, keys, full) {
+  return spreadSummary.cells
+    .filter(function (c) {
+      return c.spread >= 5 && keys.indexOf(c.key) !== -1;
+    })
+    .map(function (c) {
+      var k = c.key.split("/")[1];
+      var cat = CRITERIA.concat(TEAMCATS).filter(function (x) {
+        return x.key === k;
+      })[0];
+      return (cat ? (full ? cat.label : cat.short) : k) + " ±" + c.spread;
+    })
+    .join(", ");
+}
+
+// Wertung tab: every speech and team group as one row - each judge's total,
+// Ø, spread and the flagged categories. Clicking a row opens its
+// Wertungsvergleich (dashBallotTable / dashTeamBallotTable) right below it;
+// clicking it again closes it. Columns match the Ballot tab's (active judges,
+// chair first); trainees show up in the opened comparison, greyed.
+function dashWertungTable(summary, spreadSummary) {
+  var chairFirst = chairFirstIds(summary.ids);
+  var ncols = chairFirst.length + 4;
+  var table = el("table", "ballottable dashwtable");
+  var head = el("tr");
+  head.appendChild(el("th", "l", "Rede / Teamkategorie"));
+  chairFirst.forEach(function (id) {
+    head.appendChild(el("th", null, summary.nameOf(id)));
+  });
+  head.appendChild(el("th", null, "Ø"));
+  head.appendChild(el("th", null, "Spread"));
+  head.appendChild(el("th", "l dashhot", "Auffällig"));
+  table.appendChild(head);
+
+  function fullRow(cls, text) {
+    var tr = el("tr", cls);
+    var td = el("td", null, text);
+    td.setAttribute("colspan", String(ncols));
+    tr.appendChild(td);
+    return tr;
+  }
+  // spec: {target, cls, label, cellFor(id) -> {text, cls}, avg, spread, hotKeys,
+  //        detail() -> comparison table node}
+  function addRow(spec) {
+    var open = dashSameTarget(spec.target, dashboardSelected);
+    var tr = el("tr", "dashwrow " + spec.cls + (open ? " open" : ""));
+    var lbl = el("td", "l");
+    lbl.appendChild(el("span", "dashcaret", open ? "▾" : "▸"));
+    lbl.appendChild(el("span", "dashwname", spec.label));
+    tr.appendChild(lbl);
+    chairFirst.forEach(function (id) {
+      var c = spec.cellFor(id);
+      tr.appendChild(el("td", c.cls || null, c.text));
+    });
+    tr.appendChild(el("td", "tot", spec.avg));
+    tr.appendChild(dashSpreadCell(spec.spread));
+    var hotTd = el("td", "l dashhot", dashHotCats(spreadSummary, spec.hotKeys));
+    if (hotTd.textContent)
+      hotTd.title = dashHotCats(spreadSummary, spec.hotKeys, true);
+    tr.appendChild(hotTd);
+    tr.addEventListener("click", function () {
+      dashboardSelected = open ? { kind: "none" } : spec.target;
+      renderDashboard();
+    });
+    table.appendChild(tr);
+    if (open) {
+      var exp = fullRow("dashwexp", "");
+      exp.firstChild.appendChild(spec.detail());
+      table.appendChild(exp);
+    }
+  }
+
+  [0, 1, null].forEach(function (t) {
+    var teamCls = teamClass(t);
+    var speakers = activeSpeakerIndices().filter(function (s) {
+      return teamOf(s) === t;
+    });
+    if (t === null && !speakers.length) return;
+    table.appendChild(
+      fullRow("dashwgrp " + teamCls, t === null ? "Fraktionsfrei" : TEAMS[t]),
+    );
+    speakers.forEach(function (s) {
+      var avg = summary.speakerRows[s].avg;
+      addRow({
+        target: { kind: "speaker", s: s },
+        cls: teamCls + (deductionLevel(s) ? " deducted" : ""),
+        label: speakerLabel(s),
+        cellFor: function (id) {
+          var v = summary.remoteTotal(id, s);
+          return {
+            text: v === null ? "-" : String(v),
+            cls: summary.includedFor(id, "s" + s) ? null : "trainee",
+          };
+        },
+        avg: avg === null ? "-" : avg.toFixed(1),
+        spread: spreadOfKey(spreadSummary.totals, "s" + s),
+        hotKeys: CRITERIA.map(function (c) {
+          return "s" + s + "/" + c.key;
+        }),
+        detail: function () {
+          return dashBallotTable(summary, s);
+        },
+      });
+    });
+    if (t === null) return;
+    TEAMGROUPS_INFO.forEach(function (g) {
+      var cats = g.cats.map(function (i) {
+        return TEAMCATS[i];
+      });
+      var key = "t" + t + "/grp-" + TEAMS[t] + " - " + g.label;
+      var gc = summary.groupCells.filter(function (x) {
+        return x.key === key;
+      })[0];
+      addRow({
+        target: { kind: "team", t: t, grp: g.label },
+        cls: teamCls + " dashwteam",
+        label: "Team: " + g.label,
+        cellFor: function (id) {
+          // Offline judges only have a team total, no per-category data.
+          if (isOfflineId(id)) return { text: "n.a." };
+          var sum = 0,
+            complete = true;
+          cats.forEach(function (c) {
+            var v = (remote[id] || {})[kk("t" + t, c.key)];
+            if (v === undefined) complete = false;
+            else sum += v;
+          });
+          return {
+            text: complete ? String(sum) : "-",
+            cls: summary.includedFor(id, "t" + t) ? null : "trainee",
+          };
+        },
+        avg: gc ? gc.avg.toFixed(1) : "-",
+        spread: spreadOfKey(spreadSummary.groupCells, key),
+        hotKeys: cats.map(function (c) {
+          return "t" + t + "/" + c.key;
+        }),
+        detail: function () {
+          return dashTeamBallotTable(summary, t, g.label);
+        },
+      });
+    });
+  });
+  return table;
 }
 
 function dashSpreadCell(spread) {
@@ -4443,62 +4576,6 @@ function dashTeamBallotTable(summary, t, grp) {
   });
 }
 
-function dashSpeakerBallotPanel(summary, s) {
-  var sp = SPEAKERS[s];
-  var panel = el("div", "dashpanel");
-  panel.classList.add(teamClass(sp.team));
-  var head = el("div", "dashpanelhead");
-  head.appendChild(el("h2", null, speakerLabel(s)));
-  head.appendChild(el("div", "sub", "Wertungsvergleich"));
-  panel.appendChild(head);
-  var body = el("div", "dashpanelbody dashpanelbody-table");
-  body.appendChild(dashBallotTable(summary, s));
-  panel.appendChild(body);
-  return panel;
-}
-
-function dashTeamBallotPanel(summary, t, grp) {
-  var panel = el("div", "dashpanel");
-  panel.classList.add(teamClass(t));
-  var head = el("div", "dashpanelhead");
-  head.appendChild(el("h2", null, TEAMS[t] + " - " + grp));
-  head.appendChild(el("div", "sub", "Wertungsvergleich"));
-  panel.appendChild(head);
-  var body = el("div", "dashpanelbody dashpanelbody-table");
-  body.appendChild(dashTeamBallotTable(summary, t, grp));
-  panel.appendChild(body);
-  return panel;
-}
-
-function dashFinalPanel(summary) {
-  var panel = el("div", "dashpanel dashpanel-grow");
-  var head = el("div", "dashpanelhead dashpanelhead-row");
-  head.appendChild(el("h2", null, "Ballot"));
-  if (ME.is_chair) {
-    var addOfflineBtn = el("button", "exclbtn", "+ Offline-Juror:in");
-    addOfflineBtn.type = "button";
-    addOfflineBtn.tabIndex = -1;
-    addOfflineBtn.addEventListener("click", addOfflineJudgeAndOpenPanel);
-    head.appendChild(addOfflineBtn);
-    var exportBtn = el("button", "exclbtn", "Ballot exportieren");
-    exportBtn.type = "button";
-    exportBtn.tabIndex = -1;
-    exportBtn.addEventListener("click", function () {
-      setDashboardView("opentab");
-      render();
-    });
-    head.appendChild(exportBtn);
-  }
-  panel.appendChild(head);
-  var body = el("div", "dashpanelbody dashpanelbody-table");
-  var scrollHost = el("div");
-  scrollHost.style.overflowX = "auto";
-  scrollHost.appendChild(fullBallotTable(summary));
-  body.appendChild(scrollHost);
-  panel.appendChild(body);
-  return panel;
-}
-
 // Desktop-only cheat sheet for the Alt/Page keyboard shortcuts wired up
 // further down (dashNav cycling, Blatt speech stepping, Blatt<->Teampunkte
 // swap). Reuses the info-modal look but lists rows instead of one paragraph.
@@ -4648,22 +4725,274 @@ function buildFreeSpeakersBox(box) {
   return input;
 }
 
-function dashColC(summary) {
-  var col = el("div", "dashcol dashcol-c");
-  if (dashboardSelected.kind === "team") {
-    col.appendChild(
-      dashTeamBallotPanel(summary, dashboardSelected.t, dashboardSelected.grp),
-    );
-  } else {
-    col.appendChild(dashSpeakerBallotPanel(summary, dashboardSelected.s));
+// Einzelergebnisse tab (outrounds: who wins, and the best speech): one
+// column per judge plus a last "Panel (Ø)" column. Per column: both team
+// totals, the winner, the margin and how much of it comes from speeches vs.
+// team points (from the winner's side - "+" helped them, "−" worked against
+// them; the two always add up to the margin), and the best speech with and
+// without the winning team. While scoring is still going on, totals count
+// what is scored so far and everything built on them is marked "*"
+// (vorläufig, as in the mobile Endergebnis); the panel column uses the same
+// averages as the Ballot's Ø (summary.teamRows).
+function dashEinzelTable(summary) {
+  var chairFirst = chairFirstIds(summary.ids);
+  var active = activeSpeakerIndices();
+
+  function fmt(v, dec) {
+    return dec ? v.toFixed(1).replace(".", ",") : String(v);
   }
-  col.appendChild(dashFinalPanel(summary));
-  return col;
+  function signed(v, dec) {
+    var a = fmt(Math.abs(v), dec);
+    return v > 0 ? "+" + a : v < 0 ? "−" + a : "±" + a;
+  }
+  // Compact wording for this table: "Reg"/"Opp" for the teams, "FFR" for
+  // free speeches ("Eröffnungsrede Regierung" -> "Eröffnungsrede Reg").
+  var TEAM_ABBR = ["Reg", "Opp"];
+  function abbr(text) {
+    return text
+      .replace("Regierung", "Reg")
+      .replace("Opposition", "Opp")
+      .replace("Fraktionsfreie Rede", "FFR");
+  }
+  // The highest score among pool (speech indices), from scoreOf(s), or null.
+  function bestOf(pool, scoreOf) {
+    var best = null,
+      who = [];
+    pool.forEach(function (s) {
+      var v = scoreOf(s);
+      if (v === null) return;
+      if (best === null || v > best) {
+        best = v;
+        who = [s];
+      } else if (v === best) who.push(s);
+    });
+    return best === null ? null : { pts: best, who: who };
+  }
+  // r: {grand:[g0,g1], partial:[p0,p1], spk:[sp0,sp1], tp:[t0,t1],
+  //     scoreOf(s), dec}. A result exists once both teams have a total
+  // (v.complete); it is provisional (v.prov, shown with "*") while either
+  // team still has something unscored.
+  function verdict(r) {
+    var v = { r: r, complete: r.grand[0] !== null && r.grand[1] !== null };
+    v.prov = v.complete && (r.partial[0] || r.partial[1]);
+    if (v.complete) {
+      var m = r.grand[0] - r.grand[1];
+      v.margin = m;
+      v.winner = m > 0 ? 0 : m < 0 ? 1 : null;
+    }
+    v.best = bestOf(active, r.scoreOf);
+    v.bestEx =
+      v.complete && v.winner !== null
+        ? bestOf(
+            active.filter(function (s) {
+              return teamOf(s) !== v.winner;
+            }),
+            r.scoreOf,
+          )
+        : null;
+    return v;
+  }
+
+  // A judge's team total counts what they have scored so far: finished
+  // speeches plus the team categories filled in. It is partial while a
+  // speech or a team category is still open (an offline judge only enters
+  // whole team totals, so only their speeches can be open), and "-" while
+  // nothing of that team is scored at all.
+  var cols = chairFirst.map(function (id) {
+    var grand = [],
+      partial = [],
+      spk = [],
+      tp = [];
+    [0, 1].forEach(function (t) {
+      var teamPts = summary.remoteTeamTotal(id, t);
+      var speakerSum = 0,
+        scored = 0,
+        speakers = speakersOfTeam(t);
+      speakers.forEach(function (s) {
+        var v = summary.remoteTotal(id, s);
+        if (v === null) return;
+        speakerSum += v;
+        scored++;
+      });
+      var catsDone = isOfflineId(id)
+        ? true
+        : TEAMCATS.every(function (c) {
+            return (remote[id] || {})[kk("t" + t, c.key)] !== undefined;
+          });
+      var anything = scored > 0 || teamPts > 0;
+      grand.push(anything ? teamPts + speakerSum : null);
+      partial.push(scored < speakers.length || !catsDone);
+      spk.push(speakerSum);
+      tp.push(teamPts);
+    });
+    return {
+      name: summary.nameOf(id),
+      v: verdict({
+        grand: grand,
+        partial: partial,
+        spk: spk,
+        tp: tp,
+        dec: false,
+        scoreOf: function (s) {
+          return summary.remoteTotal(id, s);
+        },
+      }),
+    };
+  });
+  var tr0 = summary.teamRows[0],
+    tr1 = summary.teamRows[1];
+  cols.push({
+    name: "Panel (Ø)",
+    panel: true,
+    v: verdict({
+      // The Ballot's Gesamt Ø (sum of the averages, summary.teamRows),
+      // .partial while one of the team's speeches has no score from anyone.
+      grand: [tr0.grand, tr1.grand],
+      partial: [tr0.partial, tr1.partial],
+      spk: [tr0.grand - tr0.teamAvg, tr1.grand - tr1.teamAvg],
+      tp: [tr0.teamAvg, tr1.teamAvg],
+      dec: true,
+      scoreOf: function (s) {
+        return summary.speakerRows[s].avg;
+      },
+    }),
+  });
+
+  var table = el("table", "ballottable dasheinzel");
+  var head = el("tr");
+  head.appendChild(el("th", "l"));
+  cols.forEach(function (c) {
+    head.appendChild(el("th", c.panel ? "dashpanelcol" : null, c.name));
+  });
+  table.appendChild(head);
+
+  function teamSpan(t, text) {
+    return el("span", "dashteamname " + teamClass(t), text);
+  }
+  // label: string or node; cellFor(col) -> string or node. sep draws the
+  // heavier rule that starts a new group of lines.
+  function line(label, cellFor, sep) {
+    var tr = el("tr", sep ? "dasheinzelsep" : null);
+    var lbl = el("td", "l");
+    lbl.appendChild(typeof label === "string" ? document.createTextNode(label) : label);
+    tr.appendChild(lbl);
+    cols.forEach(function (c) {
+      var td = el("td", c.panel ? "dashpanelcol" : null);
+      var content = cellFor(c);
+      td.appendChild(
+        typeof content === "string" ? document.createTextNode(content) : content,
+      );
+      tr.appendChild(td);
+    });
+    table.appendChild(tr);
+  }
+  // "Σ Reg": the prefix, then the team name in its colour.
+  function labelWithTeam(t, prefix) {
+    var wrap = el("span");
+    wrap.appendChild(document.createTextNode(prefix));
+    wrap.appendChild(teamSpan(t, TEAM_ABBR[t]));
+    return wrap;
+  }
+  // Best speech as its abbreviated position + points, in the team's colour
+  // ("2. FFR · 70"); the speaker's name, if entered, is in the tooltip.
+  // Ties list everyone with the top score, one per line.
+  function speechCell(b, dec) {
+    if (!b) return "-";
+    var wrap = el("span", "dashbestspeech");
+    b.who.forEach(function (s) {
+      var entry = el("span", "dashbestentry");
+      entry.appendChild(teamSpan(teamOf(s), abbr(SPEAKERS[s].label)));
+      entry.appendChild(document.createTextNode(" · " + fmt(b.pts, dec)));
+      var name = getName(s);
+      entry.title = name ? name + ", " + SPEAKERS[s].label : SPEAKERS[s].label;
+      wrap.appendChild(entry);
+    });
+    return wrap;
+  }
+
+  [0, 1].forEach(function (t) {
+    line(labelWithTeam(t, "Σ "), function (c) {
+      var g = c.v.r.grand[t];
+      if (g === null) return "-";
+      return el(
+        "span",
+        "tot",
+        fmt(g, c.v.r.dec) + (c.v.r.partial[t] ? " *" : ""),
+      );
+    });
+  });
+  line(
+    "Sieg",
+    function (c) {
+      if (!c.v.complete) return "-";
+      var star = c.v.prov ? " *" : "";
+      if (c.v.winner === null)
+        return el("span", "dashtie", "Gleichstand" + star);
+      return el(
+        "span",
+        "dashwinner " + teamClass(c.v.winner),
+        TEAM_ABBR[c.v.winner] + star,
+      );
+    },
+    true,
+  );
+  line("Abstand", function (c) {
+    return c.v.complete
+      ? el(
+          "span",
+          "tot",
+          fmt(Math.abs(c.v.margin), c.v.r.dec) + (c.v.prov ? " *" : ""),
+        )
+      : "-";
+  });
+  // Shown from the winner's side - Regierung's on a tie.
+  function part(c, key) {
+    if (!c.v.complete) return "-";
+    var k = c.v.winner === 1 ? -1 : 1;
+    var d = (c.v.r[key][0] - c.v.r[key][1]) * k;
+    return el(
+      "span",
+      d < 0 ? "dashneg" : null,
+      signed(d, c.v.r.dec) + (c.v.prov ? " *" : ""),
+    );
+  }
+  line("diff. Reden", function (c) {
+    return part(c, "spk");
+  });
+  line("diff. Teampunkte", function (c) {
+    return part(c, "tp");
+  });
+  line(
+    "Beste Rede",
+    function (c) {
+      return speechCell(c.v.best, c.v.r.dec);
+    },
+    true,
+  );
+  line("Beste Rede ohne Sieger", function (c) {
+    return speechCell(c.v.bestEx, c.v.r.dec);
+  });
+  var wrap = el("div");
+  wrap.appendChild(table);
+  var anyProv = cols.some(function (c) {
+    return c.v.r.partial[0] || c.v.r.partial[1];
+  });
+  if (anyProv)
+    wrap.appendChild(
+      el(
+        "p",
+        "note",
+        "* vorläufig - bei diesem Team sind noch nicht alle Reden und Teampunkte bewertet.",
+      ),
+    );
+  return wrap;
 }
 
 function renderDashboard() {
   var root = document.getElementById("v-dashboard");
   if (!root) return;
+  // "none" = every Wertung row closed. Anything else that no longer exists
+  // (a hidden free speaker) falls back to the first speech.
   var validSpeaker =
     dashboardSelected.kind === "speaker" &&
     SPEAKERS[dashboardSelected.s] &&
@@ -4672,16 +5001,51 @@ function renderDashboard() {
     dashboardSelected.kind === "team" &&
     TEAMS[dashboardSelected.t] !== undefined &&
     dashboardSelected.grp;
-  if (!validSpeaker && !validTeam)
+  if (dashboardSelected.kind !== "none" && !validSpeaker && !validTeam)
     dashboardSelected = { kind: "speaker", s: 0 };
   var summary = computeChairSummary();
+  var spreadSummary = dashIncludeTrainees ? computeChairSummary(true) : summary;
+  var scrollTop = root.firstChild ? root.firstChild.scrollTop : 0;
   root.innerHTML = "";
-  var body = el("div", "dashbody");
-  body.appendChild(dashColA(summary));
-  body.appendChild(dashColC(summary));
-  // Right column stays chair-only even when the dashboard itself is opened to wings.
-  if (ME.is_chair) body.appendChild(dashColB(summary));
-  root.appendChild(body);
+  // Per-judge outcomes ("Einzelergebnisse"), the round as one table
+  // ("Wertung") and the official Ballot.
+  var sheet = dashTabbedSheet(
+    "dashboard",
+    [
+      {
+        key: "einzel",
+        label: "Einzelergebnisse",
+        build: function () {
+          var scrollHost = el("div");
+          scrollHost.style.overflowX = "auto";
+          scrollHost.appendChild(dashEinzelTable(summary));
+          return scrollHost;
+        },
+      },
+      {
+        key: "wertung",
+        label: "Wertung",
+        build: function () {
+          return dashWertungTable(summary, spreadSummary);
+        },
+      },
+      {
+        key: "ballot",
+        label: "Ballot",
+        build: function () {
+          var scrollHost = el("div");
+          scrollHost.style.overflowX = "auto";
+          scrollHost.appendChild(fullBallotTable(summary));
+          return scrollHost;
+        },
+      },
+    ],
+    dashDashboardAside,
+    renderDashboard,
+  );
+  root.appendChild(sheet);
+  // Opening/closing a row re-renders the whole sheet - keep the scroll spot.
+  sheet.scrollTop = scrollTop;
 }
 
 // Schnelleingabe: editable grid over the judge's own scores for fast
@@ -5059,10 +5423,17 @@ function renderSchnell() {
   // just risks a moment's staleness, cleared up by the next render().
   if (dashEditGuard(root)) return;
   root.innerHTML = "";
-  var wrap = el("div", "dashcol");
-  wrap.appendChild(schnellPanel("Reden", schnellSpeakerTable()));
-  wrap.appendChild(schnellPanel("Teampunkte", schnellTeamTable()));
-  root.appendChild(wrap);
+  root.appendChild(
+    dashTabbedSheet(
+      "schnell",
+      [
+        { key: "reden", label: "Reden", build: schnellSpeakerTable },
+        { key: "team", label: "Teampunkte", build: schnellTeamTable },
+      ],
+      null,
+      renderSchnell,
+    ),
+  );
 }
 
 function commitOfflineScoreField(inp, max, offlineId, target, refresh) {
@@ -5239,11 +5610,24 @@ function renderOfflineJudges() {
   if (!root) return;
   if (dashEditGuard(root)) return;
   root.innerHTML = "";
-  var wrap = el("div", "dashcol");
-  var container = el("div", "offlinejurywrap");
-  buildOfflineJuryTable(container);
-  wrap.appendChild(schnellPanel("Offline-Jurierende", container));
-  root.appendChild(wrap);
+  root.appendChild(
+    dashTabbedSheet(
+      "offline",
+      [
+        {
+          key: "offline",
+          label: "Offline-Jurierende",
+          build: function () {
+            var container = el("div", "offlinejurywrap");
+            buildOfflineJuryTable(container);
+            return container;
+          },
+        },
+      ],
+      null,
+      renderOfflineJudges,
+    ),
+  );
 }
 
 // Adjudikationsblatt: one speech at a time, 4 columns (Sac+Urt merged).
@@ -5742,7 +6126,7 @@ function buildPrintSheet(hideOwn) {
       });
     var totVals = summary.ids
       .filter(function (id) {
-        return summary.includedFor(id, "t" + t);
+        return summary.includedFor(id, "t" + t) && summary.teamEntered(id, t);
       })
       .map(function (id) {
         return summary.remoteTeamTotal(id, t);
@@ -6288,10 +6672,11 @@ function otLabeledField(labelText, id, placeholder) {
 // registration step for it (with the debate id it already knew, so the
 // chair doesn't have to re-paste the ballot URL too) - shared by every
 // call site that can discover a stale/expired token.
-function otHandleStaleToken(tournamentId, debateId) {
+function otHandleStaleToken(tournamentId, debateId, apiBase) {
   otForgetToken(tournamentId);
   otPendingTournamentId = tournamentId;
   otPendingDebateId = debateId;
+  otPendingApiBase = apiBase;
   otState = {
     debateId: "",
     tournamentId: "",
@@ -6310,6 +6695,11 @@ function otDoConnectFromBallotUrl(root) {
   var url = document.getElementById("otBallotUrl").value.trim();
   var debateId = otExtractDebateId(url);
   var tournamentId = otExtractTournamentId(url);
+  var apiBase = otApiBaseFor(url);
+  if (debateId && tournamentId && !apiBase) {
+    otStatusMsg(root, otUnknownServerMsg(url), true);
+    return;
+  }
   if (!debateId || !tournamentId) {
     otStatusMsg(
       root,
@@ -6322,12 +6712,14 @@ function otDoConnectFromBallotUrl(root) {
   if (!saved) {
     otPendingTournamentId = tournamentId;
     otPendingDebateId = debateId;
+    otPendingApiBase = apiBase;
     renderOpenTab(root.id);
     return;
   }
   otStatusMsg(root, "Verbinde…", false);
-  otGetDebate(saved, debateId)
+  otGetDebate(apiBase, saved, debateId)
     .then(function (ballot) {
+      otState.apiBase = apiBase;
       otState.debateId = debateId;
       otState.tournamentId = tournamentId;
       otState.ballot = ballot;
@@ -6338,7 +6730,7 @@ function otDoConnectFromBallotUrl(root) {
     })
     .catch(function (err) {
       if (otIsAuthError(err)) {
-        otHandleStaleToken(tournamentId, debateId);
+        otHandleStaleToken(tournamentId, debateId, apiBase);
         renderOpenTab(root.id);
         otStatusMsg(
           root,
@@ -6360,13 +6752,30 @@ function otDoRegisterAndConnect(root) {
   }
   var tournamentId = otPendingTournamentId;
   var debateId = otPendingDebateId;
+  var apiBase = otPendingApiBase || OPENTAB_DEFAULT_API;
+  // The registration link has to come from the same OpenTab server as the
+  // ballot link - a secret only exists on the server that issued it.
+  var regBase = otApiBaseFor(regUrl);
+  if (!regBase) {
+    otStatusMsg(root, otUnknownServerMsg(regUrl), true);
+    return;
+  }
+  if (regBase !== apiBase) {
+    otStatusMsg(
+      root,
+      "Die Registrierungs-URL gehört zu einem anderen OpenTab-Server als die Ballot-URL.",
+      true,
+    );
+    return;
+  }
   otStatusMsg(root, "Verbinde…", false);
-  otRegister(secret)
+  otRegister(apiBase, secret)
     .then(function (reg) {
       otSaveToken(tournamentId, reg.token);
-      return otGetDebate(reg.token, debateId);
+      return otGetDebate(apiBase, reg.token, debateId);
     })
     .then(function (ballot) {
+      otState.apiBase = apiBase;
       otState.debateId = debateId;
       otState.tournamentId = tournamentId;
       otState.ballot = ballot;
@@ -6374,6 +6783,7 @@ function otDoRegisterAndConnect(root) {
       otState.teamSpeakerUuid = {};
       otPendingTournamentId = null;
       otPendingDebateId = null;
+      otPendingApiBase = null;
       saveOtState();
       renderOpenTab(root.id);
     })
@@ -6385,7 +6795,11 @@ function otDoRefresh(root) {
   if (!otState.ballot) return;
   var saved = otLoadTokens()[otState.tournamentId];
   if (!saved) {
-    otHandleStaleToken(otState.tournamentId, otState.debateId);
+    otHandleStaleToken(
+          otState.tournamentId,
+          otState.debateId,
+          otState.apiBase,
+        );
     renderOpenTab(root.id);
     otStatusMsg(
       root,
@@ -6395,7 +6809,7 @@ function otDoRefresh(root) {
     return;
   }
   otStatusMsg(root, "Aktualisiere…", false);
-  otGetDebate(saved, otState.debateId)
+  otGetDebate(otState.apiBase, saved, otState.debateId)
     .then(function (ballot) {
       otState.ballot = ballot;
       saveOtState();
@@ -6403,7 +6817,11 @@ function otDoRefresh(root) {
     })
     .catch(function (err) {
       if (otIsAuthError(err)) {
-        otHandleStaleToken(otState.tournamentId, otState.debateId);
+        otHandleStaleToken(
+          otState.tournamentId,
+          otState.debateId,
+          otState.apiBase,
+        );
         renderOpenTab(root.id);
         otStatusMsg(
           root,
@@ -6440,7 +6858,11 @@ function otDoSubmit(root) {
   }
   var saved = otLoadTokens()[otState.tournamentId];
   if (!saved) {
-    otHandleStaleToken(otState.tournamentId, otState.debateId);
+    otHandleStaleToken(
+          otState.tournamentId,
+          otState.debateId,
+          otState.apiBase,
+        );
     renderOpenTab(root.id);
     otStatusMsg(
       root,
@@ -6452,7 +6874,7 @@ function otDoSubmit(root) {
   var slotMap = otBuildSlotMap(otState.ballot);
   var payload = otBuildSubmission(otState.ballot, slotMap);
   otStatusMsg(root, "Sende Ballot…", false);
-  otSubmit(saved, otState.debateId, payload)
+  otSubmit(otState.apiBase, saved, otState.debateId, payload)
     .then(function (res) {
       otStatusMsg(
         root,
@@ -6466,7 +6888,11 @@ function otDoSubmit(root) {
     })
     .catch(function (err) {
       if (otIsAuthError(err)) {
-        otHandleStaleToken(otState.tournamentId, otState.debateId);
+        otHandleStaleToken(
+          otState.tournamentId,
+          otState.debateId,
+          otState.apiBase,
+        );
         renderOpenTab(root.id);
         otStatusMsg(
           root,
@@ -6487,11 +6913,46 @@ function renderOpenTab(rootId) {
   if (dashEditGuard(root)) return;
   root.innerHTML = "";
 
-  var wrap = el("div", "dashcol");
+  // Desktop (#v-opentab) shows the sections as folder tabs, with the
+  // connection line in the strip; mobile (#v-opentabm) keeps them as
+  // stacked cards. sections: [{key, label, build}] as for dashTabbedSheet.
+  var mobile = root.id === "v-opentabm";
+  function finish(sections, aside, asideLabel) {
+    if (mobile) {
+      var wrap = el("div", "dashcol");
+      if (aside) wrap.appendChild(schnellPanel(asideLabel, aside));
+      sections.forEach(function (sec) {
+        wrap.appendChild(schnellPanel(sec.label, sec.build()));
+      });
+      root.appendChild(wrap);
+      return;
+    }
+    root.appendChild(
+      dashTabbedSheet(
+        "opentab",
+        sections,
+        aside
+          ? function () {
+              return aside;
+            }
+          : null,
+        function () {
+          renderOpenTab(root.id);
+        },
+      ),
+    );
+  }
 
   if (!ME.is_chair) {
-    wrap.appendChild(el("p", null, "Nur der Chair kann OpenTab verbinden."));
-    root.appendChild(wrap);
+    finish([
+      {
+        key: "info",
+        label: "OpenTab",
+        build: function () {
+          return el("p", null, "Nur der Chair kann OpenTab verbinden.");
+        },
+      },
+    ]);
     return;
   }
 
@@ -6532,6 +6993,7 @@ function renderOpenTab(rootId) {
       cancelBtn.addEventListener("click", function () {
         otPendingTournamentId = null;
         otPendingDebateId = null;
+        otPendingApiBase = null;
         renderOpenTab(root.id);
       });
       form.appendChild(cancelBtn);
@@ -6552,15 +7014,17 @@ function renderOpenTab(rootId) {
       form.appendChild(connectBtn);
     }
 
-    wrap.appendChild(
-      schnellPanel(
-        otPendingTournamentId
+    finish([
+      {
+        key: "connect",
+        label: otPendingTournamentId
           ? "Registrierung erforderlich"
           : "OpenTab verbinden",
-        form,
-      ),
-    );
-    root.appendChild(wrap);
+        build: function () {
+          return form;
+        },
+      },
+    ]);
     return;
   }
 
@@ -6587,11 +7051,15 @@ function renderOpenTab(rootId) {
   });
   connBody.appendChild(refreshBtn);
   connBody.appendChild(disconnectBtn);
-  wrap.appendChild(schnellPanel("Verbunden mit OpenTab", connBody));
 
   // Same ordering/formatting as the Offline-Jurierende table
   var slotMap = otBuildSlotMap(ballot);
   var speechWrap = el("div");
+  // On desktop each tab carries its own status line (otStatusMsg writes into
+  // the first .otstatus in root), so "Ballot neu laden"/"Trennen" in the tab
+  // strip report on whichever tab is open. Mobile shows every card at once
+  // and keeps the single one next to "Ballot absenden".
+  if (!mobile) speechWrap.appendChild(el("div", "otstatus"));
   var speechTable = el("table", "schnelltable otspeechtable");
   var speechTableHead = el("tr");
   speechTableHead.appendChild(el("th", "l", "Rede"));
@@ -6669,7 +7137,6 @@ function renderOpenTab(rootId) {
   var applyFreeWrap = el("div", "otactions");
   applyFreeWrap.appendChild(applyFreeBtn);
   speechWrap.appendChild(applyFreeWrap);
-  wrap.appendChild(schnellPanel("Redner:innen", speechWrap));
 
   // Map judges to ballot names
   var judgePanel = el("div");
@@ -6724,9 +7191,27 @@ function renderOpenTab(rootId) {
     otDoSubmit(root);
   });
   judgePanel.appendChild(submitBtn);
-  wrap.appendChild(schnellPanel("Ballot absenden", judgePanel));
 
-  root.appendChild(wrap);
+  finish(
+    [
+      {
+        key: "redner",
+        label: "Redner:innen",
+        build: function () {
+          return speechWrap;
+        },
+      },
+      {
+        key: "ballot",
+        label: "Ballot absenden",
+        build: function () {
+          return judgePanel;
+        },
+      },
+    ],
+    connBody,
+    "Verbunden mit OpenTab",
+  );
 }
 
 function render() {
