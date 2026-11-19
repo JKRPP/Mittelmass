@@ -957,7 +957,10 @@ async def set_timer(code: str, body: TimerAction, token: str = Query(...)):
         con.close()
 
 
-OPENTAB_ALLOWED_HOST = "api.debateresult.com"
+# API hosts of the OpenTab deployments the app supports - the only hosts
+# this proxy relays to (keeps it from being an open relay). Keep in step with
+# OPENTAB_SERVERS in static/app.js.
+OPENTAB_ALLOWED_HOSTS = {"api.debateresult.com", "api.opentab2.limperg.de"}
 
 
 class OpenTabProxyRequest(BaseModel):
@@ -979,8 +982,11 @@ async def opentab_proxy(code: str, req: OpenTabProxyRequest, token: str = Query(
     finally:
         con.close()
     parsed = urlsplit(req.url)
-    if parsed.scheme != "https" or parsed.hostname != OPENTAB_ALLOWED_HOST:
-        raise HTTPException(400, "url must be https://" + OPENTAB_ALLOWED_HOST + "/...")
+    if parsed.scheme != "https" or parsed.hostname not in OPENTAB_ALLOWED_HOSTS:
+        raise HTTPException(
+            400,
+            "url must be https:// on one of: " + ", ".join(sorted(OPENTAB_ALLOWED_HOSTS)),
+        )
     headers = {}
     if req.bearer:
         headers["Authorization"] = "Bearer " + req.bearer
