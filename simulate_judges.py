@@ -24,11 +24,15 @@ import urllib.error
 import urllib.request
 
 # Mirrors the rubric constants at the top of static/app.js (CRITERIA,
-# TEAMCATS, SPEAKERS/freeSpeakerCount - NUM_SPEAKERS is the default 3-FFR
-# round's 9 speeches). A rubric change there has to be repeated here, or this
-# script starts posting keys the app never reads.
+# TEAMCATS, SPEAKERS/freeSpeakerCount). A rubric change there has to be
+# repeated here, or this script starts posting keys the app never reads.
 CRITERIA = ["spr", "auf", "kon", "sac", "urt"]
-NUM_SPEAKERS = 9
+# SPEAKERS is a fixed 16-slot array: 4 opening speeches (slots 0-3), 10
+# reserved free-speaker slots (4-13) of which a room shows the first
+# `free_speakers`, and the 2 Schlussreden (14-15). Speech targets are
+# "s<slot>", so a round's speeches are NOT simply s0..s8.
+FIRST_FREE_SLOT = 4
+CLOSING_SLOTS = [14, 15]
 TEAMCATS = [
     ("eroef", 25),
     ("ergae", 25),
@@ -61,12 +65,21 @@ def client_id():
     )
 
 
-def make_patches(incomplete_frac):
+def speech_slots(free_speakers):
+    """The SPEAKERS slots a room with `free_speakers` free speeches shows."""
+    return (
+        list(range(FIRST_FREE_SLOT))
+        + list(range(FIRST_FREE_SLOT, FIRST_FREE_SLOT + free_speakers))
+        + CLOSING_SLOTS
+    )
+
+
+def make_patches(incomplete_frac, slots):
     """All (target, criterion) fields for one judge, each with a random valid
     score, minus a random `incomplete_frac` fraction left unscored (simulates
     a round still in progress)."""
     fields = []
-    for s in range(NUM_SPEAKERS):
+    for s in slots:
         for crit in CRITERIA:
             fields.append((f"s{s}", crit, random.randint(0, 20)))
     for t in range(NUM_TEAMS):
@@ -153,9 +166,21 @@ def main():
         judges.append(body)
 
     print(f"room {code}: {len(judges)} judges joined")
+    if not judges:
+        sys.exit("no judge could join - nothing to score")
+
+    # Score exactly the speeches this room shows: its free-speaker count can
+    # differ from the default 3 (the chair can change it in the app).
+    status, snap = http(
+        "GET", f"{base}/api/rooms/{code}/snapshot?token={judges[0]['token']}"
+    )
+    if status != 200:
+        sys.exit(f"could not read room {code}: {status} {snap}")
+    slots = speech_slots(snap["free_speakers"])
+    print(f"room has {snap['free_speakers']} free speeches -> scoring slots {slots}")
 
     for j in judges:
-        patches = make_patches(args.incomplete)
+        patches = make_patches(args.incomplete, slots)
         for i in range(0, len(patches), args.batch_size):
             batch = patches[i : i + args.batch_size]
             status, res = http(
