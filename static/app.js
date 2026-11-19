@@ -1554,6 +1554,7 @@ function paintTimer() {
   // digits and throw away an in-progress tap on → Zwischenrede.
   if (!timerWidgetParts || timerWidgetParts.host !== host) {
     host.textContent = "";
+    host.appendChild(tabIcon("timer"));
     var clock = el("span", "timerclock");
     var label = el("span", "timerlabel");
     var next = el("button", "timernext", "→ Zwischenrede");
@@ -1572,7 +1573,11 @@ function paintTimer() {
   }
   var p = timerWidgetParts;
 
-  if (!timer.type) {
+  // Zurücksetzen keeps timer.type (so the modal can restart that speech)
+  // but clears the clock - nothing is being timed, so the widget collapses
+  // back to its idle "Timer" tab just like before the first start. A
+  // reset clock nudged with +5s (elapsed > 0) stays expanded to show it.
+  if (!timer.type || (timer.status === "idle" && !timer.elapsedMs)) {
     setCls(host, "timerwidget idle");
     setText(p.clock, "Timer");
     p.label.classList.add("hide");
@@ -3667,6 +3672,15 @@ function renderDashChrome() {
       b.setAttribute("aria-pressed", String(b.dataset.dv === ev));
     },
   );
+  // Blatt, Teampunkte and Allgemeine Notizen open with a solid team band, so
+  // the active folder tab takes that band's colour to stay joined to it (see
+  // .dashnav .team-* in style.css). Teampunkte's first band, and the Notizen
+  // column the tab sits above (the left one), are always Regierung.
+  var nav = document.getElementById("dashNav");
+  nav.classList.remove("team-gov", "team-opp", "team-free");
+  if (ev === "blatt") nav.classList.add(teamClass(SPEAKERS[cs].team));
+  else if (ev === "teampoints" || ev === "notes")
+    nav.classList.add(teamClass(0));
 
   if (!ME.is_chair) return;
 
@@ -3807,34 +3821,46 @@ var DASHNAV_ICON_FROM = {
   teampoints: "team",
   schnell: "matrix",
   dashboard: "chair",
+  notes: "notes",
+  offline: "offline",
+  opentab: "opentab",
 };
-function initDashNavIcons() {
+function placeholderTabIcon() {
   var NS = "http://www.w3.org/2000/svg";
+  var icon = document.createElementNS(NS, "svg");
+  icon.setAttribute("class", "tabicon");
+  icon.setAttribute("viewBox", "0 0 20 20");
+  icon.setAttribute("aria-hidden", "true");
+  var r = document.createElementNS(NS, "rect");
+  r.setAttribute("class", "tabiconph");
+  r.setAttribute("x", "3.5");
+  r.setAttribute("y", "3.5");
+  r.setAttribute("width", "13");
+  r.setAttribute("height", "13");
+  r.setAttribute("rx", "1.5");
+  icon.appendChild(r);
+  return icon;
+}
+function tabIcon(name) {
+  var src =
+    name &&
+    document.querySelector(
+      '#tabs button[data-t="' +
+        name +
+        '"] .tabicon, #iconTemplates [data-icon="' +
+        name +
+        '"]',
+    );
+  if (!src) return placeholderTabIcon();
+  var icon = src.cloneNode(true);
+  icon.removeAttribute("data-icon");
+  return icon;
+}
+function initDashNavIcons() {
   [].forEach.call(
     document.querySelectorAll("#dashNav button[data-dv]"),
     function (b) {
-      var t = DASHNAV_ICON_FROM[b.dataset.dv];
-      var src =
-        t &&
-        document.querySelector('#tabs button[data-t="' + t + '"] .tabicon');
-      var icon;
-      if (src) {
-        icon = src.cloneNode(true);
-      } else {
-        icon = document.createElementNS(NS, "svg");
-        icon.setAttribute("class", "tabicon");
-        icon.setAttribute("viewBox", "0 0 20 20");
-        icon.setAttribute("aria-hidden", "true");
-        var r = document.createElementNS(NS, "rect");
-        r.setAttribute("class", "tabiconph");
-        r.setAttribute("x", "3.5");
-        r.setAttribute("y", "3.5");
-        r.setAttribute("width", "13");
-        r.setAttribute("height", "13");
-        r.setAttribute("rx", "1.5");
-        icon.appendChild(r);
-      }
-      b.insertBefore(icon, b.firstChild);
+      b.insertBefore(tabIcon(DASHNAV_ICON_FROM[b.dataset.dv]), b.firstChild);
     },
   );
 }

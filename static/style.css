@@ -292,6 +292,55 @@ body {
 .timerwidget.paused {
   opacity: 0.6;
 }
+.timerwidget .tabicon {
+  display: none;
+}
+#app.dashboard-mode .timerwidget {
+  align-self: stretch;
+  max-width: none;
+  gap: 7px;
+  padding: 5px 12px;
+  border: 1px solid var(--line-2);
+  border-bottom: 0;
+  border-radius: 3px 3px 0 0;
+  background: color-mix(in srgb, var(--ink) 10%, var(--paper));
+  color: var(--ink-2);
+  font-size: 11px;
+}
+#app.dashboard-mode .timerwidget:hover {
+  color: var(--ink);
+}
+#app.dashboard-mode .timerwidget .tabicon {
+  display: block;
+  flex: 0 0 auto;
+}
+#app.dashboard-mode .timerwidget.idle {
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+#app.dashboard-mode .timerwidget.idle .timerclock {
+  font-size: 11px;
+  font-weight: 400;
+}
+#app.dashboard-mode .timerwidget:not(.idle) .timerclock {
+  font-size: 15px;
+  font-weight: 600;
+}
+#app.dashboard-mode .timerwidget.live {
+  border-color: var(--ok-line);
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+#app.dashboard-mode .timerwidget.warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+#app.dashboard-mode .timerwidget.danger {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
 .timerclock {
   font-size: 13px;
   font-weight: 500;
@@ -486,24 +535,65 @@ body {
   margin-bottom: 10px;
   border-radius: var(--radius);
 }
+#app:not(.dashboard-mode) #v-sheet .card .hd,
+#app:not(.dashboard-mode) #v-team .card .hd {
+  margin-left: -12px;
+  margin-right: -12px;
+  padding-left: 16px;
+  padding-right: 16px;
+  border-radius: 0;
+}
+#app:not(.dashboard-mode) .crit {
+  margin-left: -12px;
+  margin-right: -12px;
+  padding-left: 16px;
+  padding-right: 16px;
+  border-radius: 0;
+  border-left-width: 0;
+  border-right-width: 0;
+}
+#app:not(.dashboard-mode) .sum,
+#app:not(.dashboard-mode) .exclrow {
+  margin-left: -12px;
+  margin-right: -12px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+#app:not(.dashboard-mode) .crit:focus-visible {
+  outline-offset: -2px;
+}
 #v-sheet .card .hd .navbtn,
-#v-team .card .hd .navbtn {
+#v-team .card .hd .navbtn,
+.blatthead .navbtn {
   color: inherit;
   border-color: currentColor;
   border-color: color-mix(in srgb, currentColor 45%, transparent);
 }
 #v-sheet .card.team-gov,
-#v-team .card.team-gov {
+#v-team .card.team-gov,
+.teampointssec.team-gov,
+.blatthead.team-gov,
+.notescol.team-gov,
+.roomtable.team-gov,
+.dashnav.team-gov {
   --team-accent: var(--team-gov);
   --team-on: #ffffff;
 }
 #v-sheet .card.team-opp,
-#v-team .card.team-opp {
+#v-team .card.team-opp,
+.teampointssec.team-opp,
+.blatthead.team-opp,
+.notescol.team-opp,
+.roomtable.team-opp,
+.dashnav.team-opp {
   --team-accent: var(--team-opp);
   --team-on: #ffffff;
 }
 #v-sheet .card.team-free,
-#v-team .card.team-free {
+#v-team .card.team-free,
+.blatthead.team-free,
+.roomtable.team-free,
+.dashnav.team-free {
   --team-accent: var(--team-free);
   --team-on: #ffffff;
 }
@@ -1301,12 +1391,10 @@ body {
 .dashnav button:hover {
   color: var(--ink);
 }
-/* 1px lower than its siblings, onto the bar's bottom rule, so the page
-   background runs through into the view. */
 .dashnav button[aria-pressed="true"] {
-  background: var(--paper);
-  color: var(--ink);
-  border-color: var(--line);
+  background: var(--team-accent, var(--paper));
+  color: var(--team-on, var(--ink));
+  border-color: var(--team-accent, var(--line));
   font-weight: 600;
   margin-bottom: -1px;
   padding-bottom: 6px;
@@ -1812,17 +1900,9 @@ tr.deducted td.l {
   align-items: center;
   gap: 14px;
   padding: 16px 28px 12px;
-  border-bottom: 3px solid var(--line-2);
-  background: var(--card);
-}
-.blatthead.team-gov {
-  border-bottom-color: var(--team-gov);
-}
-.blatthead.team-opp {
-  border-bottom-color: var(--team-opp);
-}
-.blatthead.team-free {
-  border-bottom-color: var(--team-free);
+  /* Solid team band, same as the mobile card headers and Teampunkte. */
+  background: var(--team-accent, var(--card));
+  color: var(--team-on, var(--ink));
 }
 .blattheadmid {
   flex: 1;
@@ -1837,15 +1917,6 @@ tr.deducted td.l {
   margin-left: 14px;
   font-size: 11px;
   color: var(--ink-3);
-}
-.blatthead.team-gov .blatttitle {
-  color: var(--team-gov);
-}
-.blatthead.team-opp .blatttitle {
-  color: var(--team-opp);
-}
-.blatthead.team-free .blatttitle {
-  color: var(--team-free);
 }
 .blattstat {
   display: flex;
@@ -2043,18 +2114,30 @@ body.blattresizing .blattcol {
   align-items: baseline;
   justify-content: space-between;
   gap: 14px;
-  padding: 6px 24px 5px;
-  border-bottom: 1px solid var(--line-2);
-}
-.teampointssec.team-gov .teampointssechead {
-  border-bottom-color: var(--team-gov);
-}
-.teampointssec.team-opp .teampointssechead {
-  border-bottom-color: var(--team-opp);
+  padding: 10px 24px;
+  background: var(--team-accent, transparent);
+  color: var(--team-on, var(--ink));
 }
 .teampointssecname {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.teampointssechead .teampointstotlbl,
+.teampointssechead .exclbtn,
+.blatthead .sub,
+.blatthead .blattswaphint,
+.blatthead .navhint,
+.blatthead .blatttotlbl,
+.blatthead .dedbadge,
+.blatthead .exclbtn {
+  color: inherit;
+  opacity: 0.85;
+}
+.teampointssechead .exclbtn.on,
+.blatthead .exclbtn.on {
+  opacity: 1;
+  font-weight: 600;
 }
 .teampointssecright {
   display: flex;
@@ -2073,12 +2156,6 @@ body.blattresizing .blattcol {
 .teampointstotval {
   font-size: 16px;
   font-weight: 500;
-}
-.teampointssec.team-gov .teampointssecname {
-  color: var(--team-gov);
-}
-.teampointssec.team-opp .teampointssecname {
-  color: var(--team-opp);
 }
 .teampointsbody {
   flex: 1;
@@ -2124,20 +2201,16 @@ body.blattresizing .blattcol {
 .notescol:last-child {
   border-right: 0;
 }
+/* Solid team band, same as the Teampunkte section heads and the Blatt
+   header - colours from the shared --team-accent/--team-on. */
 .notescolhead {
   flex: 0 0 auto;
   padding: 10px 24px;
-  font-size: 14px;
-  font-weight: 500;
-  border-bottom: 3px solid var(--line-2);
-}
-.notescol.team-gov .notescolhead {
-  color: var(--team-gov);
-  border-bottom-color: var(--team-gov);
-}
-.notescol.team-opp .notescolhead {
-  color: var(--team-opp);
-  border-bottom-color: var(--team-opp);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  background: var(--team-accent, transparent);
+  color: var(--team-on, var(--ink));
 }
 .notestextarea {
   flex: 1;
@@ -2213,39 +2286,23 @@ body.blattresizing .blattcol {
   width: 240px;
   background: var(--card);
   border: 1px solid var(--line);
-  border-top: 3px solid var(--line-2);
   border-radius: 0px;
   padding: 12px;
 }
-.roomtable.team-gov {
-  border-top-color: var(--team-gov);
-}
-.roomtable.team-opp {
-  border-top-color: var(--team-opp);
-}
-.roomtable.team-free {
-  border-top-color: var(--team-free);
-}
-.roomtable.jury {
-  border-top-color: var(--line-2);
-}
+/* Table name as a solid band across the card's top edge - same team band
+   as Blatt/Teampunkte/Notizen (shared --team-accent/--team-on). The Jury
+   card has no team, so it falls back to the inactive folder-tab grey. */
 .roomtable .tname {
-  font-size: 13px;
-  font-weight: 500;
-  margin-bottom: 9px;
-}
-.roomtable.team-gov .tname {
-  color: var(--team-gov);
-}
-.roomtable.team-opp .tname {
-  color: var(--team-opp);
-}
-.roomtable.team-free .tname {
-  color: var(--team-free);
-}
-.roomtable.jury .tname {
-  color: var(--ink-3);
-  font-weight: 400;
+  margin: -12px -12px 10px;
+  padding: 8px 12px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  background: var(
+    --team-accent,
+    color-mix(in srgb, var(--ink) 10%, var(--paper))
+  );
+  color: var(--team-on, var(--ink));
 }
 .seat + .seat {
   margin-top: 8px;

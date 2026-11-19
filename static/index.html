@@ -223,8 +223,7 @@
                 tabindex="-1"
                 title="Notizen und Punkte für Einzelreden (digitaler Jurierbogen)"
               >
-                <span class="navlabel">Einzelreden</span
-                >
+                <span class="navlabel">Einzelreden</span>
               </button>
               <button
                 data-dv="teampoints"
@@ -232,8 +231,7 @@
                 tabindex="-1"
                 title="Notizen und Punkte für Teampunkte (digitaler Jurierbogen)"
               >
-                <span class="navlabel">Teampunkte</span
-                >
+                <span class="navlabel">Teampunkte</span>
               </button>
               <button
                 data-dv="notes"
@@ -241,8 +239,7 @@
                 tabindex="-1"
                 title="Allgemeine Notizen zu Regierung und Opposition"
               >
-                <span class="navlabel">Allgemeine Notizen</span
-                >
+                <span class="navlabel">Allgemeine Notizen</span>
               </button>
               <button
                 data-dv="schnell"
@@ -250,8 +247,7 @@
                 tabindex="-1"
                 title="Übersicht über deine Punkte und Eingaberaster"
               >
-                <span class="navlabel">Komplette Wertung</span
-                >
+                <span class="navlabel">Komplette Wertung</span>
               </button>
               <button
                 data-dv="dashboard"
@@ -259,8 +255,7 @@
                 tabindex="-1"
                 title="Übersicht über Spreads und Status von Jurierenden"
               >
-                <span class="navlabel">Dashboard</span
-                >
+                <span class="navlabel">Dashboard</span>
               </button>
               <button
                 data-dv="offline"
@@ -268,8 +263,7 @@
                 tabindex="-1"
                 title="Punktesummen für Jurierende verwalten, die die App nicht nutzen"
               >
-                <span class="navlabel">Offline-Jurierende</span
-                >
+                <span class="navlabel">Offline-Jurierende</span>
               </button>
               <button
                 data-dv="opentab"
@@ -277,8 +271,7 @@
                 tabindex="-1"
                 title="Namen aus OpenTab übernehmen und Ballot an OpenTab übermitteln"
               >
-                <span class="navlabel">OpenTab</span
-                >
+                <span class="navlabel">OpenTab</span>
               </button>
             </div>
             <span class="sp"></span>
@@ -484,9 +477,13 @@
           <nav class="tabs" id="tabs">
             <button data-t="namen" aria-pressed="true">
               <svg class="tabicon" viewBox="0 0 20 20" aria-hidden="true">
-                <path d="M2.4 3.6Q10.6 3.3 18.9 3.4Q18.8 7.2 18.4 10.75Q11.6 10.5 4.75 10.65" />
+                <path
+                  d="M2.4 3.6Q10.6 3.3 18.9 3.4Q18.8 7.2 18.4 10.75Q11.6 10.5 4.75 10.65"
+                />
                 <path d="M2.4 3.6Q4.3 7.4 4.75 10.65Q4.85 14 3.75 16.5" />
-                <path d="M5.6 7.6Q6.85 5.9 8.1 7.3T10.6 7.2T13.1 7.1T15.7 7.5" />
+                <path
+                  d="M5.6 7.6Q6.85 5.9 8.1 7.3T10.6 7.2T13.1 7.1T15.7 7.5"
+                />
               </svg>
               Namen
             </button>
@@ -508,9 +505,13 @@
                 <path
                   d="M10.1 4.1C11.4 3.6 12 5.2 12 6.4C12 7.9 11.1 8.9 10 8.9C8.9 8.9 8 7.9 8 6.4C8 5.1 8.6 3.6 9.6 3.8"
                 />
-                <path d="M9.95 8.95Q9.6 13 10.2 15.9M10.7 10.75L9.8 10.8Q8.2 10.5 6.6 9.3" />
+                <path
+                  d="M9.95 8.95Q9.6 13 10.2 15.9M10.7 10.75L9.8 10.8Q8.2 10.5 6.6 9.3"
+                />
                 <circle cx="15.3" cy="9.5" r="1.55" />
-                <path d="M15.05 11.1L14.8 16M13.6 13.1Q14.2 13.7 14.9 13.7L16 13.7" />
+                <path
+                  d="M15.05 11.1L14.8 16M13.6 13.1Q14.2 13.7 14.9 13.7L16 13.7"
+                />
                 <path class="heavy" d="M1.3 18.9V16.4L18.8 16.2V18.9" />
               </svg>
               Team
@@ -526,7 +527,9 @@
             <button data-t="chair" aria-pressed="false" id="tabChair">
               <svg class="tabicon" viewBox="0 0 20 20" aria-hidden="true">
                 <circle cx="4.75" cy="6.75" r="2.4" />
-                <path d="M5 9.15Q4.9 13 4.7 15.8Q4.1 17.8 3 19.1M4.7 15.8Q5.3 17.6 5.4 19.1" />
+                <path
+                  d="M5 9.15Q4.9 13 4.7 15.8Q4.1 17.8 3 19.1M4.7 15.8Q5.3 17.6 5.4 19.1"
+                />
                 <path d="M2.5 13.1Q6.5 12.6 8.9 10.3M8.3 11.7L11.5 8.1" />
                 <path d="M9.75 6.4L11.4 5L15 7.6L13.4 9.4Z" />
                 <path d="M11.7 19.1L11.75 13.8L18.6 13.8Q18.3 16 17.9 19.1" />
@@ -534,6 +537,75 @@
               <span id="tabChairLabel">Chair</span>
             </button>
           </nav>
+        </div>
+        <div id="iconTemplates" hidden>
+          <svg
+            class="tabicon"
+            data-icon="offline"
+            viewBox="0 0 20 20"
+            aria-hidden="true"
+          >
+            <circle cx="3.4" cy="8.8" r="1.6" />
+            <path
+              d="M3.3 10.5Q3.2 13.3 2.95 15.9M2.95 15.9L2 18.3M3 15.8L4.6 18.3M1.5 12.9L4.4 12.8"
+            />
+            <path d="M5.5 12.2h.01M6.9 11.85h.01" />
+            <path d="M8.3 8.8Q9 11.5 10 13.7M10 8.8Q8.8 11.5 7.6 13.4" />
+            <path d="M10.8 10h.01M12.2 9.2h.01" />
+            <path
+              d="M15.2 2.3C17.3 2.3 18.7 3.9 18.6 5.9C18.5 8 16.9 9.4 15 9.3C13 9.2 11.6 7.7 11.7 5.7C11.8 3.6 13.4 2.3 15.6 2.4"
+            />
+            <path
+              d="M15.9 2.4Q16.1 5.9 15.8 9.2M14.6 2.5Q12.4 5.9 14.3 9.2M11.9 5Q15.2 4.8 18.5 5M11.9 7Q15.2 7.1 18.3 6.9"
+            />
+          </svg>
+          <svg
+            class="tabicon"
+            data-icon="notes"
+            viewBox="0 0 20 20"
+            aria-hidden="true"
+          >
+            <path
+              d="M12.05 10.4Q12.1 6.8 12.2 3Q7 2.6 1.95 2.45Q2.1 9.9 2.1 17.3Q7 17.3 11.95 17.5V13.9"
+            />
+            <path
+              d="M4.6 6.4Q5.2 5.8 5.9 6.3T7.2 6.4T8.8 6.4M4.6 8.9Q5.3 8.3 6 8.8T7.8 8.7M4.6 11.1Q5.3 11.6 6.1 10.9T7.6 10.8T9 10.6M4.6 14.05H6.1"
+            />
+            <path
+              d="M7.1 14.2L7.9 12.55L16 10L17.3 11.9L8.6 14.85ZM7.9 12.55L8.6 14.85"
+            />
+          </svg>
+          <svg
+            class="tabicon"
+            data-icon="opentab"
+            viewBox="0 0 20 20"
+            aria-hidden="true"
+          >
+            <path
+              d="M7.3 8.7L3.9 8.8Q4 12 4.15 15.5L14.9 15.2Q14.7 11.6 14.4 8.5Q13.4 8.3 11.5 8.3"
+            />
+            <path
+              d="M8.9 11.5L8.85 6.1M6.8 6.1Q7.9 4.3 8.9 2.7Q10 4.4 11 6.1"
+            />
+          </svg>
+          <svg
+            class="tabicon"
+            data-icon="timer"
+            viewBox="0 0 20 20"
+            aria-hidden="true"
+          >
+            <path
+              d="M9.5 4.3C13.2 4.1 16.1 6.6 16.1 10C16.1 13.6 13.3 16.3 9.8 16.2C6.2 16.1 3.4 13.5 3.5 10.1C3.6 6.8 6.1 4.5 9.2 4.3"
+            />
+            <path
+              class="heavy"
+              d="M3.7 4.8L6.1 3.4L6.3 4.6ZM13.1 3.4L15.3 4.8L14 5.2Z"
+            />
+            <path
+              d="M9 4.7V5.3M11.7 5.3L11.4 6M14.2 6.8L13.7 7.2M14.2 9.3H15M14.4 12L15.1 12.2M12 14.4L12.4 14.9M9.5 14.7V15.5M6.4 14.2L6.7 14.7M4.5 12.4L5.2 12.7M4 9.75H5M4.6 7.3L5.1 7.7"
+            />
+            <path d="M5.5 6.8L9.3 10.8L11.3 9.2" />
+          </svg>
         </div>
 
         <div id="v-namenroom" class="hide"></div>
