@@ -4284,7 +4284,8 @@ function dashHotCats(spreadSummary, keys, full) {
     .join(", ");
 }
 
-// Wertung tab: every speech and team group as one row - each judge's total,
+// Wertung tab: every speech, then (below them) every team group, as one row
+// each - each judge's total,
 // Ø, spread and the flagged categories. Clicking a row opens its
 // Wertungsvergleich (dashBallotTable / dashTeamBallotTable) right below it;
 // clicking it again closes it. Columns match the Ballot tab's (active judges,
@@ -4373,7 +4374,11 @@ function dashWertungTable(summary, spreadSummary) {
         },
       });
     });
-    if (t === null) return;
+  });
+  // Team points below all the speeches, one block per team.
+  [0, 1].forEach(function (t) {
+    var teamCls = teamClass(t);
+    table.appendChild(fullRow("dashwgrp " + teamCls, "Teampunkte " + TEAMS[t]));
     TEAMGROUPS_INFO.forEach(function (g) {
       var cats = g.cats.map(function (i) {
         return TEAMCATS[i];
@@ -4385,7 +4390,7 @@ function dashWertungTable(summary, spreadSummary) {
       addRow({
         target: { kind: "team", t: t, grp: g.label },
         cls: teamCls + " dashwteam",
-        label: "Team: " + g.label,
+        label: g.label,
         cellFor: function (id) {
           // Offline judges only have a team total, no per-category data.
           if (isOfflineId(id)) return { text: "n.a." };
@@ -5200,10 +5205,8 @@ function schnellTeamInput(t, catIdx) {
 
 function updateSchnellSpeakerRow(s) {
   var z = zwischensumme(s);
-  var sumCell = document.getElementById("schnell-sum-" + s);
   var abCell = document.getElementById("schnell-ab-" + s);
   var pCell = document.getElementById("schnell-p-" + s);
-  if (sumCell) sumCell.textContent = z === null ? "-" : String(z);
   if (abCell) {
     var abVal = deductionPoints(s) || "-";
     var abBtn = abCell.querySelector(".schnellab");
@@ -5242,9 +5245,6 @@ function schnellSpeakerRow(s, teamCls) {
     tr.appendChild(td);
   }
   var z = zwischensumme(s);
-  var sumTd = el("td", "tot", z === null ? "-" : String(z));
-  sumTd.id = "schnell-sum-" + s;
-  tr.appendChild(sumTd);
   var abTd = el("td", "mt");
   abTd.id = "schnell-ab-" + s;
   if (ME.is_chair) {
@@ -5285,7 +5285,8 @@ function schnellSpeakerGroupRows(label, speakers, teamCls) {
   var rows = [];
   var grpTr = el("tr");
   var grpTd = el("td", "schnellgrp", label);
-  grpTd.setAttribute("colspan", String(NC + 5));
+  // Rede + spacer + the criteria + Ab + Σ.
+  grpTd.setAttribute("colspan", String(NC + 4));
   grpTr.appendChild(grpTd);
   rows.push(grpTr);
   speakers.forEach(function (s) {
@@ -5302,9 +5303,9 @@ function schnellSpeakerTable() {
   CRITERIA.forEach(function (c) {
     head.appendChild(el("th", null, c.label));
   });
-  head.appendChild(el("th", null, "Σ"));
+  // Ab = deduction; Σ = the speech's points after it (personPunkte).
   head.appendChild(el("th", null, "Ab"));
-  head.appendChild(el("th", null, "P"));
+  head.appendChild(el("th", null, "Σ"));
   table.appendChild(head);
 
   function teamClsOf(s) {
@@ -5423,17 +5424,18 @@ function renderSchnell() {
   // just risks a moment's staleness, cleared up by the next render().
   if (dashEditGuard(root)) return;
   root.innerHTML = "";
-  root.appendChild(
-    dashTabbedSheet(
-      "schnell",
-      [
-        { key: "reden", label: "Reden", build: schnellSpeakerTable },
-        { key: "team", label: "Teampunkte", build: schnellTeamTable },
-      ],
-      null,
-      renderSchnell,
-    ),
-  );
+  // One page with no tab strip (its only tab would just repeat the top
+  // row's "Komplette Wertung"): the speeches, then the team points below
+  // them, so Enter in the last speech field carries on into the team points.
+  // Same sheet/body classes as dashTabbedSheet for the same spacing.
+  var sheet = el("div", "dashsheet");
+  var body = el("div", "dashtabbody");
+  body.appendChild(el("h2", "dashsubhead", "Reden"));
+  body.appendChild(schnellSpeakerTable());
+  body.appendChild(el("h2", "dashsubhead", "Teampunkte"));
+  body.appendChild(schnellTeamTable());
+  sheet.appendChild(body);
+  root.appendChild(sheet);
 }
 
 function commitOfflineScoreField(inp, max, offlineId, target, refresh) {

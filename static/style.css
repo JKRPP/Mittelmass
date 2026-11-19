@@ -1998,6 +1998,13 @@ tr.deducted td.l {
 }
 
 /* Schnelleingabe */
+/* Heading between two tables on one tabbed page (Komplette Wertung's
+   Teampunkte below its Reden). */
+.dashsubhead {
+  margin: 28px 0 6px;
+  font-size: 15px;
+  font-weight: 700;
+}
 #v-schnell {
   flex: 1;
   min-height: 0;
@@ -2077,23 +2084,67 @@ tr.deducted td.l {
   color: var(--warn);
   font-weight: 500;
 }
+/* Komplette Wertung, compact: both tables fit on one screen with less
+   scrolling. Scoped to #v-schnell - the Offline-Jurierende table shares
+   these classes and keeps the roomier spacing above. */
+#v-schnell .dashtabbody {
+  padding-top: 10px;
+}
+#v-schnell .schnelltable th {
+  padding: 4px 4px;
+}
+#v-schnell .schnelltable td {
+  padding: 1px 2px;
+}
+#v-schnell .schnelltable td.l {
+  padding: 2px 10px;
+}
+#v-schnell .schnellinput {
+  padding: 3px 6px;
+}
+/* With rows this tight, the shared focus outline (2px, offset 2px) reaches
+   into the next row and the field below covers its bottom edge - lift the
+   focused field above its neighbours and draw the outline on its edge. */
+#v-schnell .schnellinput:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline-offset: 0;
+}
+#v-schnell .schnelltable td.schnellgrp {
+  padding: 8px 10px 1px;
+}
+#v-schnell .schnelltable th.schnellsub {
+  padding: 1px 4px 4px;
+}
+#v-schnell .dashsubhead {
+  margin: 16px 0 2px;
+}
+#v-schnell .dashsubhead:first-child {
+  margin-top: 0;
+}
+/* Team marking in the desktop entry tables (Komplette Wertung, Offline-
+   Jurierende, OpenTab's Redner:innen): the speech/team name in its team
+   colour, as in Wertung, Einzelergebnisse and Namen - no side rail. */
 #v-schnell td.team-gov,
 #v-schnell th.team-gov,
 .offlinejurytable td.team-gov,
-.offlinejurytable th.team-gov {
-  border-left: 3px solid var(--team-gov);
+.offlinejurytable th.team-gov,
+.otspeechtable td.team-gov {
+  color: var(--team-gov);
 }
 #v-schnell td.team-opp,
 #v-schnell th.team-opp,
 .offlinejurytable td.team-opp,
-.offlinejurytable th.team-opp {
-  border-left: 3px solid var(--team-opp);
+.offlinejurytable th.team-opp,
+.otspeechtable td.team-opp {
+  color: var(--team-opp);
 }
 #v-schnell td.team-free,
 #v-schnell th.team-free,
 .offlinejurytable td.team-free,
-.offlinejurytable th.team-free {
-  border-left: 3px solid var(--team-free);
+.offlinejurytable th.team-free,
+.otspeechtable td.team-free {
+  color: var(--team-free);
 }
 
 /* Adjudikationsblatt (Blatt) */
