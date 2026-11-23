@@ -29,11 +29,7 @@ jobs:
           packages: ""
 
       - name: Point Bubblewrap's SDK root at the installed cmdline-tools
-        # Bubblewrap's own validatePath() only accepts an SDK root that has
-        # tools/ or bin/ directly inside it (a legacy layout) - but
-        # setup-android installs cmdline-tools under a versioned subfolder
-        # (not always "latest"). Symlink whichever bin/ that resolved to
-        # onto the SDK root so Bubblewrap's check passes.
+        # Bubblewrap requires bin/ directly under the SDK root, but setup-android nests it in a versioned folder
         run: |
           cmdline_bin=$(find "$ANDROID_SDK_ROOT/cmdline-tools" -maxdepth 2 -type d -name bin | head -n1)
           ln -s "$cmdline_bin" "$ANDROID_SDK_ROOT/bin"
@@ -42,10 +38,7 @@ jobs:
         run: npm install -g @bubblewrap/cli
 
       - name: Point Bubblewrap at the JDK/SDK from the steps above
-        # Writing the config file directly (rather than `bubblewrap updateConfig`)
-        # because Bubblewrap's first-run wizard prompts before *any* subcommand's
-        # own logic runs when this file doesn't exist yet — including updateConfig
-        # itself, so invoking the CLI here would hit the same interactive prompt.
+        # Written by hand because any bubblewrap command (even updateConfig) opens an interactive wizard without it
         run: |
           mkdir -p ~/.bubblewrap
           cat > ~/.bubblewrap/config.json <<EOF
@@ -66,8 +59,7 @@ jobs:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
 
       - name: Build signed APK/AAB
-        # --signingKeyPassword/--signingKeyStorePassword are not real bubblewrap
-        # flags; the only non-interactive path is these two env vars.
+        # Bubblewrap has no password flags; these env vars are the only non-interactive option
         run: |
           bubblewrap build \
             --skipPwaValidation \

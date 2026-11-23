@@ -1,6 +1,6 @@
 import os, sys, tempfile, time
 
-# A fresh DB per run, in a directory that gets cleaned up with it.
+# Fresh database per run in a temporary directory
 _tmpdir = tempfile.TemporaryDirectory()
 os.environ["OPD_DB"] = os.path.join(_tmpdir.name, "test.sqlite3")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -23,7 +23,7 @@ def check(label, cond, extra=""):
 
 
 with TestClient(server.app) as c:
-    # Chair creates room
+    # Chair creates a room
     r = c.post("/api/rooms", json={"name": "Anna", "client_id": "client-anna-0001"})
     chair = r.json()
     check(
@@ -49,7 +49,7 @@ with TestClient(server.app) as c:
     check("wing joined as non-chair", w1["is_chair"] is False)
     check("wings get distinct tokens", w1["token"] != w2["token"])
 
-    # Same device reenters
+    # Same device rejoins
     again = c.post(
         f"/api/rooms/{code}/join", json={"name": "Ben", "client_id": "client-ben-0002"}
     ).json()
@@ -58,7 +58,7 @@ with TestClient(server.app) as c:
         again["judge_id"] == w1["judge_id"] and again["resumed"],
     )
 
-    # Duplicate name resolves
+    # Duplicate name gets resolved
     dup = c.post(
         f"/api/rooms/{code}/join", json={"name": "Ben", "client_id": "client-ben-XXXX"}
     ).json()
@@ -67,7 +67,7 @@ with TestClient(server.app) as c:
         dup["judge_id"] != w1["judge_id"],
     )
 
-    # Test Patches
+    # Patches
     def patch(tok, items):
         return c.post(
             f"/api/rooms/{code}/patches?token={tok}", json={"patches": items}
@@ -85,7 +85,7 @@ with TestClient(server.app) as c:
     patch(w1["token"], [{"target": "s0", "criterion": "spr", "points": 15, "seq": 1}])
     patch(w2["token"], [{"target": "s0", "criterion": "spr", "points": 9, "seq": 1}])
 
-    # stale patch from before a reconnect must be dropped
+    # Stale patch from before a reconnect is dropped
     res = patch(
         w1["token"], [{"target": "s0", "criterion": "spr", "points": 3, "seq": 1}]
     )
@@ -96,8 +96,7 @@ with TestClient(server.app) as c:
     )
     check("newer seq accepted", res["applied"] == 1)
 
-    # Undo of a first-ever entry clears the cell instead of writing a 0 that
-    # every other judge would count as a real score.
+    # Undo of a first-ever entry clears the cell instead of writing a 0
     patch(w2["token"], [{"target": "s1", "criterion": "auf", "points": 7, "seq": 5}])
     res = patch(
         w2["token"], [{"target": "s1", "criterion": "auf", "points": None, "seq": 6}]
@@ -116,7 +115,7 @@ with TestClient(server.app) as c:
     w2_filled = next(j["filled"] for j in snap["judges"] if j["id"] == w2["judge_id"])
     check("cleared cell no longer counts as filled", w2_filled == 1, w2_filled)
 
-    # Snapshot can be recovered
+    # Snapshot recovery
     snap = c.get(f"/api/rooms/{code}/snapshot?token={chair['token']}").json()
     vals = {
         s["judge_id"]: s["points"]
@@ -128,7 +127,7 @@ with TestClient(server.app) as c:
     check("judge list complete", len(snap["judges"]) == 4)
     check("filled counts present", snap["judges"][0]["filled"] == 2)
 
-    # spread the chair would show: 12 (Anna), 14 (Ben), 9 (Cem)
+    # Spread the chair would show: 12 (Anna), 14 (Ben), 9 (Cem)
     nums = sorted(vals.values())
     check("spread computable from snapshot", max(nums) - min(nums) == 14 - 9, nums)
 
@@ -153,7 +152,7 @@ with TestClient(server.app) as c:
     )
     check("hidden judge flagged in judges list", hidden_flagged)
 
-    # cross-room token must not work
+    # Cross-room token is rejected
     other = c.post(
         "/api/rooms", json={"name": "Dora", "client_id": "client-dora-9"}
     ).json()
@@ -173,9 +172,9 @@ with TestClient(server.app) as c:
     )
     check("unknown room 404s", r.status_code == 404)
 
-    # Websocket fan out
+    # Websocket fan-out
     with c.websocket_connect(f"/ws/{code}?token={w1['token']}") as sock:
-        sock.receive_json()  # presence broadcast on connect
+        sock.receive_json()  # Presence broadcast on connect
         patch(
             chair["token"],
             [{"target": "s3", "criterion": "urt", "points": 8, "seq": 20}],
@@ -202,13 +201,12 @@ with TestClient(server.app) as c:
         refused = True
     check("websocket refuses a bogus token", refused)
 
-    # Debate timer: any judge can start it, it broadcasts to everyone, and
-    # pause/resume/reset behave server-side like the other room settings.
+    # Debate timer: any judge can start it and every action broadcasts to the room
     def timer_action(tok, body):
         return c.post(f"/api/rooms/{code}/timer?token={tok}", json=body)
 
     with c.websocket_connect(f"/ws/{code}?token={w1['token']}") as sock:
-        sock.receive_json()  # presence broadcast on connect
+        sock.receive_json()  # Presence broadcast on connect
         r = timer_action(w1["token"], {"action": "start", "type": "ffr"})
         check("wing can start the timer", r.status_code == 200, r.text)
         started = r.json()["timer"]
@@ -287,7 +285,7 @@ with TestClient(server.app) as c:
     snap = c.get(f"/api/rooms/{code}/snapshot?token={chair['token']}").json()
     check("snapshot carries timer state for late joiners", snap["timer"]["type"] == "ffr", snap["timer"])
 
-    # Jurierdiskussion is a room-level deliberation clock, not a speech.
+    # Jurierdiskussion is a room-level deliberation clock, not a speech
     r = timer_action(chair["token"], {"action": "start", "type": "discussion"})
     check(
         "discussion timer starts with a 20-minute nominal duration",
@@ -295,8 +293,7 @@ with TestClient(server.app) as c:
         r.text,
     )
 
-    # updated_at is what lets a client tell a stale snapshot from its own
-    # newer (possibly offline) action - it has to move on every action.
+    # updated_at must move on every action so clients can detect stale snapshots
     before = r.json()["timer"]["updated_at"]
     r = timer_action(chair["token"], {"action": "pause"})
     check(
@@ -305,8 +302,7 @@ with TestClient(server.app) as c:
         (before, r.text),
     )
 
-    # Rate limiter: enforces its cap, and prunes keys that have gone quiet
-    # instead of keeping one entry per address ever seen.
+    # Rate limiter enforces its cap and prunes idle keys
     lim = server.SlidingWindowLimiter(max_hits=2, window_seconds=0.2)
     check(
         "limiter allows up to max_hits then blocks",

@@ -12,9 +12,7 @@ theme-picker.html
 
 *.sqlite3
 
-# Bubblewrap/Gradle project — regenerated from twa-manifest.json by
-# `bubblewrap update` (which `build` also runs when it detects the
-# manifest changed), so none of this needs to be committed.
+# Bubblewrap/Gradle project, regenerated from twa-manifest.json by `bubblewrap update`
 
 .gradle/
 /build/
@@ -31,6 +29,6 @@ store_icon.png
 *.apk.idsig
 *.aab
 
-# Handdrawn references for svg files, excluded to reduce size of repo
+# Handdrawn SVG references, excluded to keep the repo small
 
 handdrawn/

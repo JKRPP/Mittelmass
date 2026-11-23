@@ -87,8 +87,7 @@
   --danger: var(--dark-danger);
   --danger-bg: var(--dark-danger-bg);
 }
-/* Source Serif 4 (variable, 400-700), self-hosted so it works offline -
-   both files are in sw.js's SHELL. License: static/fonts/OFL.txt. */
+/* Source Serif 4, self-hosted for offline use (cached via sw.js SHELL, license in static/fonts/OFL.txt) */
 @font-face {
   font-family: "Source Serif 4";
   font-style: normal;
@@ -150,9 +149,6 @@ body {
 .dock.hide {
   display: none;
 }
-/* No rule of its own for .dockpad's horizontal inset - it now lives inside
-   .viewport, which already insets everything else in the scroll area by
-   the same amount. */
 .dockpad.hide {
   display: none;
 }
@@ -165,8 +161,7 @@ body {
 .card + .card {
   margin-top: 10px;
 }
-/* Mobile layout only (desktop sets .dashboard-mode on #app): cards drop
-   their box and stacked cards are separated by a single rule instead. */
+/* Mobile only: cards lose their box and are separated by a single rule */
 #app:not(.dashboard-mode) .card {
   background: transparent;
   border-color: transparent;
@@ -188,8 +183,7 @@ body {
   flex-direction: column;
   align-items: stretch;
 }
-/* Mobile Abzüge: a toggle row (current level shown on the right) that
-   opens the three options below it. */
+/* Mobile Abzüge: toggle row showing the current level, expanding to the three options */
 .dedtoggle {
   display: flex;
   align-items: center;
@@ -257,8 +251,7 @@ body {
   padding: 4px 8px;
   border-radius: 0px;
 }
-/* Debate timer widget - lives in .bar (shared by the mobile top bar and the
-   desktop docked header), so it costs no extra layout height of its own. */
+/* Debate timer widget, lives in .bar so it adds no layout height */
 .timerwidget {
   display: flex;
   align-items: center;
@@ -373,8 +366,7 @@ body {
 #app:not(.dashboard-mode) .timerclock {
   margin-left: auto;
 }
-/* Idle shows only "Timer" in the clock (label hidden), so the clock needs
-   the right-hand auto margin itself to stay centred. */
+/* The idle clock shows only "Timer", so it needs the auto margin itself to stay centred */
 #app:not(.dashboard-mode) .timerwidget.idle .timerclock {
   margin-right: auto;
 }
@@ -408,9 +400,7 @@ body {
 .timerbigclock.danger {
   color: var(--danger);
 }
-/* Signal rail: a thin bar spanning 0 up to the end of the overdraw grace,
-   with a tick at each bell instant (open window start/end, nominal end,
-   grace end) so a judge can see what's coming, not just the current time. */
+/* Signal rail up to the end of the overdraw grace, with a tick at each bell */
 .timerbar {
   position: relative;
   height: 3px;
@@ -603,8 +593,7 @@ body {
   color: var(--ink-2);
   margin-bottom: 6px;
 }
-/* "Raum CODE" heading atop the Namen view (mobile and desktop) - the first
-   tab most judges land on, so it doubles as the room's title screen. */
+/* "Raum CODE" heading atop the Namen view */
 .roomtitle {
   font-size: 36px;
   font-weight: 700;
@@ -612,7 +601,7 @@ body {
   margin: 4px 0 10px;
   text-align: center;
 }
-/* One card for every speech, position colored per-row instead of per-card. */
+/* One card for every speech, position coloured per row */
 .seat .slbl.team-gov {
   color: var(--team-gov);
 }
@@ -734,8 +723,7 @@ hr.sep {
   border-top: 1px solid var(--line);
   margin: 8px 0;
 }
-/* The rule between the score rows and the Notenskala keypad is the soft
-   line colour, so the two read as one tool rather than two sections. */
+/* Soft rule so the score rows and Notenskala keypad read as one tool */
 .dockpad > hr.sep {
   border-top-color: var(--line-2);
 }
@@ -888,7 +876,6 @@ hr.sep {
 }
 .key:active {
   background: var(--live-bg);
-  /*border-color: var(--live);*/
 }
 .key:active .n,
 .key:active .m {
@@ -1069,18 +1056,8 @@ p.note {
   display: flex;
   padding: 4px 8px calc(6px + env(safe-area-inset-bottom));
 }
-/* Fixed rather than in-flow/sticky, so the tab bar stays reachable even on
-   views taller than one screen (e.g. the chair tab) instead of only
-   appearing once scrolled all the way down. The trade-off, accepted
-   deliberately: on Firefox Android this keeps the document itself
-   scrolling (rather than moving that responsibility to an inner scroll
-   container), so the browser's own toolbar can still auto-hide on scroll -
-   at the cost of the tab bar briefly jittering into place while that
-   toolbar's show/hide animates and the layout viewport resizes underneath
-   it. Desktop hides .tabs entirely (see applyLayoutMode), so this is scoped
-   to mobile only. syncDockSpacer() keeps .viewport's bottom padding matched
-   to the bar's actual height so it doesn't cover the last row of content
-   (.dockpad included, since that now lives inside .viewport too). */
+/* Fixed so the tab bar stays reachable on tall views while the document still scrolls (lets mobile toolbars auto-hide);
+   syncDockSpacer() pads .viewport to the bar's height */
 #app:not(.dashboard-mode) .tabs {
   position: fixed;
   left: 0;
@@ -1088,11 +1065,7 @@ p.note {
   bottom: 0;
   max-width: 440px;
   margin: 0 auto;
-  /* Promotes the bar to its own compositor layer - without this, some
-     mobile browsers (seen in the installed/standalone PWA) fail to repaint
-     a fixed element after a sibling's content height changes (e.g.
-     renderMatrix() rebuilding #matrix for the Übersicht tab), leaving it
-     invisible-but-still-clickable until something else forces a repaint. */
+  /* Own compositor layer, since some standalone PWAs otherwise fail to repaint this fixed bar after sibling content changes */
   transform: translateZ(0);
 }
 .tabs button {
@@ -1119,13 +1092,12 @@ p.note {
   height: 21px;
   fill: none;
   stroke: currentColor;
-  /* Hand-drawn icons (traced from handdrawn/*.png on a 20-unit grid) - thinner
-     than a typical icon set so the small heads don't fill in at 21px. */
+  /* Hand-drawn icons on a 20-unit grid, thin strokes so they stay legible at 21px */
   stroke-width: 1.2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-/* Parts drawn with a heavier marker in the sketch (the Team tabletop). */
+/* Parts drawn with a heavier marker (Team tabletop) */
 .tabicon .heavy {
   stroke-width: 2.2;
 }
@@ -1222,15 +1194,14 @@ textarea:focus-visible {
   padding: 9px 0;
   cursor: pointer;
 }
-/* Spread at/above the threshold: the whole row is tinted, bleeding a little
-   past the text so the tint doesn't hug the label. */
+/* A spread at or above the threshold tints the whole row, padded past the text */
 .totrow.hot {
   background: var(--warn-bg);
   margin: 0 -8px;
   padding-left: 8px;
   padding-right: 8px;
 }
-/* Tap-to-open spread detail: judges x criteria (spreadDetailTable). */
+/* Spread detail popup: judges × criteria (spreadDetailTable) */
 .dtbl {
   margin: 4px 0 2px;
 }
@@ -1251,8 +1222,7 @@ textarea:focus-visible {
   border-top: 1px solid var(--line-2);
   font-weight: 600;
 }
-/* Chair room card: one tappable row (Raum CODE + judge count) that opens
-   the share link, judge list and room buttons. */
+/* Chair room card: a tappable row that opens the share link, judge list and room buttons */
 .roomhead {
   margin: 0;
 }
@@ -1303,8 +1273,7 @@ textarea:focus-visible {
 .finalTbl {
   margin-top: 8px;
 }
-/* Number columns sit at the right edge, so Ø Punkte, Ø Team and Gesamt
-   line up down the card. */
+/* Right-aligned number columns so Ø Punkte, Ø Team and Gesamt line up */
 .finalTbl th:not(.l),
 .finalTbl td:not(.l) {
   text-align: right;
@@ -1340,14 +1309,9 @@ body {
   flex: 1;
   min-height: 0;
 }
-/* The mobile top bar (connection dot/state + ⋮ menu) stays visible and
-   carries the desktop nav + room/judges info too, so it's a single bar. */
-/* Desktop: a tinted strip with folder tabs (.dashnav) sitting on its bottom
-   rule - the active tab takes the page background and covers that rule, so
-   it reads as joined to the view below. No bottom padding: the tabs reach
-   the rule, and everything else in the bar centres on their height. */
-/* On desktop .viewport holds only the bar (the mobile views in it are
-   hidden), so drop its mobile inset and let the tint run edge to edge. */
+/* On desktop the mobile top bar also carries the nav and room info */
+/* Tinted strip with folder tabs on its bottom rule; the active tab covers the rule to join the view below */
+/* On desktop .viewport only holds the bar, so the tint runs edge to edge */
 #app.dashboard-mode .viewport {
   padding: 0;
 }
@@ -1372,8 +1336,7 @@ body {
   gap: 3px;
   margin-left: 10px;
 }
-/* Folder tabs: the top-row nav and the dashboard's section tabs
-   (.dashtabs, see the Dashboard block further down) share one look. */
+/* Folder tabs shared by the top nav and the dashboard's .dashtabs */
 .dashnav button,
 .dashtabs > button {
   display: flex;
@@ -1404,7 +1367,7 @@ body {
   margin-bottom: -1px;
   padding-bottom: 6px;
 }
-/* Dashed frame for tabs that have no hand drawing yet (see initDashNavIcons). */
+/* Dashed placeholder for tabs without a hand-drawn icon (see initDashNavIcons) */
 .tabicon .tabiconph {
   stroke-dasharray: 1.6 1.8;
 }
@@ -1447,10 +1410,7 @@ body {
   cursor: pointer;
   border-bottom: 1px dotted var(--line-2);
 }
-/* Judge-list popover, opened from .dashjsummary - same look as .menupanel,
-   but fixed-positioned and anchored under the summary via JS (it can't sit
-   as a normal absolute-positioned sibling because .dashjurychips scrolls
-   its own content, which would clip it). */
+/* Judge-list popover positioned via JS, since .dashjurychips scrolls and would clip an absolute child */
 .jurypanel {
   position: fixed;
   z-index: 40;
@@ -1475,12 +1435,7 @@ body {
   color: var(--paper);
   border-color: var(--live);
 }
-/* Same green-when-active look as .dashjbtn.on, but without that class's
-   margin-top: 0 - reusing .dashjbtn here made this button margin-less
-   while its "Testton" sibling kept .btn's default 10px margin-top, so the
-   two ended up different heights within their shared flex row. Must stay
-   after .btn.ghost in source order - same specificity, so an earlier
-   declaration here would just lose the cascade tie-break to it. */
+/* Green active look like .dashjbtn.on but keeping .btn's margin; must come after .btn.ghost to win the cascade */
 .timermute.on {
   background: var(--live);
   color: var(--paper);
@@ -1722,8 +1677,7 @@ input.offlinejudgename {
   font-weight: 500;
 }
 
-/* Child cells only (> td): a hovered Wertung row must not tint the
-   comparison table nested inside its expanded row. */
+/* Child cells only, so the nested comparison table isn't tinted on hover */
 #v-dashboard .ballottable tr:hover > td {
   background: color-mix(in srgb, var(--ink) 8%, var(--card));
 }
@@ -1754,7 +1708,7 @@ input.offlinejudgename {
   background: color-mix(in srgb, var(--ink) 10%, var(--best-bg));
 }
 
-/* Deductions - shared by Übersicht/Schnelleingabe rows and the ballot tables. */
+/* Deductions, shared by Übersicht/Schnelleingabe rows and the ballot tables */
 tr.deducted td {
   background: var(--danger-bg);
   color: var(--danger);
@@ -1766,8 +1720,7 @@ tr.deducted td.l {
   background: color-mix(in srgb, var(--ink) 10%, var(--danger-bg));
 }
 
-/* Trainee columns in the Wertungsvergleich: shown for context, but visibly
-   excluded from Ø/Spread since their scores never factor into either. */
+/* Trainee columns: shown for context but visibly excluded from Ø and Spread */
 .ballottable .trainee {
   color: var(--ink-3);
   opacity: 0.6;
@@ -1778,11 +1731,8 @@ tr.deducted td.l {
   font-weight: 500;
 }
 
-/* Dashboard: one page on the paper background - folder tabs (Wertung /
-   Ballot, sharing the .dashnav button look) over one table at a time. */
-/* Shared by every view built with dashTabbedSheet() in app.js (Dashboard,
-   Komplette Wertung, Offline-Jurierende, OpenTab): the sheet scrolls, the
-   view root around it is just a flex column. */
+/* Dashboard: folder tabs over one table at a time on the paper background */
+/* Shared by every dashTabbedSheet() view: the sheet scrolls inside a flex column */
 .dashsheet {
   flex: 1;
   min-height: 0;
@@ -1794,11 +1744,7 @@ tr.deducted td.l {
   max-width: 1100px;
   margin: 0 auto;
 }
-/* The strip's rule runs the full width of the view (the negative margin
-   cancels .dashsheet's 24px side padding), while its padding keeps the
-   tabs and buttons in line with the centred, max-1100px table below:
-   24px + whatever the table is inset on each side (100% = the sheet's
-   content width here). */
+/* Full-width rule (negative margin cancels the .dashsheet padding), tabs aligned with the centred max-1100px table */
 .dashtabs {
   display: flex;
   align-items: flex-end;
@@ -1815,9 +1761,7 @@ tr.deducted td.l {
 .dashtabs > button[aria-pressed="true"] {
   padding-bottom: 7px;
 }
-/* The strip's right side reaches down to the line, so the Freigeben button
-   can sit on it as a small folder tab; everything else there (trainee
-   toggle, Ballot links, OpenTab's connection line) keeps a gap above it. */
+/* The right side reaches the rule so Freigeben sits on it as a small folder tab */
 .dashtabsaside {
   margin-left: auto;
   align-self: stretch;
@@ -1851,8 +1795,7 @@ tr.deducted td.l {
 .dashtabbody {
   padding-top: 18px;
 }
-/* Wertung table: team group header rows, team-coloured names, and the
-   opened row's Wertungsvergleich nested right below it. */
+/* Wertung table: team group headers, team-coloured names and the nested Wertungsvergleich */
 .dashwtable tr.dashwgrp > td {
   padding: 16px 10px 4px;
   border: 0;
@@ -1906,8 +1849,7 @@ tr.deducted td.l {
   color: var(--warn);
   font-size: 12px;
 }
-/* Auffällig is a note about the row, not another score - set it apart
-   from the number columns with a rule and extra room. */
+/* Auffällig is a note, not a score, so a rule and extra space set it apart */
 .dashwtable td.dashhot,
 .dashwtable th.dashhot {
   border-left: 1px solid var(--line-2);
@@ -1916,8 +1858,7 @@ tr.deducted td.l {
 .dashwtable th.dashhot {
   color: var(--ink-3);
 }
-/* The Spread column (just before Auffällig) gets the same room on its
-   right as Auffällig has on its left, so the rule sits between them. */
+/* The Spread column mirrors Auffällig's spacing so the rule sits between them */
 .dashwtable tr:first-child > th:nth-last-child(2),
 .dashwrow > td:nth-last-child(2) {
   padding-right: 16px;
@@ -1935,8 +1876,7 @@ tr.deducted td.l {
   min-width: 60%;
 }
 
-/* Einzelergebnisse: one column per judge plus the panel's average column.
-   Lines group into totals / outcome / best speech, split by a heavier rule. */
+/* Einzelergebnisse: one column per judge plus the panel average, grouped by heavier rules */
 .dasheinzel th {
   font-size: 13px;
   font-weight: 700;
@@ -1986,7 +1926,7 @@ tr.deducted td.l {
 .dashneg {
   color: var(--warn);
 }
-/* Best speech: "2. FFR · 70", one line per speech when several tie. */
+/* Best speech: "2. FFR · 70", one line per tied speech */
 .dashbestspeech {
   display: inline-flex;
   flex-direction: column;
@@ -1998,8 +1938,7 @@ tr.deducted td.l {
 }
 
 /* Schnelleingabe */
-/* Heading between two tables on one tabbed page (Komplette Wertung's
-   Teampunkte below its Reden). */
+/* Heading between two tables on one tabbed page (Komplette Wertung's Teampunkte) */
 .dashsubhead {
   margin: 28px 0 6px;
   font-size: 15px;
@@ -2016,8 +1955,7 @@ tr.deducted td.l {
   display: none;
 }
 
-/* Offline-Jury: same page chrome as Schnelleingabe (#v-schnell above) - a
-   tabbed sheet (.dashsheet, see dashTabbedSheet) on the paper background. */
+/* Offline-Jury: same tabbed sheet chrome as Schnelleingabe */
 #v-offline {
   flex: 1;
   min-height: 0;
@@ -2084,9 +2022,7 @@ tr.deducted td.l {
   color: var(--warn);
   font-weight: 500;
 }
-/* Komplette Wertung, compact: both tables fit on one screen with less
-   scrolling. Scoped to #v-schnell - the Offline-Jurierende table shares
-   these classes and keeps the roomier spacing above. */
+/* Compact Komplette Wertung so both tables fit on one screen; Offline-Jurierende keeps the roomier spacing */
 #v-schnell .dashtabbody {
   padding-top: 10px;
 }
@@ -2102,9 +2038,7 @@ tr.deducted td.l {
 #v-schnell .schnellinput {
   padding: 3px 6px;
 }
-/* With rows this tight, the shared focus outline (2px, offset 2px) reaches
-   into the next row and the field below covers its bottom edge - lift the
-   focused field above its neighbours and draw the outline on its edge. */
+/* Tight rows would clip the focus outline, so raise the focused field and draw the outline on its edge */
 #v-schnell .schnellinput:focus-visible {
   position: relative;
   z-index: 1;
@@ -2122,9 +2056,7 @@ tr.deducted td.l {
 #v-schnell .dashsubhead:first-child {
   margin-top: 0;
 }
-/* Team marking in the desktop entry tables (Komplette Wertung, Offline-
-   Jurierende, OpenTab's Redner:innen): the speech/team name in its team
-   colour, as in Wertung, Einzelergebnisse and Namen - no side rail. */
+/* Team marking in desktop entry tables: team-coloured names, no side rail */
 #v-schnell td.team-gov,
 #v-schnell th.team-gov,
 .offlinejurytable td.team-gov,
@@ -2165,7 +2097,7 @@ tr.deducted td.l {
   align-items: center;
   gap: 14px;
   padding: 16px 28px 12px;
-  /* Solid team band, same as the mobile card headers and Teampunkte. */
+  /* Solid team band, same as the mobile card headers and Teampunkte */
   background: var(--team-accent, var(--card));
   color: var(--team-on, var(--ink));
 }
@@ -2246,8 +2178,7 @@ body.blattresizing .blattcol {
   gap: 14px;
   padding: 14px 18px 10px;
   border-bottom: 1px solid var(--line);
-  /* Notes sit before scores in the DOM (for keyboard tab order); this
-     restores the usual scores-on-top-notes-below visual layout. */
+  /* Notes come first in the DOM for tab order; this shows the scores on top */
   order: 1;
 }
 .blattscore {
@@ -2309,13 +2240,10 @@ body.blattresizing .blattcol {
   color: var(--ink-2);
   background: transparent;
   outline: none;
-  /* Precedes .blattscores in the DOM (see blattColumn) - order:2 keeps it
-     visually below the scores. */
+  /* Precedes .blattscores in the DOM; order 2 keeps it visually below */
   order: 2;
 }
-/* Notes fill their column/block edge-to-edge, so the shared positive
-   outline-offset (see the :focus-visible rule above) gets clipped by
-   overflow:hidden or painted over by the next column - draw it inset. */
+/* Inset focus outline, since the default offset gets clipped by neighbouring columns */
 .blattnotes:focus-visible {
   outline-offset: -2px;
 }
@@ -2437,8 +2365,7 @@ body.blattresizing .blattcol {
   opacity: 0.55;
 }
 
-/* Allgemeine Notizen: two free-text columns, one per team - same shape as
-   .blattbody's columns, but with no scores/categories to lay out around. */
+/* Allgemeine Notizen: one free-text column per team */
 #v-notes {
   flex: 1;
   min-height: 0;
@@ -2466,8 +2393,7 @@ body.blattresizing .blattcol {
 .notescol:last-child {
   border-right: 0;
 }
-/* Solid team band, same as the Teampunkte section heads and the Blatt
-   header - colours from the shared --team-accent/--team-on. */
+/* Solid team band, same as the Teampunkte and Blatt headers */
 .notescolhead {
   flex: 0 0 auto;
   padding: 10px 24px;
@@ -2512,8 +2438,7 @@ body.blattresizing .blattcol {
   flex: 0 0 auto;
   padding: 14px 18px 10px;
   border-bottom: 1px solid var(--line);
-  /* Notes precede the score in the DOM (see teamPointsCategoryBlock); this
-     keeps the score visually on top. */
+  /* Notes precede the score in the DOM; this keeps the score on top */
   order: 1;
 }
 
@@ -2554,9 +2479,7 @@ body.blattresizing .blattcol {
   border-radius: 0px;
   padding: 12px;
 }
-/* Table name as a solid band across the card's top edge - same team band
-   as Blatt/Teampunkte/Notizen (shared --team-accent/--team-on). The Jury
-   card has no team, so it falls back to the inactive folder-tab grey. */
+/* Table name as a solid team band; the Jury card falls back to inactive tab grey */
 .roomtable .tname {
   margin: -12px -12px 10px;
   padding: 8px 12px;
@@ -2789,10 +2712,7 @@ select {
 }
 .modalactions .btn {
   flex: 1;
-  /* Without this, a flex item's minimum width defaults to its content's
-     min-content size - so a much longer label (e.g. "Ton: an (Glocke)")
-     wins more than its equal share and its shorter sibling ends up
-     visibly smaller, even though both have flex: 1. */
+  /* Lets flex: 1 siblings share the width equally despite different label lengths */
   min-width: 0;
 }
 .modalinput {
@@ -2831,9 +2751,7 @@ select {
   font-weight: 500;
 }
 
-/* Printable feedback sheet (built by buildPrintSheet). Hidden on screen -
-   only #printSheet is shown, and everything else in #app is hidden, once
-   window.print() is triggered from the ⋮ menu. */
+/* Printable feedback sheet (buildPrintSheet), shown only when printing */
 #printSheet {
   display: none;
 }

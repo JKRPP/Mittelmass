@@ -14,8 +14,7 @@ var SPEAKERS = (function () {
   arr.push({ label: "Schlussrede Regierung", team: 0 });
   return arr;
 })();
-// Chair-settable room setting (default 3, the normal OPD case) - how many
-// of the reserved free-speaker slots above are currently active.
+// Active free-speaker slots, set by the chair (default 3)
 var freeSpeakerCount = 3;
 function isActiveSpeaker(s) {
   if (s < FREE_START || s >= FREE_START + MAX_FREE_SPEAKERS) return true;
@@ -41,19 +40,15 @@ function prevActiveSpeaker(s) {
   for (var i = s - 1; i >= 0; i--) if (isActiveSpeaker(i)) return i;
   return -1;
 }
-// Snaps cs onto the nearest active speaker after freeSpeakerCount changes.
+// Snaps cs onto the nearest active speaker after freeSpeakerCount changes
 function snapToActiveSpeaker() {
   if (isActiveSpeaker(cs)) return;
   var p = prevActiveSpeaker(cs);
   cs = p !== -1 ? p : nextActiveSpeaker(cs);
 }
 
-// Timer rubric: nominal duration + protected (no-interjection) windows, in
-// ms from the start of the speech. "protected" ranges are [from, to) pairs;
-// everything outside them is the open/non-protected window judges can ask
-// questions or interject in. The server is authoritative for durationMs
-// (TIMER_DURATIONS_MS in server.py) - this table only needs to match it so
-// the client can compute signal instants locally, without a round trip.
+// Timer rubric: duration and protected (no-interjection) [from, to) windows in ms;
+// durationMs must match TIMER_DURATIONS_MS in server.py
 var TIMER_TYPES = {
   team: {
     label: "Teamrede",
@@ -76,10 +71,7 @@ var TIMER_TYPES = {
     durationMs: 60 * 1000,
     protected: [[0, 60 * 1000]],
   },
-  // Judges' deliberation, not a speech - no protected/open windows or
-  // overdraw grace, just two flat cues: 1x as a wrap-up notice, 2x once
-  // discussion has run long. `signals` overrides the protected-window-
-  // derived pattern the speech types use (see timerSignalPoints below).
+  // Judges' deliberation: no protected windows or grace, just explicit 1x and 2x cues
   discussion: {
     label: "Jurierdiskussion",
     durationMs: 20 * 60 * 1000,
@@ -94,7 +86,7 @@ var OVERDRAW_GRACE_MS = 15 * 1000;
 function teamOf(s) {
   return SPEAKERS[s].team;
 }
-// The accent class for a team index - null (a free speaker) included.
+// Accent class for a team index, including null (free speaker)
 function teamClass(team) {
   return team === 0 ? "team-gov" : team === 1 ? "team-opp" : "team-free";
 }
@@ -110,8 +102,7 @@ var CRITERIA = [
   { key: "urt", label: "Urteilskraft", short: "Urt" },
 ];
 var TEAMS = ["Regierung", "Opposition"];
-// .short: compact name for tight spots (the dashboard's Auffällig column),
-// matching CRITERIA's .short.
+// .short is a compact name for tight spots, like CRITERIA's .short
 var TEAMCATS = [
   {
     key: "eroef",
@@ -163,7 +154,7 @@ var TEAMCATS = [
     grp: "Überzeugungskraft",
   },
 ];
-// TEAMCATS grouped by .grp - used by Schnelleingabe's Teampunkte header.
+// TEAMCATS grouped by .grp, used by Schnelleingabe's Teampunkte header
 var TEAMGROUPS_INFO = (function () {
   var groups = [];
   TEAMCATS.forEach(function (c, i) {
@@ -356,6 +347,7 @@ var NOTEN = [
 var TOPROWS = 2;
 var BOTTOMROWS = 1;
 
+// Grade band name and mark for a 0-20 Notenskala value
 function markOf(v) {
   for (var i = 0; i < NOTEN.length; i++) {
     var n = NOTEN[i],
@@ -364,12 +356,15 @@ function markOf(v) {
   }
   return { name: "", mark: "" };
 }
+// Point range [lo, hi] on a team category's scale for a 0-20 Notenskala value
 function convert(v, max) {
   return max === 20 ? [v, v] : UMR[v][SCALEIDX[max]];
 }
+// Midpoint of a [lo, hi] range
 function mid(r) {
   return Math.floor((r[0] + r[1]) / 2);
 }
+// 0-20 Notenskala value for points on a team category's scale, the reverse of convert()
 function katOf(pts, max) {
   if (max === 20) return pts;
   var si = SCALEIDX[max];
@@ -379,8 +374,7 @@ function katOf(pts, max) {
   }
   return null;
 }
-// Reverse of markOf() - grade mark (e.g. "2+") -> its 0-20 value, for the
-// optional grade-typing input mode on Blatt/Teampunkte.
+// Grade mark (e.g. "2+") to 0-20 points, the reverse of markOf()
 var GRADE_TO_POINTS = (function () {
   var map = {};
   NOTEN.forEach(function (n) {
@@ -391,18 +385,14 @@ var GRADE_TO_POINTS = (function () {
   });
   return map;
 })();
-// Grade mark to show in a grade-mode input. max=20 (Blatt) uses v
-// directly; a team category (max!=20) goes through katOf first, same as
-// its existing read-only hint does. Falls back to the raw number for the
-// ungraded top bands (blank mark).
+// Grade mark shown in a grade-mode input; team categories go through katOf, ungraded bands show the number
 function gradeMarkFor(v, max) {
   if (v === null) return "";
   var kat = max && max !== 20 ? katOf(v, max) : v;
   var mk = markOf(kat).mark;
   return mk && mk.trim() ? mk : String(v);
 }
-// Typed grade mark -> raw points to write. undefined = not a recognized
-// mark (caller reverts the field, same as an unparsable number today).
+// Typed grade mark to points, or undefined if it isn't a recognized mark
 function pointsFromGrade(mark, max) {
   var v = GRADE_TO_POINTS[mark];
   if (v === undefined) return undefined;
@@ -411,8 +401,7 @@ function pointsFromGrade(mark, max) {
 function gradeHintText(v) {
   return v === null ? "–" : v + " Punkte";
 }
-// Scans the text notes of a team category to provide a hint for the average
-// grade and associated points.
+// Suggests an average grade and points from the grades written in a team category's notes
 var NOTE_GRADE_TOKEN_RE = /[1-6][+-]?/g;
 function noteGradeTokens(text) {
   var tokens = [];
@@ -422,9 +411,9 @@ function noteGradeTokens(text) {
     var tok = m[0];
     var before = text.charAt(m.index - 1);
     var after = text.charAt(m.index + tok.length);
-    if (/[0-9]/.test(before)) continue; // part of a bigger number, e.g. "20"
-    if (tok.length === 1 && /[0-9]/.test(after)) continue; // ditto
-    if (after === "." || after === ":") continue; // list marker, e.g. "1."
+    if (/[0-9]/.test(before)) continue; // Part of a bigger number, e.g. "20"
+    if (tok.length === 1 && /[0-9]/.test(after)) continue; // Also part of a bigger number
+    if (after === "." || after === ":") continue; // List marker, e.g. "1."
     tokens.push(tok);
   }
   return tokens;
@@ -447,9 +436,7 @@ function noteGradeAverageHint(text, max) {
     " Pkt.)"
   );
 }
-// Speaker names are free text a judge types in, and the two result tables
-// below are built as HTML strings (the one place this codebase does that) -
-// so anything user-typed has to go through here on the way in.
+// Escapes user-typed text for the result tables built as HTML strings
 function esc(s) {
   return String(s)
     .replace(/&/g, "&amp;")
@@ -457,15 +444,13 @@ function esc(s) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
-// How many cells a complete Wertung has for the room's current shape: every
-// active speech's criteria plus both teams' categories. Follows the chair's
-// FFR count, so it is never the fixed 59 of a default 3-FFR round.
+// Number of cells in a complete Wertung for the room's current FFR count
 function expectedCellCount() {
   return (
     activeSpeakerCount() * CRITERIA.length + TEAMS.length * TEAMCATS.length
   );
 }
-// Highest reachable team score - the sum of every category's own max.
+// Highest reachable team score
 var TEAM_MAX = TEAMCATS.reduce(function (a, c) {
   return a + c.max;
 }, 0);
@@ -517,13 +502,7 @@ if (!CLIENT_ID) {
   LS.set("opd.client_id", CLIENT_ID);
 }
 
-// pushState/replaceState throw a SecurityError when the page is running
-// from a file:// URL - a browser's "Seite speichern unter" copy opened
-// straight off disk - because the target path isn't same-origin there.
-// Feature-detecting the method isn't enough: it exists, it just throws.
-// The URL is a nicety (a shareable /r/CODE link, a back-button escape
-// hatch out of "Verlassen"), so it must never take the caller down with
-// it - startSession() calls this immediately before its render().
+// pushState throws a SecurityError on file:// pages (a saved copy), and the URL is only a nicety, so never let it fail the caller
 function setHistoryUrl(method, state, url) {
   if (!history[method]) return;
   try {
@@ -531,11 +510,7 @@ function setHistoryUrl(method, state, url) {
   } catch (e) {}
 }
 
-// Server room codes (server.py's new_code()) are always 4 chars drawn from
-// ACDEFGHJKMNPQRTUVWXY34679 - i.e. they never contain B/I/L/O/S/Z or
-// 0/1/2/5/8. Offline (not-yet-created) rooms draw only from that excluded
-// set, so an offline code can never collide with a real one, while still
-// matching urlCode()'s 4-char alphanumeric shape - no routing changes needed.
+// Offline room codes only use characters server codes never contain (see new_code() in server.py), so they can't collide
 var OFFLINE_CODE_ALPHABET = "BILOSZ01258";
 function genOfflineCode() {
   var code;
@@ -551,31 +526,24 @@ function genOfflineCode() {
 }
 
 var ME = null; // {code, token, judge_id, name, is_chair}
-var mine = {}; // "target|criterion" -> points   (my own, authoritative locally)
+var mine = {}; // "target|criterion" -> points (own scores, authoritative locally)
 var peers = {}; // judge_id -> {name,is_chair,hidden,filled,online}
 var remote = {}; // judge_id -> {"target|criterion": points}
 var queue = {}; // "target|criterion" -> {target,criterion,points,seq}
 var seq = 0;
-// Blatt's free-text notes - local-only, keyed "s{s}|{groupKey}" (Sac+Urt share one).
+// Blatt's local-only notes, keyed "s{s}|{groupKey}" (Sac and Urt share one)
 var notes = {};
 var notesSaveTimer = null;
-// Speaker names - local-only like notes, keyed "s{s}", one name per speaker
-// slot. Named speakerNames (not "names") since a couple of chair-summary
-// functions already use a local `names` array for judge-name lists.
+// Local-only speaker names, keyed "s{s}"
 var speakerNames = {};
 var namesSaveTimer = null;
-// OpenTab import/submit state - chair-only, browser-local (never sent to
-// our own server; see JUDGE_BALLOT_API.md). judgeMap maps an OpenTab
-// adjudicator uuid to a room judge id ("off:<id>" for an offline judge).
-// Round-scoped (per room code)
+// Chair-only OpenTab state, browser-local and per room; judgeMap maps adjudicator uuids to room judge ids ("off:<id>" if offline)
 var otState = {
   debateId: "",
   tournamentId: "",
   ballot: null,
   judgeMap: {},
-  // s -> the OpenTab member uuid the chair picked for that fixed team-speech
-  // slot (indices 0-3) - speakerNames only stores the display text, so this
-  // is what otBuildSubmission() actually sends back as speeches[].speaker.
+  // OpenTab member uuid per team-speech slot (0-3), sent as speeches[].speaker on submission
   teamSpeakerUuid: {},
 };
 var otSaveTimer = null;
@@ -585,10 +553,7 @@ function saveOtState() {
     if (ME) LS.set("opd.opentab." + ME.code, otState);
   }, 150);
 }
-// Registration tokens, keyed by OpenTab tournament_id - NOT room-scoped, so
-// pasting a ballot URL for a different round of the same tournament (a
-// different room) reuses the same saved token instead of asking again.
-// { tournamentId: token }
+// OpenTab registration tokens by tournament_id, shared across rooms so later rounds reuse them
 function otLoadTokens() {
   return LS.get("opd.opentab.tokens", {}) || {};
 }
@@ -602,12 +567,10 @@ function otForgetToken(tournamentId) {
   delete all[tournamentId];
   LS.set("opd.opentab.tokens", all);
 }
-// Transient (never persisted) - set once a pasted ballot URL's tournament
-// has no saved token, so the view shows the one-time registration step for
-// that tournament/debate instead of the plain ballot-URL field.
+// Tournament of a pasted ballot URL without a saved token, so the view shows the registration step (never persisted)
 var otPendingTournamentId = null;
 var otPendingDebateId = null;
-// API base of the OpenTab server the pending ballot URL came from.
+// API base of the OpenTab server the pending ballot URL came from
 var otPendingApiBase = null;
 var ws = null,
   wsTries = 0,
@@ -616,31 +579,25 @@ var ws = null,
 var online = false,
   pending = 0;
 
-// Debate timer - room-wide, server-anchored (like spreadOpen/freeSpeakerCount
-// above): every judge sees the same clock. startedAt is a server epoch-
-// seconds timestamp (or null while paused/idle); serverTimeOffsetMs lets the
-// client compute "now" on the server's clock without trusting its own.
+// Room-wide debate timer anchored to the server clock; startedAt is in server epoch seconds, null unless running
 var timer = {
   type: null, // null | "team" | "ffr" | "reply" | "discussion"
   status: "idle", // idle | running | paused
   durationMs: 0,
   elapsedMs: 0,
   startedAt: null,
-  updatedAt: 0, // server clock; see applyTimerState's snapshot guard
+  updatedAt: 0, // Server clock; see applyTimerState's snapshot guard
 };
 var serverTimeOffsetMs = 0;
-// Server-clock time of the last timer action taken on this device that the
-// server has not confirmed yet (0 once any broadcast arrives). Guards a
-// reconnect's snapshot from winding back a timer started while offline.
+// Server time of an unconfirmed local timer action, so a reconnect snapshot can't wind the timer back
 var timerLocalAt = 0;
-// Which signal thresholds (ms into the current speech) have already rung,
-// so a repaint or a pause/resume doesn't re-fire a bell. Cleared whenever
-// the banked elapsed time returns to 0 (a fresh start or a reset).
+// Signal thresholds (ms into the speech) that already rang, so repaints and pause/resume don't ring again
 var timerFired = {};
 var timerAudioCtx = null;
-// Cached .bar widget children, so the 250ms repaint only rewrites text.
+// Cached .bar widget children, so the 250ms repaint only rewrites text
 var timerWidgetParts = null;
 
+// Score map key for a target and criterion
 function kk(t, c) {
   return t + "|" + c;
 }
@@ -662,11 +619,9 @@ function loadLocal() {
   otState.ballot = otState.ballot || null;
   otState.judgeMap = otState.judgeMap || {};
   otState.teamSpeakerUuid = otState.teamSpeakerUuid || {};
-  // Connections saved before more than one OpenTab server was supported
-  // were all to debateresult.com.
+  // Connections saved before multi-server support were all to debateresult.com
   otState.apiBase = otState.apiBase || OPENTAB_DEFAULT_API;
-  // Transient, never persisted - don't let a pending registration step
-  // from a previously open room leak into this one.
+  // Don't let a pending registration step leak in from a previously open room
   otPendingTournamentId = null;
   otPendingDebateId = null;
   otPendingApiBase = null;
@@ -681,7 +636,7 @@ function setName(s, text) {
     if (ME) LS.set("opd.names." + ME.code, speakerNames);
   }, 300);
 }
-// SPEAKERS[s].label suffixed with "(name)" wherever a judge has typed one in
+// SPEAKERS[s].label with the typed speaker name appended in parentheses
 function speakerLabel(s) {
   var nm = getName(s);
   return SPEAKERS[s].label + (nm ? " (" + nm + ")" : "");
@@ -713,23 +668,15 @@ function setTeamNote(t, groupKey, text) {
   }, 300);
 }
 
-// --- OpenTab judge-ballot API (see JUDGE_BALLOT_API.md) ---------------
-// Client-only integration: the app never sends the OpenTab secret/token to
-// our own server, so these are plain browser fetch() calls against OpenTab
-// directly (its CORS is wide open - see the doc's overview).
+// OpenTab judge-ballot API (see JUDGE_BALLOT_API.md)
 
-// The OpenTab deployments this integration talks to: the judge-facing host
-// in the URLs chairs paste ("tabs.") -> that deployment's API ("api.").
-// A fixed list rather than derived from user input: server.py's
-// opentab_proxy only relays to these API hosts (OPENTAB_ALLOWED_HOSTS - keep
-// both lists in step), so a stray or malicious URL can't turn the proxy
-// into an open SSRF relay. To support another deployment, add it in both.
+// Judge-facing OpenTab host to API base; must match OPENTAB_ALLOWED_HOSTS in server.py, which keeps the proxy from being an open relay
 var OPENTAB_SERVERS = {
   "tabs.debateresult.com": "https://api.debateresult.com",
   "tabs.opentab2.limperg.de": "https://api.opentab2.limperg.de",
 };
 var OPENTAB_DEFAULT_API = "https://api.debateresult.com";
-// The API base for a pasted OpenTab URL, or null for an unknown host.
+// API base for a pasted OpenTab URL, or null for an unknown host
 function otApiBaseFor(url) {
   try {
     var host = new URL(url).hostname.toLowerCase();
@@ -753,8 +700,7 @@ function otUnknownServerMsg(url) {
     "."
   );
 }
-// The registration secret is the last non-empty path segment of the
-// judge's private ballot URL.
+// The registration secret is the last path segment of the judge's private ballot URL
 function otExtractSecret(url) {
   try {
     var parts = new URL(url).pathname.split("/").filter(Boolean);
@@ -775,16 +721,8 @@ function otExtractTournamentId(url) {
   );
   return m ? m[1] : "";
 }
-// Every OpenTab call follows the doc's integration guidance: any non-2xx
-// response, or a 2xx body missing the fields we need, is surfaced to the
-// caller as an Error rather than silently accepted or guessed at.
-//
-// Routed through our own server's /opentab/proxy rather than fetched
-// directly: OpenTab's CORS preflight response has no
-// Access-Control-Allow-Headers, so a browser can't send the
-// Authorization/Content-Type headers this needs - see server.py's
-// opentab_proxy(), which just relays bytes. Nothing here changes except
-// where the bytes travel; url/body/token shape stays OpenTab's own.
+// OpenTab requests go through our /opentab/proxy, since OpenTab's CORS disallows the Authorization header;
+// non-2xx responses and missing fields throw instead of being guessed at
 function otRequest(method, url, body, token) {
   return fetch("/api/rooms/" + ME.code + "/opentab/proxy?token=" + ME.token, {
     method: "POST",
@@ -858,9 +796,7 @@ function otSubmit(apiBase, token, debateId, ballot) {
   });
 }
 
-// Save locally first, then push to db. points === null clears the cell
-// (Undo of a first-ever entry) - the server deletes the row rather than
-// storing a 0 every other judge would count as a real score.
+// Saves locally first, then pushes; null clears the cell instead of storing a 0 that others would count
 function write(target, criterion, points) {
   var k = kk(target, criterion);
   if (!remote[ME.judge_id]) remote[ME.judge_id] = {};
@@ -872,7 +808,7 @@ function write(target, criterion, points) {
     remote[ME.judge_id][k] = points;
   }
   seq += 1;
-  // Collapsing by key caps an hour offline at one queued entry per cell.
+  // Keyed by cell, so a long offline period queues at most one entry per cell
   queue[k] = {
     target: target,
     criterion: criterion,
@@ -891,6 +827,7 @@ function scheduleFlush(ms) {
   }, ms);
 }
 
+// Pushes queued score writes to the server
 function flush() {
   if (!ME) return;
   var keys = Object.keys(queue);
@@ -901,7 +838,7 @@ function flush() {
   }
   pending = keys.length;
   paintBar();
-  if (ME.pendingCreate) return; // offline room - nothing to push to yet
+  if (ME.pendingCreate) return; // Offline room, nothing to push to yet
   var batch = keys.slice(0, 200).map(function (k) {
     return queue[k];
   });
@@ -920,7 +857,7 @@ function flush() {
     .then(function () {
       batch.forEach(function (p) {
         var k = kk(p.target, p.criterion);
-        // only clear if it has not been edited again since we sent it
+        // Only clear if the cell hasn't been edited again since sending
         if (queue[k] && queue[k].seq === p.seq) delete queue[k];
       });
       saveLocal();
@@ -931,15 +868,13 @@ function flush() {
     .catch(function () {
       pending = Object.keys(queue).length;
       paintBar();
-      scheduleFlush(3000); // If sync failed try again
+      scheduleFlush(3000); // Retry after a failed sync
     });
 }
 
-// --- Debate timer -----------------------------------------------------
+// Debate timer
 
-// Personal, per-device preference (like gradeInputMode above) - only one
-// device in the room should actually sound the bell, so this is never sent
-// to the server.
+// Per-device mute, never synced, so only one device in the room rings the bell
 function timerMuted() {
   return !!LS.get("opd.timerMuted", false);
 }
@@ -948,26 +883,21 @@ function toggleTimerMuted() {
   paintTimer();
 }
 
-// Also per-device: whether the displayed clock counts up from 0 (default)
-// or down from the nominal duration. Purely a display choice - the shared
-// elapsed/duration state and the bell signals are unaffected either way.
+// Per-device display choice: count up from 0 (default) or down from the duration
 function timerCountUp() {
   return LS.get("opd.timerCountUp", true) !== false;
 }
-// The ms value to actually render, given the display-mode preference above.
+// The ms value to render, given the count direction
 function timerDisplayMs(elapsedMs, durationMs) {
   return timerCountUp() ? elapsedMs : durationMs - elapsedMs;
 }
 
-// And per-device again: which BELL_VOICES entry this device rings. Whoever
-// holds the bell picks whichever carries better in their room, so it can't
-// be a room-wide setting.
+// Per-device bell voice, since whoever holds the bell picks what carries best in their room
 function bellVoice() {
   return LS.get("opd.bellVoice", "hoch") === "tief" ? "tief" : "hoch";
 }
 
-// Lazily created (and resumed) from inside a user gesture - start/resume
-// button handlers call this - so autoplay policies don't block the bell.
+// Created and resumed inside a user gesture so autoplay policies don't block the bell
 function timerAudioCtx_() {
   if (!timerAudioCtx) {
     try {
@@ -981,13 +911,8 @@ function timerAudioCtx_() {
   }
   return timerAudioCtx;
 }
-// The two Zeitsignal voices, both tuned in the Bell Tuner and both the
-// same struck-idiophone approximation: sine partials over a fast-attack /
-// exponential-decay envelope, plus a short noise burst for the strike
-// transient, so they read as a bell rather than a beep. "hoch" is bright
-// and short, and cuts through a talking room; "tief" rings much longer
-// and carries better in a big hall. Which one a device uses is a personal
-// per-device choice (bellVoice() below), like mute - not a room setting.
+// The two bell voices: sine partials with fast attack and exponential decay plus a noise strike;
+// "hoch" is short and bright, "tief" rings longer for big halls
 var BELL_VOICES = {
   hoch: {
     label: "Hoch",
@@ -997,11 +922,11 @@ var BELL_VOICES = {
       { ratio: 2, gain: 0.37 },
       { ratio: 3, gain: 0.24 },
     ],
-    gapSec: 0.38, // between successive rings of a 2x/3x signal
+    gapSec: 0.38, // Between successive rings of a 2x/3x signal
     attackSec: 0.005,
     decaySec: 0.9,
     gain: 0.9,
-    bite: 0, // square-wave blend at the fundamental; 0 = none
+    bite: 0, // Square-wave blend at the fundamental; 0 = none
     noiseSec: 0.012,
     noiseGain: 0.19,
   },
@@ -1076,8 +1001,7 @@ function playBellTones(times) {
     noise.start(t0);
   }
 }
-// Rings `times` short bell tones in a row. Muted devices stay silent so a
-// room with several judges' phones open doesn't sound the bell N times.
+// Rings `times` bell tones in a row; muted devices stay silent
 function ringBell(times) {
   if (timerMuted()) return;
   playBellTones(times);
@@ -1086,9 +1010,7 @@ function testBell() {
   playBellTones(1);
 }
 
-// Elapsed time (ms) into the current speech, computed from the last
-// server-broadcast state plus the server-clock offset - never from a local
-// "remaining time" that would drift across reconnects.
+// Elapsed ms in the current speech from the last server state and clock offset, so it never drifts
 function timerElapsedMs() {
   if (!timer.type) return 0;
   var e = timer.elapsedMs || 0;
@@ -1097,22 +1019,19 @@ function timerElapsedMs() {
   }
   return e;
 }
-// Signal instants (ms into the speech) and how many times the bell rings at
-// each, derived from TIMER_TYPES/OVERDRAW_GRACE_MS. Zwischenrede has no
-// non-protected window, so it only gets the 2x/3x signals.
+// Signal instants (ms) and ring counts for a timer type; Zwischenrede only gets the 2x/3x signals
 function timerSignalPoints(type) {
   var t = TIMER_TYPES[type];
   if (!t) return [];
-  // An explicit `signals` list (Jurierdiskussion) overrides the speech
-  // pattern below entirely - it has no protected/open windows or overdraw.
+  // An explicit signals list (Jurierdiskussion) replaces the speech pattern
   if (t.signals) return t.signals;
   var pts = [];
   if (t.protected.length === 2) {
-    pts.push({ ms: t.protected[0][1], times: 1 }); // open window starts
-    pts.push({ ms: t.protected[1][0], times: 1 }); // open window ends
+    pts.push({ ms: t.protected[0][1], times: 1 }); // Open window starts
+    pts.push({ ms: t.protected[1][0], times: 1 }); // Open window ends
   }
-  pts.push({ ms: t.durationMs, times: 2 }); // nominal time ends
-  pts.push({ ms: t.durationMs + OVERDRAW_GRACE_MS, times: 3 }); // grace ends
+  pts.push({ ms: t.durationMs, times: 2 }); // Nominal time ends
+  pts.push({ ms: t.durationMs + OVERDRAW_GRACE_MS, times: 3 }); // Grace ends
   return pts;
 }
 function timerStateClass(type, elapsedMs) {
@@ -1128,8 +1047,7 @@ function fmtTimerClock(ms) {
   s = s % 60;
   return (neg ? "+" : "") + m + ":" + (s < 10 ? "0" : "") + s;
 }
-// The signal rail in the expanded modal spans 0 up to the end of the
-// overdraw grace, so every mark (including the final 3x signal) is visible.
+// The modal's signal rail runs to the end of the overdraw grace so every mark is visible
 function timerBarMax(type) {
   var t = TIMER_TYPES[type];
   var max = t.durationMs + OVERDRAW_GRACE_MS;
@@ -1139,24 +1057,11 @@ function timerBarMax(type) {
   return max;
 }
 
-// Applies a {type,status,duration_ms,elapsed_ms,started_at} payload from
-// the server (snapshot or a "timer" ws broadcast) as the new shared state.
-// The widget only ever shows the speech kind (Teamrede/FFR/Zwischenrede),
-// never a speaker name or ordinal - which speech is being timed is picked
-// by the judge each time via the type buttons below, not carried
-// automatically.
-//
-// This also rebuilds the fired-signals bookkeeping - from the actual elapsed
-// time, never just cleared, since this runs on every resync() (tab focus,
-// visibility change, ws reconnect), not only on a real start/reset, and the
-// server's *banked* elapsed_ms stays 0 for a running timer until its first
-// pause.
+// Applies a server timer payload (snapshot or broadcast) and rebuilds fired signals from the actual elapsed time,
+// since this also runs on every resync
 function applyTimerState(t, fromSnapshot) {
-  // A snapshot is a point-in-time read that can be *older* than what this
-  // device just did - most obviously after acting while offline, which the
-  // server never heard about. Applying it then would wind the clock back,
-  // so a pending local action wins. Live broadcasts are always current (and
-  // prove the server has our state), so they always win and clear the flag.
+  // A snapshot may predate an unconfirmed local action (e.g. one taken offline), so the local action wins;
+  // live broadcasts are always current and clear the flag
   if (fromSnapshot) {
     if (timerLocalAt && (t.updated_at || 0) < timerLocalAt) return;
   } else {
@@ -1174,13 +1079,8 @@ function applyTimerState(t, fromSnapshot) {
   paintTimer();
   refreshTimerModalControls();
 }
-// Once the overdraw grace itself ends (the speech types' final 3x signal,
-// pushed by timerSignalPoints), a speech still running keeps ringing 3x
-// again every further OVERDRAW_GRACE_MS - discussion has no overdraw grace
-// (it uses an explicit `signals` list instead) so it never repeats. Returns
-// -1 before the first repeat is due; 0, 1, 2, ... for each one crossed
-// since (the grace-end signal itself already rings via timerSignalPoints,
-// so the first repeat here is a further OVERDRAW_GRACE_MS after that).
+// Index of the 3x repeat after the overdraw grace (one every OVERDRAW_GRACE_MS), or -1 before the first;
+// discussion never repeats
 function overtimeIntervalIndex(type, elapsedMs) {
   var t = TIMER_TYPES[type];
   if (!t || t.signals) return -1;
@@ -1188,9 +1088,7 @@ function overtimeIntervalIndex(type, elapsedMs) {
   if (sinceGraceEnd < OVERDRAW_GRACE_MS) return -1;
   return Math.floor(sinceGraceEnd / OVERDRAW_GRACE_MS) - 1;
 }
-// Marks every signal instant already in the past as rung, so a state change
-// never re-rings a bell the speech is past - and, conversely, a threshold
-// nudged back into the future by -5s correctly rings again when reached.
+// Marks every past signal as rung; a threshold moved back into the future rings again
 function rebuildTimerFired() {
   timerFired = {};
   if (!timer.type) return;
@@ -1200,9 +1098,7 @@ function rebuildTimerFired() {
   });
   timerFired.overtimeIdx = overtimeIntervalIndex(timer.type, elapsed);
 }
-// Mirrors server.py's set_timer branches so an action takes effect without
-// waiting on a round trip - and keeps working with no connection at all.
-// Deliberately kept in step with that function: change one, change both.
+// Mirrors set_timer in server.py so actions apply instantly and offline; change both together
 function applyTimerActionLocally(action, extra) {
   var nowServer = (Date.now() + serverTimeOffsetMs) / 1000;
   if (action === "start") {
@@ -1217,7 +1113,7 @@ function applyTimerActionLocally(action, extra) {
     };
   } else if (action === "pause") {
     if (timer.status !== "running") return;
-    timer.elapsedMs = timerElapsedMs(); // before startedAt is cleared
+    timer.elapsedMs = timerElapsedMs(); // Before startedAt is cleared
     timer.startedAt = null;
     timer.status = "paused";
   } else if (action === "resume") {
@@ -1231,8 +1127,7 @@ function applyTimerActionLocally(action, extra) {
   } else if (action === "adjust") {
     if (!timer.type) return;
     if (timer.status === "running") {
-      // Moving startedAt earlier adds to the live elapsed, later subtracts
-      // from it; the cap keeps a -5s tap from pushing it below zero.
+      // Moving startedAt earlier adds elapsed time; capped so it never goes below zero
       timer.startedAt = Math.min(
         timer.startedAt - extra.delta_ms / 1000,
         nowServer + timer.elapsedMs / 1000,
@@ -1249,13 +1144,11 @@ function applyTimerActionLocally(action, extra) {
   paintTimer();
   refreshTimerModalControls();
 }
-// Local-first, like write() for scores: apply now, push after. The server's
-// broadcast (carrying a newer updated_at) then replaces this with the
-// authoritative state, which also re-converges every other judge.
+// Local-first like write(): apply now, push after; the server broadcast then makes it authoritative
 function timerActionRequest(action, extra) {
   if (!ME) return;
   applyTimerActionLocally(action, extra);
-  if (ME.pendingCreate) return; // offline room - no server room to push to yet
+  if (ME.pendingCreate) return; // Offline room, nothing to push to yet
   var body = { action: action };
   if (extra) for (var k in extra) body[k] = extra[k];
   fetch(
@@ -1285,9 +1178,7 @@ function adjustTimer(deltaMs) {
   timerActionRequest("adjust", { delta_ms: deltaMs });
 }
 
-// Everything below repaints four times a second, so it only ever touches
-// the DOM when a value actually changed - rewriting identical text/classes
-// on every tick makes the digits visibly stutter.
+// Only touches the DOM when a value changed, since rewriting on every tick makes the digits stutter
 function setText(node, text) {
   if (node && node.textContent !== text) node.textContent = text;
 }
@@ -1295,9 +1186,7 @@ function setCls(node, cls) {
   if (node && node.className !== cls) node.className = cls;
 }
 
-// Live-updates the expanded modal's big clock and signal bar, if it's open
-// (the modal's static parts - label, marks, buttons - only get built once
-// in openTimerModal(); only the clock text and fill width move).
+// Updates the open modal's clock and signal bar; the rest is built once in openTimerModal()
 function refreshTimerModal() {
   var clock = document.getElementById("timerBigClock");
   if (!clock || !timer.type) return;
@@ -1315,10 +1204,7 @@ function refreshTimerModal() {
   }
 }
 
-// The modal's *structure* only depends on these two things; everything else
-// (button labels, the clock, the bar, whether the Zwischenrede button is
-// showing) is updated in place below, so that a -5s/+5s tap doesn't tear
-// down and recreate every button under the judge's finger.
+// The modal is only rebuilt when this shape changes, so ±5s taps don't recreate buttons under the finger
 function timerModalShape() {
   return (
     (!timer.type || timer.status === "idle" ? "pick" : "run") + "|" + timer.type
@@ -1328,7 +1214,7 @@ function refreshTimerModalControls() {
   var m = document.getElementById("timerModal");
   if (!m) return;
   if (m.dataset.shape !== timerModalShape()) {
-    openTimerModal(true); // genuinely different controls - rebuild once
+    openTimerModal(true); // Controls changed, so rebuild once
     return;
   }
   var pr = document.getElementById("timerPauseResume");
@@ -1343,8 +1229,7 @@ function refreshTimerModalControls() {
   refreshTimerModal();
 }
 
-// Ticks every 250ms (started at app init, below) - repaints the widget and
-// rings the bell at any signal instant crossed since the last tick.
+// Runs every 250ms: repaints the widget and rings any signal crossed since the last tick
 function tickTimer() {
   if (!ME || !timer.type) return;
   paintTimer();
@@ -1358,9 +1243,7 @@ function tickTimer() {
     }
   });
   var overtimeIdx = overtimeIntervalIndex(timer.type, elapsed);
-  // Not "|| -1": that treats a stored 0 (the very first overtime repeat)
-  // as falsy, so it'd fall back to -1 and re-ring every tick for that
-  // whole 15s window instead of once.
+  // Not "|| -1", since a stored 0 is a valid index and would otherwise ring every tick
   var lastOvertimeIdx =
     typeof timerFired.overtimeIdx === "number" ? timerFired.overtimeIdx : -1;
   if (overtimeIdx > lastOvertimeIdx) {
@@ -1370,10 +1253,7 @@ function tickTimer() {
 }
 setInterval(tickTimer, 250);
 
-// Every modal in the app is the same shape: a .modalbackdrop that closes on
-// an outside click or Escape, wrapping one .modalbox the caller fills. These
-// two hold that pattern once; the named open/close pairs below are thin
-// wrappers so call sites (and the Esc/Tab handlers) keep reading as before.
+// Shared modal pattern: a backdrop that closes on outside click or Escape around one .modalbox
 var modalEscHandlers = {};
 function closeModal(id) {
   var m = document.getElementById(id);
@@ -1383,8 +1263,7 @@ function closeModal(id) {
     delete modalEscHandlers[id];
   }
 }
-// build(box) fills the box; the finished backdrop is returned so a caller
-// can stash state on it (openTimerModal's dataset.shape) or focus into it.
+// build(box) fills the box; returns the backdrop so callers can store state on it or focus into it
 function openModal(id, build) {
   closeModal(id);
   var backdrop = el("div", "modalbackdrop");
@@ -1403,7 +1282,7 @@ function openModal(id, build) {
   document.addEventListener("keydown", esc);
   return backdrop;
 }
-// One-button notice in the app's modal style, replacing alert().
+// One-button notice in the app's modal style, replacing alert()
 function openInfoModal(title, text) {
   openModal("infoModal", function (box) {
     if (title) box.appendChild(el("h2", null, title));
@@ -1418,8 +1297,7 @@ function openInfoModal(title, text) {
     box.appendChild(actions);
   });
 }
-// Abbrechen/confirm pair instead of confirm().
-// opts: {title, text, confirmLabel, cancelLabel, onConfirm}.
+// Abbrechen/confirm modal replacing confirm(); opts: {title, text, confirmLabel, cancelLabel, onConfirm}
 function openConfirmModal(opts) {
   openModal("confirmModal", function (box) {
     if (opts.title) box.appendChild(el("h2", null, opts.title));
@@ -1441,7 +1319,7 @@ function openConfirmModal(opts) {
     box.appendChild(actions);
   });
 }
-// A "Schließen"/"OK"-style single action row, the tail of most modals here.
+// Single "Schließen"/"OK" action row ending most modals
 function modalCloseRow(id, label) {
   var row = el("div", "modalactions");
   var btn = el("button", "btn ghost", label);
@@ -1456,8 +1334,7 @@ function modalCloseRow(id, label) {
 function closeTimerModal() {
   closeModal("timerModal");
 }
-// Every visible, non-disabled focusable element in the modal - used both to
-// trap Tab inside it and to focus the first control when it opens.
+// Visible, enabled focusables in the timer modal, for Tab trapping and initial focus
 function timerModalFocusables() {
   var m = document.getElementById("timerModal");
   if (!m) return [];
@@ -1471,12 +1348,8 @@ function timerModalFocusables() {
       return !e.disabled && e.offsetParent !== null;
     });
 }
-// Tap target for the .bar widget - lets a judge pick a speech type and
-// start/pause/resume/reset the shared clock, or mute their own device.
-// `isRefresh` is set only when applyTimerState() rebuilds an already-open
-// modal in place after a server-confirmed change - that must not steal
-// focus back to the first button every time, unlike a genuine fresh open
-// (a click, or the Alt+T shortcut).
+// Timer modal: pick a speech type, control the shared clock or mute this device;
+// isRefresh rebuilds in place without stealing focus
 function openTimerModal(isRefresh) {
   var backdrop = openModal("timerModal", function (box) {
     buildTimerModalBox(box);
@@ -1522,12 +1395,7 @@ function buildTimerModalBox(box) {
     box.appendChild(bar);
     refreshTimerModal();
 
-    // For a speech timed a bit too early or too late - nudges the shared
-    // clock without closing the modal, so a judge can tap it a few times
-    // while watching the big clock/bar update. Doesn't touch the bell's
-    // fired-signals bookkeeping directly - applyTimerState() recomputes
-    // that from the corrected elapsed time on the broadcast this triggers,
-    // so a signal moved back into the future correctly rings again later.
+    // Nudges a mistimed clock without closing the modal; fired signals are recomputed from the resulting broadcast
     var adjustRow = el("div", "modalactions");
     var minusBtn = el("button", "btn ghost", "−5s");
     minusBtn.type = "button";
@@ -1543,10 +1411,7 @@ function buildTimerModalBox(box) {
     adjustRow.appendChild(plusBtn);
     box.appendChild(adjustRow);
 
-    // Pause/Weiter/Reset stay on the modal instead of closing it - the
-    // point of watching the big clock/bar is to correct a mistimed start,
-    // which usually takes a few taps. One handler dispatching on the current
-    // status keeps pause<->resume a label change, not a structural rebuild.
+    // Pause/resume/reset keep the modal open, since correcting a start usually takes several taps
     var actions = el("div", "modalactions");
     var pb = el(
       "button",
@@ -1568,10 +1433,7 @@ function buildTimerModalBox(box) {
     actions.appendChild(xb);
     box.appendChild(actions);
 
-    // Every Fraktionsfreie Rede is always followed by a Zwischenrede - not
-    // a suggestion, so this is always offered once the FFR is up. Built
-    // once and shown/hidden by refreshTimerModalControls(), so crossing
-    // that threshold mid-speech doesn't rebuild the modal under the judge.
+    // Every FFR is followed by a Zwischenrede, so this is built once and toggled by refreshTimerModalControls()
     var nb = el("button", "btn", "Zwischenrede starten");
     nb.id = "timerNextReply";
     nb.type = "button";
@@ -1610,8 +1472,7 @@ function buildTimerModalBox(box) {
   box.appendChild(modalCloseRow("timerModal", "Schließen"));
 }
 
-// Repaints the compact .bar widget (shared markup for mobile top bar and
-// the desktop docked header - see index.html's .bar).
+// Repaints the compact .bar widget (mobile top bar and desktop header)
 function paintTimer() {
   var host = document.getElementById("timerWidget");
   if (!host) return;
@@ -1621,9 +1482,7 @@ function paintTimer() {
   }
   host.classList.remove("hide");
 
-  // Built once, then only its text and classes change - this runs on every
-  // 250ms tick, and rebuilding the children each time would both stutter the
-  // digits and throw away an in-progress tap on → Zwischenrede.
+  // Built once and then only updated, since rebuilding every tick stutters the digits and drops in-progress taps
   if (!timerWidgetParts || timerWidgetParts.host !== host) {
     host.textContent = "";
     host.appendChild(tabIcon("timer"));
@@ -1645,10 +1504,7 @@ function paintTimer() {
   }
   var p = timerWidgetParts;
 
-  // Zurücksetzen keeps timer.type (so the modal can restart that speech)
-  // but clears the clock - nothing is being timed, so the widget collapses
-  // back to its idle "Timer" tab just like before the first start. A
-  // reset clock nudged with +5s (elapsed > 0) stays expanded to show it.
+  // Without a type, or after a reset, the widget collapses to its idle tab; a reset clock nudged with +5s stays expanded
   if (!timer.type || (timer.status === "idle" && !timer.elapsedMs)) {
     setCls(host, "timerwidget idle");
     setText(p.clock, "Timer");
@@ -1678,7 +1534,7 @@ function paintTimer() {
 
 function connect() {
   if (!ME) return;
-  if (ME.pendingCreate) return; // offline room - no server room to connect to yet
+  if (ME.pendingCreate) return; // Offline room, nothing to connect to yet
   if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
   var proto = location.protocol === "https:" ? "wss" : "ws";
   try {
@@ -1786,9 +1642,10 @@ function scheduleReconnect() {
   }, wait);
 }
 
+// Reloads the full room snapshot from the server
 function resync() {
   if (!ME) return;
-  if (ME.pendingCreate) return; // offline room - no server room to sync with yet
+  if (ME.pendingCreate) return; // Offline room, nothing to sync with yet
   fetch(
     "/api/rooms/" + ME.code + "/snapshot?token=" + encodeURIComponent(ME.token),
   )
@@ -1806,7 +1663,7 @@ function resync() {
         if (!remote[r.judge_id]) remote[r.judge_id] = {};
         remote[r.judge_id][kk(r.target, r.criterion)] = r.points;
       });
-      // Always take local state over server state
+      // Local state always wins over server state
       remote[ME.judge_id] = Object.assign({}, remote[ME.judge_id] || {}, mine);
       ME.is_chair = s.me.is_chair;
       spreadOpen = !!s.spread_open;
@@ -1880,8 +1737,7 @@ function setExclusion(target, excluded) {
   ).catch(function () {});
 }
 
-// Offline judges: added/renamed/removed and scored only by the chair, via
-// the desktop "Offline-Jurierende" tab or the mobile Chair panel.
+// Offline judges are managed and scored only by the chair
 function randomOfflineId() {
   return "off" + Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
@@ -1903,10 +1759,7 @@ function addOfflineJudge(name) {
   ).catch(function () {});
   return id;
 }
-// The only way to create an offline judge on desktop (from the Namen jury
-// list or the Dashboard's Ballot panel) - the "Offline-Jurierende" tab itself
-// stays hidden until one exists (see renderDashChrome()), so adding one
-// also has to be what reveals and opens it.
+// Creates an offline judge and opens the Offline-Jurierende tab, which stays hidden until one exists
 function addOfflineJudgeAndOpenPanel() {
   addOfflineJudge("");
   setDashboardView("offline");
@@ -1915,9 +1768,7 @@ function addOfflineJudgeAndOpenPanel() {
 function renameOfflineJudge(id, name) {
   if (!ME || !ME.is_chair || !offlineJudges[id]) return;
   offlineJudges[id].name = name;
-  // No render() here: this fires on a name field's blur, often while Tab is
-  // moving focus into the first score field of the same column - rebuilding
-  // the table mid-transition would strand focus (see setOfflineScore).
+  // No render() here: this fires on blur while Tab moves into a score field, and rebuilding would strand focus
   fetch(
     "/api/rooms/" +
       ME.code +
@@ -2040,12 +1891,10 @@ function resetRoomState() {
   serverTimeOffsetMs = 0;
   online = false;
   pending = 0;
-  // Room settings the server owns: back to their defaults, so the next room
-  // isn't briefly rendered with this one's until its first snapshot lands.
+  // Reset server-owned room settings so the next room doesn't briefly show this one's
   spreadOpen = false;
   freeSpeakerCount = 3;
-  // Per-room view state. Without this the next room opens with this one's
-  // expanded spread rows, dashboard selection and open ballot.
+  // Reset per-room view state (expanded spreads, dashboard selection, open ballot)
   openSpread = {};
   ballotOpen = false;
   dashboardSelected = { kind: "speaker", s: 0 };
@@ -2057,16 +1906,14 @@ function resetRoomState() {
 }
 function leaveRoom() {
   if (!ME) return;
-  recordRecentRoom(ME.code, ME.name, ME.is_chair); // capture the final filled count
+  recordRecentRoom(ME.code, ME.name, ME.is_chair); // Capture the final filled count
   resetRoomState();
-  // history.pushState keeps a back-button escape hatch: a stray tap on
-  // "Verlassen" is recoverable since opd.session.<code> stays around.
+  // Keeps a back-button escape hatch, since opd.session.<code> survives leaving
   setHistoryUrl("pushState", { left: true }, "/");
   showLobby();
 }
 
-// Always defaults to light, regardless of the device's system setting.
-// Only an explicit tap on the theme button ever switches to dark.
+// Always starts light regardless of system setting; only the theme button switches to dark
 var THEME_CYCLE = ["light", "dark"];
 var THEME_LABEL = { light: "Heller Modus", dark: "Dunkler Modus" };
 function applyTheme(t) {
@@ -2081,10 +1928,7 @@ function cycleTheme() {
   applyTheme(next);
 }
 
-// Personal, per-device preference: type a school grade (e.g. "2+") instead
-// of raw points on Blatt/Teampunkte/Schnelleingabe, seeing the resulting
-// points below instead of the usual points->grade hint. Set independently
-// for speaker criteria (Redepunkte) and team categories (Teampunkte).
+// Per-device preference to type school grades (e.g. "2+") instead of points, set separately for Redepunkte and Teampunkte
 var GRADE_INPUT_LS_KEY = {
   speaker: "opd.gradeInputSpeaker",
   team: "opd.gradeInputTeam",
@@ -2100,7 +1944,7 @@ function applyGradeInputLabel() {
   if (b) b.textContent = "Eingabemodus";
 }
 
-// Personal, per-device preference for the mobile Notenskala keypad.
+// Per-device preference for the mobile Notenskala keypad
 function keyGradeFirst() {
   return !!LS.get("opd.keyGradeFirst", false);
 }
@@ -2133,9 +1977,7 @@ function applyBellVoiceLabel() {
   var b = document.getElementById("menuBellVoice");
   if (b) b.textContent = "Zeitsignal: " + BELL_VOICES[bellVoice()].label;
 }
-// Rings the newly picked voice straight away - this is a choice about a
-// sound, so hearing it beats reading a label. Deliberately uses testBell(),
-// which ignores mute, since the tap itself is the request to hear it.
+// Rings the newly picked voice right away via testBell(), which ignores mute
 function toggleBellVoice() {
   LS.set("opd.bellVoice", bellVoice() === "hoch" ? "tief" : "hoch");
   applyBellVoiceLabel();
@@ -2173,7 +2015,7 @@ function gradeInputModeRow(label, kind) {
   return row;
 }
 
-// Resumes a session if a judge reconnects
+// Resumes a session when a judge reconnects
 function resume() {
   if (!ME) return;
   if (ME.pendingCreate) {
@@ -2216,6 +2058,7 @@ setInterval(function () {
 }, 20000);
 
 var wakeLock = null;
+// Keeps the screen on during a round where supported
 function acquireWakeLock() {
   if (!("wakeLock" in navigator)) return;
   navigator.wakeLock
@@ -2229,7 +2072,7 @@ function acquireWakeLock() {
     .catch(function () {});
 }
 
-// "x ausstehend" only shows once writes have been unconfirmed for the specified delay
+// "x ausstehend" only shows once writes have been unconfirmed for this long
 var PENDING_TEXT_DELAY_MS = 100;
 var pendingSince = 0,
   pendingTextTimer = null;
@@ -2255,9 +2098,7 @@ function paintBar() {
   if (!d) return;
   d.className = "dot " + (online ? "on" : "off");
   var showPending = pendingTextDue();
-  // Fully synced shows no text (the green dot says it) - text only appears
-  // while changes are pending (for longer than a normal ack) or the
-  // connection is down.
+  // Fully synced shows no text (the green dot says it); text only appears for slow pending writes or a lost connection
   s.textContent =
     ME && ME.pendingCreate
       ? "Offline-Raum - wird erstellt, sobald Verbindung besteht"
@@ -2292,7 +2133,7 @@ function paintBar() {
   paintTimer();
 }
 
-// Scoring state for local judge
+// Scoring state for the local judge
 var NC = CRITERIA.length,
   NT = TEAMCATS.length;
 var view = "namen",
@@ -2313,25 +2154,28 @@ function deductionLevel(s) {
 function deductionPoints(s) {
   return DED_POINTS[deductionLevel(s)] || 0;
 }
-// Whether the mobile Reden card's Abzüge options are expanded (UI only).
+// Whether the mobile Reden card's Abzüge options are expanded (UI only)
 var deduOpen = false;
 
 // Judge exclusions
 var myExclusions = {}; // target -> true
 var remoteExclusions = {}; // judge_id -> {target: true}
 
-// Offline judges: chair-entered sums for judges not using the app.
+// Offline judges: chair-entered sums for judges not using the app
 var offlineJudges = {}; // id -> {name}
 var offlineScores = {}; // id -> {target: points}
 
+// Own score for speaker s, criterion index c, or null
 function sget(s, c) {
   var v = mine[kk("s" + s, CRITERIA[c].key)];
   return v === undefined ? null : v;
 }
+// Own score for team t, category index c, or null
 function tget(t, c) {
   var v = mine[kk("t" + t, TEAMCATS[c].key)];
   return v === undefined ? null : v;
 }
+// Sum of the criteria scored so far for speaker s
 function zwischensumme(s) {
   var t = 0,
     any = false;
@@ -2356,12 +2200,8 @@ function teamPunkte(t) {
   }
   return Math.max(0, sum);
 }
-// personPunkte()/teamPunkte() above only read the locally-logged-in judge's
-// own `mine` map. These siblings compute the same totals for an arbitrary
-// room judge id (real or "off:"-prefixed offline judge), for the OpenTab
-// submit flow where the chair's browser builds a ballot on other judges'
-// behalf. Return null (not 0) when that judge hasn't fully scored yet, so
-// the caller can tell "not done" from "scored zero".
+// Totals for any room judge id (including offline ones), for OpenTab ballots built on other judges' behalf;
+// null until fully scored, to tell "not done" from zero
 function personPunkteFor(judgeId, s) {
   if (isOfflineId(judgeId)) {
     var v = (offlineScores[offlineRealId(judgeId)] || {})["s" + s];
@@ -2388,9 +2228,7 @@ function teamPunkteFor(judgeId, t) {
   }
   return Math.max(0, sum);
 }
-// Display name for any room judge id (real judge or "off:"-prefixed
-// offline judge) - the OpenTab submit UI's judge picker needs this outside
-// computeChairSummary's own private nameOf().
+// Display name for any room judge id, including offline judges
 function roomJudgeName(id) {
   if (isOfflineId(id)) {
     var oj = offlineJudges[offlineRealId(id)];
@@ -2398,9 +2236,7 @@ function roomJudgeName(id) {
   }
   return peers[id] ? peers[id].name : id;
 }
-// Speaker indices belonging to a team, in speaking order. Indices, not
-// SPEAKERS entries: "s"+s is the key every score/note/exclusion is stored
-// under, so callers always need the index anyway.
+// Speaker indices of a team in speaking order
 function speakersOfTeam(t) {
   var out = [];
   SPEAKERS.forEach(function (sp, s) {
@@ -2412,13 +2248,13 @@ function firstEmptyS(s) {
   for (var c = 0; c < NC; c++) if (sget(s, c) === null) return c;
   return -1;
 }
-// Own team points + own speakers' totals - shared by Übersicht and Schnelleingabe's Teampunkte row.
+// Own team points plus own speakers' totals, shared by Übersicht and Schnelleingabe
 function myTeamGrand(t) {
   var teamSpeakers = speakersOfTeam(t);
   var speakerSum = 0,
     scoredCount = 0;
   teamSpeakers.forEach(function (s) {
-    if (firstEmptyS(s) !== -1) return; // not fully scored yet
+    if (firstEmptyS(s) !== -1) return; // Not fully scored yet
     speakerSum += personPunkte(s);
     scoredCount++;
   });
@@ -2434,6 +2270,7 @@ function firstEmptyT(t) {
   for (var c = 0; c < NT; c++) if (tget(t, c) === null) return c;
   return -1;
 }
+// Creates an element with an optional class and text
 function el(tag, cls, txt) {
   var e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -2501,8 +2338,7 @@ function buildPad(host, scaleMax, onPick) {
         lbl = el("div", "notelbl");
       lbl.appendChild(el("div", "a", n.b || n.a));
       row.appendChild(lbl);
-      // Fewer than 3 cells (top/bottom rows) - stretch them to fill the
-      // row's width instead of leaving blank filler columns.
+      // Rows with fewer than 3 keys stretch them to fill the width
       var keys = el(
         "div",
         "notekeys" + (n.cells.length < 3 ? " notekeys-fill" : ""),
@@ -2796,8 +2632,7 @@ function renderMatrix() {
 var openSpread = {};
 var ballotOpen = false;
 var offlineJudgesOpen = false;
-// Mobile chair: the room card (share link, judges, room buttons) starts
-// collapsed to one row so the spreads come first.
+// The mobile chair room card starts collapsed so the spreads come first
 var chairRoomOpen = false;
 var spreadOpen = false;
 function updateChairTab() {
@@ -2813,9 +2648,7 @@ function hiddenToggleMessage(name, goingHidden) {
     ? name + " wirklich aus der Wertung nehmen?"
     : name + " wieder als Wing zur Wertung hinzufügen?";
 }
-// Shared by the mobile chair view and the desktop dashboard's judge chips -
-// also handles an offline judge (id prefixed OFFLINE_ID_PREFIX), which has
-// no row in the real judges table and so needs its own endpoint/state.
+// Shared by the mobile chair view and the dashboard's judge chips; handles offline judges via their own endpoint
 function confirmHiddenToggle(id, name, goingHidden) {
   openConfirmModal({
     text: hiddenToggleMessage(name, goingHidden),
@@ -2844,7 +2677,7 @@ function activeJudges() {
     return !peers[id].hidden;
   });
 }
-// Chair's column always comes first in a ballot comparison table.
+// The chair's column always comes first in a ballot comparison table
 function chairFirstIds(ids) {
   return ids.slice().sort(function (a, b) {
     return (
@@ -2853,9 +2686,7 @@ function chairFirstIds(ids) {
     );
   });
 }
-// Mean of a list of numbers; null for an empty list, so callers can render
-// "-" without a separate check. avgRound() is the display variant - the
-// tables that print a raw mean format it themselves (toFixed(1)).
+// Mean of a list, or null when empty so callers can render "-" directly
 function mean(vals) {
   if (!vals.length) return null;
   var sum = vals.reduce(function (a, b) {
@@ -2867,12 +2698,7 @@ function avgRound(vals) {
   var m = mean(vals);
   return m === null ? null : Math.round(m * 100) / 100;
 }
-// Shared chair math, used by both mobile chair view and desktop dashboard.
-// includeHidden: local-only override for the Redner:innen/Teampunkte spread
-// toggle - every other caller leaves it off and gets the usual
-// trainees-excluded math untouched.
-// Offline ids are prefixed so they can never collide with a real judge id
-// and are trivially recognized by every helper below.
+// Offline ids are prefixed so they never collide with real judge ids
 var OFFLINE_ID_PREFIX = "off:";
 function isOfflineId(id) {
   return id.indexOf(OFFLINE_ID_PREFIX) === 0;
@@ -2880,6 +2706,7 @@ function isOfflineId(id) {
 function offlineRealId(id) {
   return id.slice(OFFLINE_ID_PREFIX.length);
 }
+// Shared chair math for the mobile chair view and the desktop dashboard; includeHidden also counts trainees
 function computeChairSummary(includeHidden) {
   var offlineIds = Object.keys(offlineJudges)
     .filter(function (id) {
@@ -2891,9 +2718,7 @@ function computeChairSummary(includeHidden) {
   var ids = (includeHidden ? Object.keys(peers) : activeJudges()).concat(
     offlineIds,
   );
-  // Only sums exist for an offline judge, so they never have per-criterion
-  // detail (scan()/scanGroup() below stay real-judges-only for that reason)
-  // and can't be individually excluded the way a real judge's target can.
+  // Offline judges only have sums, so they have no per-criterion detail and can't be excluded per target
   function includedFor(id, target) {
     if (isOfflineId(id)) return true;
     return !(remoteExclusions[id] && remoteExclusions[id][target]);
@@ -2930,8 +2755,7 @@ function computeChairSummary(includeHidden) {
     }
     return sum;
   }
-  // Has this judge entered any team points for team t? Averages skip judges
-  // who haven't, instead of counting their empty entry as 0.
+  // Averages skip judges who haven't entered any team points for team t, rather than counting them as 0
   function teamEntered(id, t) {
     if (isOfflineId(id))
       return (offlineScores[offlineRealId(id)] || {})["t" + t] !== undefined;
@@ -3033,7 +2857,7 @@ function computeChairSummary(includeHidden) {
     return b.spread - a.spread;
   });
 
-  // Display by total score
+  // Sorted by total score
   var totals = [];
   activeSpeakerIndices().forEach(function (s) {
     var vals = [],
@@ -3065,7 +2889,7 @@ function computeChairSummary(includeHidden) {
     return b.spread - a.spread;
   });
 
-  // Full result overview, in speaking order
+  // Full result overview in speaking order
   var speakerRows = SPEAKERS.map(function (_, s) {
     var vals = [];
     ids.forEach(function (id) {
@@ -3075,18 +2899,12 @@ function computeChairSummary(includeHidden) {
     });
     return { label: speakerLabel(s), avg: mean(vals), n: vals.length };
   });
-  // speakerRows stays positional (summary.speakerRows[s] is looked up by
-  // raw index elsewhere) - but a hidden free speaker's stale avg must not
-  // win "best speech" while their slot is inactive.
+  // An inactive free speaker's stale average must not win best speech
   var bestSpeakerAvg = speakerRows.reduce(function (m, r, s) {
     return isActiveSpeaker(s) && r.avg !== null && r.avg > m ? r.avg : m;
   }, -Infinity);
 
-  // A team's Ø total is the sum of the averages: Ø team points (over the
-  // judges who entered any and didn't take them out) plus each of its
-  // speeches' Ø (over the judges who scored it and didn't take it out). The
-  // Ballot's "Gesamt" Ø, the mobile Endergebnis and Einzelergebnisse' panel
-  // column all read it from here.
+  // A team's Ø total is the sum of averages (team points plus each speech), used by every result view
   var teamRows = TEAMS.map(function (tm, t) {
     var vals = [];
     ids.forEach(function (id) {
@@ -3145,8 +2963,7 @@ function computeChairSummary(includeHidden) {
   };
 }
 
-// Speaker/team result tables - shared markup for the mobile "Endergebnis"
-// card and the desktop dashboard's final-result panel.
+// Speaker and team result tables for the mobile Endergebnis and the desktop result panel
 function finalResultHTML(summary) {
   var fh = [
     '<table class="finalTbl"><tr><th class="l">Redner:in</th><th>Ø Punkte</th></tr>',
@@ -3208,7 +3025,7 @@ function finalResultHTML(summary) {
   return fh.join("");
 }
 
-// One column per adjudicator (chair first), one row per speaker + a team-total row - shared by mobile "Ballot anzeigen" and the dashboard.
+// Ballot: one column per adjudicator (chair first), one row per speaker plus team totals
 function ballotSepRow(ncols) {
   var tr = el("tr", "tsep");
   var td = el("td");
@@ -3229,7 +3046,7 @@ function fullBallotTable(summary) {
   head.appendChild(el("th", null, "Ø"));
   table.appendChild(head);
 
-  // {vals, avg, tds, avgTd} per row, so best-speech/best-team can be marked once every row is built.
+  // Row metadata, so best speech and best team can be marked once every row exists
   var speakerMeta = [];
   activeSpeakerIndices().forEach(function (s) {
     var tr = el("tr", deductionLevel(s) ? "deducted" : null);
@@ -3274,7 +3091,7 @@ function fullBallotTable(summary) {
 
   table.appendChild(ballotSepRow(ncols));
 
-  // Each team's grand total per judge (team pts + own speakers) - the higher team per judge gets the "best" mark.
+  // Each team's grand total per judge (team points plus own speakers), to mark the better team
   var teamMeta = [];
   TEAMS.forEach(function (tm, t) {
     var teamSpeakers = speakersOfTeam(t);
@@ -3301,10 +3118,7 @@ function fullBallotTable(summary) {
       vals.push(summary.includedFor(id, "t" + t) ? grand : null);
       tds.push(td);
     });
-    // Ø = the sum of the averages above it (summary.teamRows), not the
-    // average of the complete judge totals in this row - so a judge who
-    // hasn't finished every speech still counts for the parts they have.
-    // "*" while one of the team's speeches has no score from anyone yet.
+    // Ø is the sum of averages, so unfinished judges still count for what they scored; "*" while a speech is unscored
     var row = summary.teamRows[t];
     var avg = row.grand === null ? null : Math.round(row.grand * 100) / 100;
     var avgTd = el(
@@ -3323,7 +3137,7 @@ function fullBallotTable(summary) {
   return table;
 }
 
-// Marks the strictly-highest row per column; a tie gets no mark.
+// Marks the strictly highest row per column; ties get no mark
 function markColumnBest(rows, ncols) {
   for (var col = 0; col < ncols; col++) {
     var best = null,
@@ -3452,7 +3266,7 @@ function renderChair() {
       : "Offline-Jurierende";
     var ojWrap = document.getElementById("offlineJudgesWrap");
     ojWrap.classList.toggle("hide", !offlineJudgesOpen);
-    // Guard against a remote score/judges update rebuilding this list
+    // Don't rebuild this list mid-edit on a remote update
     if (offlineJudgesOpen && !dashEditGuard(ojWrap))
       buildOfflineJuryTable(ojWrap);
   }
@@ -3497,7 +3311,7 @@ function renderChair() {
     });
   }
 
-  // Team-side spread rows, one per category group - tap to drill in, same pattern as a speech row.
+  // Team spread rows, one per category group, tap to drill in like a speech row
   var sh = document.getElementById("spread");
   sh.innerHTML = "";
   if (!groupCells.length) {
@@ -3517,7 +3331,7 @@ function renderChair() {
 
       var wrap = el("div", "bkwrap");
       wrap.style.display = openSpread[c.key] ? "block" : "none";
-      // Categories without 2+ judges yet have no cell - skipped.
+      // Categories with fewer than 2 judges have no cell
       var catCells = cells.filter(function (x) {
         return c.catKeys.indexOf(x.key) !== -1;
       });
@@ -3538,7 +3352,7 @@ function renderChair() {
   // Full result overview
   document.getElementById("finalResult").innerHTML = finalResultHTML(summary);
 
-  // Ballot: one column per adjudicator (chair first), in speaking order.
+  // Ballot: one column per adjudicator (chair first), in speaking order
   var btnBallot = document.getElementById("btnBallot");
   btnBallot.textContent = ballotOpen
     ? "Ballot ausblenden"
@@ -3562,25 +3376,13 @@ function renderChair() {
   }
 }
 
-// Desktop layout - a wide-screen chrome (top nav + room/judges bar) shown
-// to any judge, chair or wing, above the isDesktopWidth() threshold. Only
-// the "Dashboard" view (chair spread/ballot overview, computeChairSummary())
-// is chair-only; Reden/Team/Schnelleingabe are every desktop judge's own
-// entry pages, same as on mobile. Übersicht has no desktop nav entry, since
-// Schnelleingabe is a superset of what it shows (same totals, editable);
-// "matrix"/renderMatrix() itself still stays for mobile's own use. The
-// connection dot/state and the ⋮ menu (link copy, theme, Impressum, leave
-// room) are the existing mobile `.bar`, extended in place with room/judges/
-// nav. dashboardView tracks which of these pages shows; "sheet"/"team"
-// reuse the existing mobile pages, just re-centered; "dashboard", "schnell"
-// and "blatt" are wide, desktop-only views with no mobile equivalent.
+// Desktop layout for any judge above isDesktopWidth(); only the Dashboard view is chair-only,
+// and every desktop view is wide and desktop-only
 var dashboardSelected = { kind: "speaker", s: 0 };
 var dashboardView = "namen";
-// Remembers the last-focused field id per view ("blatt"/"teampoints"), so
-// Alt+Space can swap between the two and land back where you were.
+// Last-focused field per view, so Alt+I returns to where you were
 var lastFocusByView = {};
-// Persists the desktop nav tab across a reload, per room - so refreshing
-// mid-Blatt doesn't bounce back to Namen. Mirrors showView()'s LS write below.
+// Persists the desktop nav tab per room across reloads
 function setDashboardView(v) {
   dashboardView = v;
   if (ME) LS.set("opd.dashboardView." + ME.code, v);
@@ -3592,10 +3394,7 @@ function isDesktopWidth() {
 function isDesktopChair() {
   return isDesktopWidth() && ME.is_chair;
 }
-// Falls back to "schnell" when dashboardView points somewhere unreachable
-// now - "dashboard" for a wing the chair hasn't opened it to, or a
-// matrix/sheet/team value still cached in localStorage from a version that
-// had those desktop views (they are mobile-only again).
+// Falls back to "schnell" when the stored view is unreachable or no longer exists on desktop
 function effectiveDashboardView() {
   if (dashboardView === "dashboard" && !ME.is_chair && !spreadOpen)
     return "schnell";
@@ -3613,18 +3412,14 @@ function effectiveDashboardView() {
     return "schnell";
   return dashboardView;
 }
-// Mirrors effectiveDashboardView() for the mobile tab bar: a restored
-// view="chair" falls back to "namen" if it's no longer reachable (chair
-// status lost, or the chair since locked spreadOpen again).
+// Falls back to "namen" when a restored chair view is no longer reachable
 function effectiveMobileView() {
   if (view === "chair" && !ME.is_chair && !spreadOpen) return "namen";
   if (view === "opentabm" && !ME.is_chair) return "namen";
   return view;
 }
 
-// Every view effectiveDashboardView() can return is a wide, desktop-only
-// page, so on a desktop width the mobile views and dock are simply all
-// hidden - there is no narrow-column desktop mode any more.
+// On desktop widths all mobile views and the dock are hidden
 function applyLayoutMode() {
   var dash = isDesktopWidth();
   var app = document.getElementById("app");
@@ -3672,26 +3467,18 @@ function applyLayoutMode() {
     document.getElementById("dock").classList.add("hide");
     document.getElementById("dockSheet").classList.add("hide");
     document.getElementById("dockTeam").classList.add("hide");
-    // Clears the inline bottom padding the mobile branch left on #viewport
-    // (the spacer for the fixed mobile tab bar) - otherwise widening the
-    // window from mobile back to desktop leaves a gap under the top bar.
+    // Clear the mobile tab-bar spacer when widening back to desktop
     syncDockSpacer();
   } else {
     document.getElementById("tabs").classList.remove("hide");
-    // Restore dock (hidden by the desktop branch) on plain mobile - otherwise
-    // shrinking down from desktop leaves no way to score.
+    // Restore the dock when shrinking back to mobile, or there's no way to score
     document.getElementById("dock").classList.remove("hide");
     showView(effectiveMobileView());
     syncDockSpacer();
   }
 }
 
-// .tabs is fixed to the screen bottom on mobile (see style.css) and so sits
-// outside document flow, on top of whatever the page happens to be
-// scrolled to - without this, it would cover the last row of .dockpad (or
-// of the current view's last card, on views with no dockpad). Re-run
-// whenever .tabs's height or visibility can have changed (view switch,
-// resize, etc.).
+// Pads the viewport so the fixed mobile .tabs bar doesn't cover the last row; rerun when its height or visibility changes
 function syncDockSpacer() {
   var vp = document.getElementById("viewport");
   var tabs = document.getElementById("tabs");
@@ -3712,9 +3499,7 @@ function renderDashChrome() {
   [].forEach.call(
     document.querySelectorAll('#dashNav button[data-dv="offline"]'),
     function (b) {
-      // Stays hidden until at least one offline judge exists, so the tab
-      // doesn't sit there unexplained for chairs who never need it - see
-      // addOfflineJudgeAndOpenPanel(), the only way in.
+      // Hidden until an offline judge exists (see addOfflineJudgeAndOpenPanel())
       b.classList.toggle(
         "hide",
         !ME.is_chair || !Object.keys(offlineJudges).length,
@@ -3728,12 +3513,7 @@ function renderDashChrome() {
     },
   );
 
-  // Alt+1..9 jump to a #dashNav tab by its position among currently visible
-  // buttons (see the keydown handler below) - show that position in the
-  // tab's tooltip (the icon takes the room under the label) so the shortcut
-  // stays discoverable and correct even as tabs like "Dashboard"/
-  // "Offline-Jurierende" show or hide. data-tip keeps the original title so
-  // repeated renders don't stack suffixes.
+  // Show each visible tab's Alt+number shortcut in its tooltip; data-tip keeps the original title
   var visibleTabs = [].filter.call(
     document.querySelectorAll("#dashNav button[data-dv]"),
     function (b) {
@@ -3764,8 +3544,7 @@ function renderDashChrome() {
   var chips = el("div", "dashjurychips");
   jury.appendChild(chips);
 
-  // Highlights the active tab for every judge, not just the chair - the
-  // rest of this function (jury chips, trainee controls) is chair-only.
+  // The active tab is highlighted for every judge; the rest of this function is chair-only
   var ev = effectiveDashboardView();
   [].forEach.call(
     document.querySelectorAll("#dashNav button[data-dv]"),
@@ -3773,10 +3552,7 @@ function renderDashChrome() {
       b.setAttribute("aria-pressed", String(b.dataset.dv === ev));
     },
   );
-  // Blatt, Teampunkte and Allgemeine Notizen open with a solid team band, so
-  // the active folder tab takes that band's colour to stay joined to it (see
-  // .dashnav .team-* in style.css). Teampunkte's first band, and the Notizen
-  // column the tab sits above (the left one), are always Regierung.
+  // Blatt, Teampunkte and Notizen open with a team band, so the active tab takes Regierung's colour to join it
   var nav = document.getElementById("dashNav");
   nav.classList.remove("team-gov", "team-opp", "team-free");
   if (ev === "blatt") nav.classList.add(teamClass(SPEAKERS[cs].team));
@@ -3797,7 +3573,7 @@ function renderDashChrome() {
     ids.length -
     judgeIds.length +
     (offlineIds.length - offlineVisibleIds.length);
-  // Offline judges are never "online" - that count stays real-judges-only.
+  // Offline judges never count as online
   var onlineCount = judgeIds.filter(function (id) {
     return peers[id].online;
   }).length;
@@ -3834,15 +3610,12 @@ function renderDashChrome() {
   });
   chips.appendChild(summarySpan);
 
-  // Keep an already-open panel's judge list live as peers change, since
-  // chips (and summarySpan with it) get rebuilt on every render() here.
+  // Keep an open judge panel live, since the chips are rebuilt on every render()
   var openPanel = document.getElementById("juryPanel");
   if (openPanel && !openPanel.classList.contains("hide")) renderJuryPanel();
 }
 
-// Judge-list popover for the dashboard header's summary chip - the styled
-// replacement for a native title="" tooltip, built from the same .jrow
-// rows the Chair tab's own judge list uses (style.css: .jrow).
+// Judge-list popover for the dashboard summary chip, built from the Chair tab's .jrow rows
 function ensureJuryPanel() {
   var p = document.getElementById("juryPanel");
   if (p) return p;
@@ -3975,7 +3748,7 @@ document.getElementById("dashNav").addEventListener("click", function (e) {
   setDashboardView(b.dataset.dv);
   render();
 });
-// PageUp/PageDown cycle nav views - the keyboard route now that tab order skips the chrome.
+// PageUp/PageDown cycle the nav views
 document.addEventListener("keydown", function (e) {
   if (!ME || !isDesktopWidth()) return;
   if (e.key !== "PageUp" && e.key !== "PageDown") return;
@@ -4005,23 +3778,14 @@ document.addEventListener("keydown", function (e) {
   if (restoreEl) restoreEl.focus();
 });
 
-// Commits an in-flight score edit (schnellinput only fires its write() on
-// change/blur, unlike notes which save on every keystroke) before a
-// keyboard shortcut jumps away from it, and blurs a focused notes textarea
-// too - otherwise it stays the activeElement across the render() call
-// below and dashEditGuard() (meant to protect an in-progress edit from a
-// remote update) mistakes our own deliberate navigation for that and
-// skips the rebuild.
+// Commits a pending score edit and blurs notes before a shortcut navigates,
+// so dashEditGuard() doesn't mistake it for an edit in progress and skip the render
 function commitActiveInput() {
   var ae = document.activeElement;
   if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA")) ae.blur();
 }
 
-// Alt+1..9 jump straight to a chrome tab, by position among the visible
-// #dashNav buttons - laptop-friendly alternative to PageUp/PageDown that
-// doesn't need cycling through intermediate tabs. Remembers/restores focus
-// per view the same way Alt+I does, instead of leaving it to fall wherever
-// the browser's default post-render focus happens to land.
+// Alt+1..9 jump to a visible #dashNav tab, remembering focus per view
 document.addEventListener("keydown", function (e) {
   if (!ME || !isDesktopWidth()) return;
   if (!e.altKey || !/^[1-9]$/.test(e.key)) return;
@@ -4043,8 +3807,7 @@ document.addEventListener("keydown", function (e) {
   if (restoreEl) restoreEl.focus();
 });
 
-// Alt+T opens/closes the timer, matching the other Alt+ shortcuts above -
-// grouped here mostly for hardware-keyboard desktop use, like them.
+// Alt+T toggles the timer modal
 document.addEventListener("keydown", function (e) {
   if (!ME || !isDesktopWidth()) return;
   if (!e.altKey || e.key.toLowerCase() !== "t") return;
@@ -4052,10 +3815,7 @@ document.addEventListener("keydown", function (e) {
   if (document.getElementById("timerModal")) closeTimerModal();
   else openTimerModal();
 });
-// Traps Tab/Shift+Tab inside the timer modal while it's open, instead of
-// letting focus wander into the (still-live) view underneath it - the
-// modal has no real backdrop-dimming to make that boundary obvious
-// otherwise.
+// Traps Tab inside the timer modal while it's open
 document.addEventListener("keydown", function (e) {
   if (e.key !== "Tab") return;
   var m = document.getElementById("timerModal");
@@ -4079,9 +3839,7 @@ document.addEventListener("keydown", function (e) {
   }
 });
 
-// Alt+, / Alt+. step to the previous/next speech on Blatt, mirroring the
-// header's mouse-only ‹/› buttons. Refocuses the same *kind* of field
-// (note vs. score) the user was in, so the keyboard flow isn't interrupted.
+// Alt+, / Alt+. step to the previous/next speech on Blatt, keeping the same kind of field focused
 document.addEventListener("keydown", function (e) {
   if (!ME || !isDesktopWidth()) return;
   if (!e.altKey || (e.key !== "," && e.key !== ".")) return;
@@ -4101,10 +3859,7 @@ document.addEventListener("keydown", function (e) {
   if (first) first.focus();
 });
 
-// Alt+I swaps between Blatt and Teampunkte ("I" for Interaktion, the
-// TEAMGROUPS_INFO group covering Zwischenreden/-fragen/-rufe) - the fast
-// path for jotting an interjection note mid-speech and returning to
-// exactly the speech note field you left, without touching the mouse.
+// Alt+I swaps between Blatt and Teampunkte to log an interjection and jump back
 document.addEventListener("keydown", function (e) {
   if (!ME || !isDesktopWidth()) return;
   if (!e.altKey || e.key.toLowerCase() !== "i") return;
@@ -4118,11 +3873,7 @@ document.addEventListener("keydown", function (e) {
   setDashboardView(target);
   render();
   var restoreId = lastFocusByView[target];
-  // Jumping into Teampunkte mid-speech snaps straight to the *opposing*
-  // team's Zwischenfragen note - that's almost always what an interjection
-  // during a team speech needs to be logged against - instead of wherever
-  // was last focused there. Free speakers (team null) have no opposing side,
-  // so they fall through to the normal remembered/first-field behavior.
+  // From a team speech, land on the opposing team's Zwischenfragen note; free speakers use the remembered field
   if (ev === "blatt" && target === "teampoints") {
     var spTeam = SPEAKERS[cs].team;
     if (spTeam === 0 || spTeam === 1) {
@@ -4139,10 +3890,7 @@ document.addEventListener("keydown", function (e) {
   if (first) first.focus();
 });
 
-// Local-only (not synced, not persisted) override for the Wertung tab's
-// spread and "Auffällig" columns: purely a display choice for whoever is
-// looking at this dashboard right now, so it stays a plain var rather than
-// going through LS like gradeInputMode does.
+// Local display toggle for including trainees in the Wertung spreads, never persisted
 var dashIncludeTrainees = false;
 function dashTraineeToggle() {
   var lbl = el("label", "dashtraineetoggle");
@@ -4158,14 +3906,14 @@ function dashTraineeToggle() {
   return lbl;
 }
 
+// Whether two dashboard selections point at the same row
 function dashSameTarget(a, b) {
   if (!a || !b || a.kind !== b.kind) return false;
   if (a.kind === "none") return false;
   return a.kind === "speaker" ? a.s === b.s : a.t === b.t && a.grp === b.grp;
 }
 
-// Reuses spreadOpen - opening it also gives wings the dashboard (read-only:
-// the chair-only controls in dashDashboardAside stay hidden for them).
+// Reuses spreadOpen; opening it also gives wings a read-only dashboard
 function dashFreigebenButton() {
   var dob = el(
     "button",
@@ -4198,13 +3946,8 @@ function dashFreigebenButton() {
   return dob;
 }
 
-// Desktop views built as one page of folder-tabbed sections instead of
-// stacked panels (Dashboard, Komplette Wertung, Offline-Jurierende, OpenTab):
-// the tab strip (styled like #dashNav, see .dashtabs) over the active
-// section's body. Which tab is open is remembered per view, locally only.
-// sections: [{key, label, build() -> node}]; aside(curKey) -> node|null is
-// the strip's right-hand side (per-section actions). Returns the sheet,
-// to be appended to the view's root.
+// Builds a desktop view as folder-tabbed sections, remembering the open tab per view;
+// sections: [{key, label, build() -> node}], aside(curKey) -> node|null
 var dashSectionByView = {};
 function dashTabbedSheet(viewKey, sections, aside, rerender) {
   var cur = dashSectionByView[viewKey];
@@ -4234,15 +3977,14 @@ function dashTabbedSheet(viewKey, sections, aside, rerender) {
     strip.appendChild(side);
   }
   sheet.appendChild(strip);
-  // dashtabbody-<key> gives each section a hook for its own sizing rules.
+  // Per-section class hook for sizing rules
   var body = el("div", "dashtabbody dashtabbody-" + cur);
   body.appendChild(active.build());
   sheet.appendChild(body);
   return sheet;
 }
 
-// Dashboard aside: the trainee toggle on Wertung, the chair's ballot actions
-// on Ballot, and Freigeben (chair only) on both.
+// Dashboard aside: trainee toggle on Wertung, ballot actions on Ballot, Freigeben for the chair
 function dashDashboardAside(cur) {
   var aside = el("div");
   if (cur === "wertung") aside.appendChild(dashTraineeToggle());
@@ -4265,10 +4007,7 @@ function dashDashboardAside(cur) {
   return aside;
 }
 
-// "Auffällig" cell: the criteria/categories among keys (summary.cells keys,
-// "s3/spr" / "t1/zfrag") whose own spread is >= 5, largest first (cells is
-// already sorted by spread). Short names ("Kon ±7") unless full is set - the
-// full ones go in the cell's tooltip.
+// "Auffällig" cell: criteria and categories with a spread of 5 or more, largest first, short names unless full is set
 function dashHotCats(spreadSummary, keys, full) {
   return spreadSummary.cells
     .filter(function (c) {
@@ -4284,12 +4023,8 @@ function dashHotCats(spreadSummary, keys, full) {
     .join(", ");
 }
 
-// Wertung tab: every speech, then (below them) every team group, as one row
-// each - each judge's total,
-// Ø, spread and the flagged categories. Clicking a row opens its
-// Wertungsvergleich (dashBallotTable / dashTeamBallotTable) right below it;
-// clicking it again closes it. Columns match the Ballot tab's (active judges,
-// chair first); trainees show up in the opened comparison, greyed.
+// Wertung tab: one row per speech and team group with each judge's total, Ø, spread and flagged categories;
+// clicking a row toggles its Wertungsvergleich below it
 function dashWertungTable(summary, spreadSummary) {
   var chairFirst = chairFirstIds(summary.ids);
   var ncols = chairFirst.length + 4;
@@ -4311,8 +4046,7 @@ function dashWertungTable(summary, spreadSummary) {
     tr.appendChild(td);
     return tr;
   }
-  // spec: {target, cls, label, cellFor(id) -> {text, cls}, avg, spread, hotKeys,
-  //        detail() -> comparison table node}
+  // spec: {target, cls, label, cellFor(id) -> {text, cls}, avg, spread, hotKeys, detail() -> node}
   function addRow(spec) {
     var open = dashSameTarget(spec.target, dashboardSelected);
     var tr = el("tr", "dashwrow " + spec.cls + (open ? " open" : ""));
@@ -4375,7 +4109,7 @@ function dashWertungTable(summary, spreadSummary) {
       });
     });
   });
-  // Team points below all the speeches, one block per team.
+  // Team points below the speeches, one block per team
   [0, 1].forEach(function (t) {
     var teamCls = teamClass(t);
     table.appendChild(fullRow("dashwgrp " + teamCls, "Teampunkte " + TEAMS[t]));
@@ -4392,7 +4126,7 @@ function dashWertungTable(summary, spreadSummary) {
         cls: teamCls + " dashwteam",
         label: g.label,
         cellFor: function (id) {
-          // Offline judges only have a team total, no per-category data.
+          // Offline judges only have a team total
           if (isOfflineId(id)) return { text: "n.a." };
           var sum = 0,
             complete = true;
@@ -4428,20 +4162,10 @@ function dashSpreadCell(spread) {
   );
 }
 
-// The dashboard's "Wertungsvergleich" table, in both the shapes it takes:
-// one row per speaker criterion (below) or per category of a team group,
-// each with every adjudicator's value, an average and a spread, closed by a
-// total row. Trainees are shown for context but greyed out (.trainee) -
-// never counted into any average, which stays gated on the active
-// (non-hidden) judges summary.ids already resolves to.
-// spec: {target, rowHead, rows:[{label, key}], totalLabel,
-//        totalFor(id) -> number|null, totalSpread, extraRow(ncols) -> tr?}
+// Wertungsvergleich: one row per criterion or category with every adjudicator's value, Ø and spread; trainees greyed out;
+// spec: {target, rowHead, rows:[{label, key}], totalLabel, totalFor(id) -> number|null, totalSpread, extraRow(ncols) -> tr?}
 function dashComparisonTable(summary, spec) {
-  // Offline judges only ever have a Gesamt total (no per-criterion
-  // breakdown), so they're appended after the real, chair-first columns
-  // rather than sorted in among them. A hidden (trainee) one still gets a
-  // column here, same as a real trainee - shown for context, greyed via
-  // isHiddenId()/counts() below, just excluded from Ø/Spread.
+  // Offline judges only have totals, so their columns come after the chair-first real judges
   var offlineIds = Object.keys(offlineJudges).map(function (id) {
     return OFFLINE_ID_PREFIX + id;
   });
@@ -4475,8 +4199,7 @@ function dashComparisonTable(summary, spec) {
     tr.appendChild(el("td", "l", r.label));
     var vals = [];
     chairFirst.forEach(function (id) {
-      // Offline judges never have per-criterion data - "n.a.", not "-"
-      // (which means "not yet scored" for a real judge).
+      // "n.a." for offline judges, since "-" means not yet scored
       var v = isOfflineId(id)
         ? undefined
         : (remote[id] || {})[kk(spec.target, r.key)];
@@ -4513,16 +4236,14 @@ function dashComparisonTable(summary, spec) {
   totTr.appendChild(el("td", "tot", totAvg === null ? "-" : String(totAvg)));
   totTr.appendChild(dashSpreadCell(spec.totalSpread));
 
-  // Anything that belongs between the rows and the total (the speaker
-  // table's Abzug line).
+  // Optional row between the criteria and the total (the speaker table's Abzug line)
   var extra = spec.extraRow && spec.extraRow(chairFirst.length);
   if (extra) table.appendChild(extra);
   table.appendChild(totTr);
   return table;
 }
 
-// Spread of one summary row (speech total or team group), or null while
-// fewer than two judges have scored it.
+// Spread of one summary row, or null while fewer than two judges have scored it
 function spreadOfKey(list, key) {
   var hit = list.filter(function (x) {
     return x.key === key;
@@ -4563,7 +4284,7 @@ function dashTeamBallotTable(summary, t, grp) {
     rowHead: "Kategorie",
     rows: cats,
     totalLabel: "Summe " + grp,
-    // A group's sum only means something once every category in it is scored.
+    // A group's sum only counts once every category in it is scored
     totalFor: function (id) {
       var sum = 0,
         complete = true;
@@ -4581,9 +4302,7 @@ function dashTeamBallotTable(summary, t, grp) {
   });
 }
 
-// Desktop-only cheat sheet for the Alt/Page keyboard shortcuts wired up
-// further down (dashNav cycling, Blatt speech stepping, Blatt<->Teampunkte
-// swap). Reuses the info-modal look but lists rows instead of one paragraph.
+// Desktop keyboard shortcut cheat sheet
 var SHORTCUTS = [
   ["Bild ↑ / Bild ↓", "Nächsten / vorherigen Tab auswählen"],
   ["Alt + 1 – 5", "Tabs direkt anzeigen"],
@@ -4591,9 +4310,7 @@ var SHORTCUTS = [
   ["Alt + I", "Wechsel von Einzelrede zu Interaktionen der Gegenseite"],
   ["Alt + T", "Timer öffnen/schließen"],
 ];
-// Features that exist but aren't announced by a visible label - a plain "-"
-// in a table cell, a menu entry easy to skim past, etc. Same audience as
-// SHORTCUTS: someone who knows OPD but not this particular tool.
+// Features without a visible label, listed for people who know OPD but not this tool
 var MORE_FEATURES = [
   [
     "Eingabemodus: Noten/Punkte",
@@ -4652,8 +4369,7 @@ function openShortcutsModal() {
 document
   .getElementById("shortcutsBtn")
   .addEventListener("click", openShortcutsModal);
-// "?" opens the shortcuts cheat sheet too - standard convention, alongside
-// the always-visible icon button above for anyone who doesn't know it.
+// "?" also opens the shortcuts cheat sheet
 document.addEventListener("keydown", function (e) {
   if (!ME || !isDesktopWidth()) return;
   if (e.key !== "?") return;
@@ -4663,8 +4379,7 @@ document.addEventListener("keydown", function (e) {
   openShortcutsModal();
 });
 
-// Chair-only: how many reserved free-speaker slots are active. Lowering
-// never deletes scores; raising brings them back.
+// Chair-only: number of active free-speaker slots; lowering never deletes scores
 function openFreeSpeakersModal() {
   var input;
   openModal("freeSpeakersModal", function (box) {
@@ -4730,15 +4445,8 @@ function buildFreeSpeakersBox(box) {
   return input;
 }
 
-// Einzelergebnisse tab (outrounds: who wins, and the best speech): one
-// column per judge plus a last "Panel (Ø)" column. Per column: both team
-// totals, the winner, the margin and how much of it comes from speeches vs.
-// team points (from the winner's side - "+" helped them, "−" worked against
-// them; the two always add up to the margin), and the best speech with and
-// without the winning team. While scoring is still going on, totals count
-// what is scored so far and everything built on them is marked "*"
-// (vorläufig, as in the mobile Endergebnis); the panel column uses the same
-// averages as the Ballot's Ø (summary.teamRows).
+// Einzelergebnisse tab: per judge plus a panel Ø column, the team totals, winner, margin split into speeches vs. team points,
+// and best speech with and without the winning team; provisional values are marked "*"
 function dashEinzelTable(summary) {
   var chairFirst = chairFirstIds(summary.ids);
   var active = activeSpeakerIndices();
@@ -4750,8 +4458,7 @@ function dashEinzelTable(summary) {
     var a = fmt(Math.abs(v), dec);
     return v > 0 ? "+" + a : v < 0 ? "−" + a : "±" + a;
   }
-  // Compact wording for this table: "Reg"/"Opp" for the teams, "FFR" for
-  // free speeches ("Eröffnungsrede Regierung" -> "Eröffnungsrede Reg").
+  // Compact wording for this table: "Reg"/"Opp" and "FFR"
   var TEAM_ABBR = ["Reg", "Opp"];
   function abbr(text) {
     return text
@@ -4759,7 +4466,7 @@ function dashEinzelTable(summary) {
       .replace("Opposition", "Opp")
       .replace("Fraktionsfreie Rede", "FFR");
   }
-  // The highest score among pool (speech indices), from scoreOf(s), or null.
+  // Highest score among the pool's speech indices, or null
   function bestOf(pool, scoreOf) {
     var best = null,
       who = [];
@@ -4773,10 +4480,7 @@ function dashEinzelTable(summary) {
     });
     return best === null ? null : { pts: best, who: who };
   }
-  // r: {grand:[g0,g1], partial:[p0,p1], spk:[sp0,sp1], tp:[t0,t1],
-  //     scoreOf(s), dec}. A result exists once both teams have a total
-  // (v.complete); it is provisional (v.prov, shown with "*") while either
-  // team still has something unscored.
+  // r: {grand, partial, spk, tp, scoreOf(s), dec}; a verdict exists once both teams have a total and is provisional while anything is unscored
   function verdict(r) {
     var v = { r: r, complete: r.grand[0] !== null && r.grand[1] !== null };
     v.prov = v.complete && (r.partial[0] || r.partial[1]);
@@ -4798,11 +4502,7 @@ function dashEinzelTable(summary) {
     return v;
   }
 
-  // A judge's team total counts what they have scored so far: finished
-  // speeches plus the team categories filled in. It is partial while a
-  // speech or a team category is still open (an offline judge only enters
-  // whole team totals, so only their speeches can be open), and "-" while
-  // nothing of that team is scored at all.
+  // A judge's team total counts what they've scored so far; partial while anything is open, "-" while nothing is scored
   var cols = chairFirst.map(function (id) {
     var grand = [],
       partial = [],
@@ -4850,8 +4550,7 @@ function dashEinzelTable(summary) {
     name: "Panel (Ø)",
     panel: true,
     v: verdict({
-      // The Ballot's Gesamt Ø (sum of the averages, summary.teamRows),
-      // .partial while one of the team's speeches has no score from anyone.
+      // The Ballot's Gesamt Ø, partial while a team speech has no score from anyone
       grand: [tr0.grand, tr1.grand],
       partial: [tr0.partial, tr1.partial],
       spk: [tr0.grand - tr0.teamAvg, tr1.grand - tr1.teamAvg],
@@ -4874,8 +4573,7 @@ function dashEinzelTable(summary) {
   function teamSpan(t, text) {
     return el("span", "dashteamname " + teamClass(t), text);
   }
-  // label: string or node; cellFor(col) -> string or node. sep draws the
-  // heavier rule that starts a new group of lines.
+  // label and cellFor(col) return a string or node; sep starts a new group with a heavier rule
   function line(label, cellFor, sep) {
     var tr = el("tr", sep ? "dasheinzelsep" : null);
     var lbl = el("td", "l");
@@ -4891,16 +4589,14 @@ function dashEinzelTable(summary) {
     });
     table.appendChild(tr);
   }
-  // "Σ Reg": the prefix, then the team name in its colour.
+  // "Σ Reg": the prefix, then the team name in its colour
   function labelWithTeam(t, prefix) {
     var wrap = el("span");
     wrap.appendChild(document.createTextNode(prefix));
     wrap.appendChild(teamSpan(t, TEAM_ABBR[t]));
     return wrap;
   }
-  // Best speech as its abbreviated position + points, in the team's colour
-  // ("2. FFR · 70"); the speaker's name, if entered, is in the tooltip.
-  // Ties list everyone with the top score, one per line.
+  // Best speech as position and points in team colour ("2. FFR · 70"), name in the tooltip, one line per tie
   function speechCell(b, dec) {
     if (!b) return "-";
     var wrap = el("span", "dashbestspeech");
@@ -4950,7 +4646,7 @@ function dashEinzelTable(summary) {
         )
       : "-";
   });
-  // Shown from the winner's side - Regierung's on a tie.
+  // Shown from the winner's side, Regierung's on a tie
   function part(c, key) {
     if (!c.v.complete) return "-";
     var k = c.v.winner === 1 ? -1 : 1;
@@ -4996,8 +4692,7 @@ function dashEinzelTable(summary) {
 function renderDashboard() {
   var root = document.getElementById("v-dashboard");
   if (!root) return;
-  // "none" = every Wertung row closed. Anything else that no longer exists
-  // (a hidden free speaker) falls back to the first speech.
+  // "none" means every Wertung row is closed; a selection that no longer exists falls back to the first speech
   var validSpeaker =
     dashboardSelected.kind === "speaker" &&
     SPEAKERS[dashboardSelected.s] &&
@@ -5012,8 +4707,7 @@ function renderDashboard() {
   var spreadSummary = dashIncludeTrainees ? computeChairSummary(true) : summary;
   var scrollTop = root.firstChild ? root.firstChild.scrollTop : 0;
   root.innerHTML = "";
-  // Per-judge outcomes ("Einzelergebnisse"), the round as one table
-  // ("Wertung") and the official Ballot.
+  // Per-judge outcomes, the round as one table, and the official Ballot
   var sheet = dashTabbedSheet(
     "dashboard",
     [
@@ -5049,13 +4743,11 @@ function renderDashboard() {
     renderDashboard,
   );
   root.appendChild(sheet);
-  // Opening/closing a row re-renders the whole sheet - keep the scroll spot.
+  // Toggling a row re-renders the sheet, so keep the scroll position
   sheet.scrollTop = scrollTop;
 }
 
-// Schnelleingabe: editable grid over the judge's own scores for fast
-// keyboard entry, open to any desktop judge. Enter advances like Tab.
-// Scopes to whichever "v-*" view the input lives in, so one helper serves every grid.
+// Schnelleingabe: editable grid over the judge's own scores; Enter advances like Tab within the field's view
 function focusNextNumberInput(inp) {
   var root = inp.closest('[id^="v-"]');
   if (!root) return;
@@ -5064,23 +4756,19 @@ function focusNextNumberInput(inp) {
   if (next) next.focus();
 }
 
-// Shared digit-filter/select-on-focus/Enter-to-next for every desktop number field.
-// opts: {width, extraClass} - width:false skips inline width (Blatt/Teampunkte size via CSS).
+// Shared digit filter, select-on-focus and Enter-to-next for desktop number fields;
+// opts: {width, extraClass}, width: false leaves sizing to CSS
 function schnellNumberInput(opts) {
   opts = opts || {};
   var inp = el(
     "input",
     "schnellinput" + (opts.extraClass ? " " + opts.extraClass : ""),
   );
-  // type=text, not number: a native number input reports .value as "" for
-  // anything it can't parse (pasted text, a trailing space, "1 2"), so the
-  // field can show stray text while the value committed on change is empty -
-  // a cell that looks filled in but contributes nothing. inputMode keeps the
-  // numeric keypad on mobile/tablet; the filter below restricts to digits.
+  // type=text, since a number input reports "" for unparsable text and would look filled while committing nothing
   inp.type = "text";
   inp.inputMode = "numeric";
   if (opts.width !== false) inp.style.width = opts.width || "95px";
-  // Selects the whole value on focus, so typing overwrites instead of inserting.
+  // Select the value on focus so typing overwrites it
   inp.addEventListener("focus", function () {
     inp.select();
   });
@@ -5091,7 +4779,7 @@ function schnellNumberInput(opts) {
   inp.addEventListener("keydown", function (e) {
     if (e.key === "Enter") {
       e.preventDefault();
-      inp.blur(); // commits the value (fires "change") before moving on
+      inp.blur(); // Commits the value (fires "change") before moving on
       if (opts.onEnter) opts.onEnter(inp);
       else focusNextNumberInput(inp);
     }
@@ -5099,11 +4787,7 @@ function schnellNumberInput(opts) {
   return inp;
 }
 
-// Grade-mode counterpart to schnellNumberInput - same opts shape
-// ({width, extraClass, onEnter}) and select-on-focus/Enter-to-next
-// behavior, but a free-text field restricted to grade characters instead
-// of a number spinner. Used wherever schnellNumberInput is, whenever
-// gradeInputMode() is on.
+// Grade-mode counterpart to schnellNumberInput with the same opts, restricted to grade characters
 function gradeTextInput(opts) {
   opts = opts || {};
   var inp = el(
@@ -5132,17 +4816,8 @@ function gradeTextInput(opts) {
   return inp;
 }
 
-// The commit path every desktop score field shares (Schnelleingabe's two
-// grids, Blatt, Teampunkte). In points mode a typed number is rounded and
-// clamped to the field's scale; in grade mode the typed mark goes through
-// pointsFromGrade, which for a team category snaps to the same band midpoint
-// the mobile keypad writes (pickTeam(), via katOf()/convert()/mid()), so
-// free typing can never produce an invalid team score. Unparsable input is
-// reverted. refresh() repaints the field (and, where there is one, its hint
-// and nudge buttons) from the stored value - it runs after a successful
-// write too, so what ends up on screen is always the normalised value.
-// max is the field's own scale: 20 for the speaker criteria's Notenskala,
-// the category's max for a team category.
+// Shared commit path for desktop score fields: points are rounded and clamped, grades go through pointsFromGrade,
+// unparsable input is reverted, and refresh() always shows the normalised value
 function commitScoreField(inp, max, target, criterion, kind, refresh) {
   var raw = inp.value.trim();
   if (raw === "") return;
@@ -5155,18 +4830,14 @@ function commitScoreField(inp, max, target, criterion, kind, refresh) {
     else n = Math.max(0, Math.min(max, n));
   }
   if (n === undefined) {
-    refresh(); // not a value we can parse - put the stored one back
+    refresh(); // Unparsable value, restore the stored one
     return;
   }
   write(target, criterion, n);
   refresh();
 }
 
-// Speaker criteria (Spr/Auf/Kon/Sac/Urt) sit on the raw 0-20 Notenskala. In
-// grade mode the cell itself holds the grade mark rather than the point
-// number (there's no separate hint slot in this grid, unlike Blatt) -
-// fine-tuning a value happens on Blatt/Teampunkte, or by switching back to
-// points mode here.
+// Speaker criteria use the 0-20 Notenskala; in grade mode the cell shows the grade mark itself
 function schnellSpeakerInput(s, c) {
   var inp = gradeInputMode("speaker") ? gradeTextInput() : schnellNumberInput();
   function refresh() {
@@ -5182,7 +4853,7 @@ function schnellSpeakerInput(s, c) {
   return inp;
 }
 
-// Team categories are stored in their own point scale (e.g. 0-25).
+// Team categories use their own point scale (e.g. 0-25)
 function schnellTeamInput(t, catIdx) {
   var cat = TEAMCATS[catIdx];
   var inp = gradeInputMode("team") ? gradeTextInput() : schnellNumberInput();
@@ -5218,7 +4889,7 @@ function updateSchnellSpeakerRow(s) {
     }
   }
   if (pCell) pCell.textContent = z === null ? "-" : String(personPunkte(s));
-  // The speaker's own total feeds that team's Reden/Gesamt columns too.
+  // The speaker's total also feeds their team's Reden and Gesamt columns
   var team = SPEAKERS[s].team;
   if (team !== null) updateSchnellTeamRow(team);
 }
@@ -5271,7 +4942,7 @@ function schnellSpeakerRow(s, teamCls) {
   return tr;
 }
 
-// Groups by speaking-order phase - matches SPEAKERS' own order, so one linear pass suffices.
+// Speaking-order phase of a speech, matching SPEAKERS' order
 function schnellSpeakerPhase(label) {
   if (label.indexOf("Eröffnungsrede") !== -1) return "Eröffnungsreden";
   if (label.indexOf("Ergänzungsrede") !== -1) return "Ergänzungsreden";
@@ -5285,7 +4956,7 @@ function schnellSpeakerGroupRows(label, speakers, teamCls) {
   var rows = [];
   var grpTr = el("tr");
   var grpTd = el("td", "schnellgrp", label);
-  // Rede + spacer + the criteria + Ab + Σ.
+  // Rede, spacer, the criteria, Ab and Σ
   grpTd.setAttribute("colspan", String(NC + 4));
   grpTr.appendChild(grpTd);
   rows.push(grpTr);
@@ -5303,7 +4974,7 @@ function schnellSpeakerTable() {
   CRITERIA.forEach(function (c) {
     head.appendChild(el("th", null, c.label));
   });
-  // Ab = deduction; Σ = the speech's points after it (personPunkte).
+  // Ab = deduction; Σ = the speech's points after it
   head.appendChild(el("th", null, "Ab"));
   head.appendChild(el("th", null, "Σ"));
   table.appendChild(head);
@@ -5402,11 +5073,7 @@ function schnellPanel(title, table) {
   return panel;
 }
 
-// A remote websocket event (someone else's score, judges list, ...) can
-// trigger render() while this judge is mid-edit in a desktop grid/sheet;
-// don't tear down the DOM under their cursor. Only blocks on an actual
-// input/textarea having focus - a button (e.g. Blatt's prev/next) should
-// still get its full rebuild on click even though it's inside `root`.
+// True while an input or textarea in root has focus, so remote updates don't rebuild the DOM mid-edit
 function dashEditGuard(root) {
   if (!root.firstChild) return false;
   var ae = document.activeElement;
@@ -5420,14 +5087,10 @@ function dashEditGuard(root) {
 function renderSchnell() {
   var root = document.getElementById("v-schnell");
   if (!root) return;
-  // Each input already patches its own row directly - skipping the rebuild
-  // just risks a moment's staleness, cleared up by the next render().
+  // Inputs patch their own rows, so skipping a rebuild only risks brief staleness
   if (dashEditGuard(root)) return;
   root.innerHTML = "";
-  // One page with no tab strip (its only tab would just repeat the top
-  // row's "Komplette Wertung"): the speeches, then the team points below
-  // them, so Enter in the last speech field carries on into the team points.
-  // Same sheet/body classes as dashTabbedSheet for the same spacing.
+  // One page without a tab strip: speeches then team points, so Enter flows from one into the other
   var sheet = el("div", "dashsheet");
   var body = el("div", "dashtabbody");
   body.appendChild(el("h2", "dashsubhead", "Reden"));
@@ -5447,7 +5110,7 @@ function commitOfflineScoreField(inp, max, offlineId, target, refresh) {
   }
   var n = Math.round(Number(raw));
   if (!isFinite(n)) {
-    refresh(); // not a value we can parse - put the stored one back
+    refresh(); // Unparsable value, restore the stored one
     return;
   }
   n = Math.max(0, Math.min(max, n));
@@ -5467,9 +5130,7 @@ function offlineScoreInput(offlineId, target, max, tabIdx) {
   });
   return inp;
 }
-// Max sum of a speaker's criteria (NC criteria on the 0-20 Notenskala) /
-// a team's categories (TEAMCATS' own maxes) - offline totals are clamped
-// to the same ceilings a fully-maxed real ballot could reach.
+// Highest possible speaker and team sums, used to clamp offline totals
 function offlineSpeakerMax() {
   return NC * 20;
 }
@@ -5478,9 +5139,7 @@ function offlineTeamMax() {
     return sum + c.max;
   }, 0);
 }
-// Offline-judge counterpart to expectedCellCount()/j.filled - one cell per
-// active speech plus one per team, since that's the whole ballot the chair
-// enters for them (no per-criterion breakdown).
+// Offline counterpart to expectedCellCount(): one cell per active speech plus one per team
 function offlineExpectedCellCount() {
   return activeSpeakerIndices().length + TEAMS.length;
 }
@@ -5508,8 +5167,7 @@ function buildOfflineJuryTable(container) {
   }
 
   var speakers = activeSpeakerIndices();
-  // Rows per judge column: the name field, then one row per speech, then
-  // one per team - fixes the column-major tabIndex stride below.
+  // Rows per judge column (name, speeches, teams), the stride for column-major tab order
   var rowsPerCol = 1 + speakers.length + TEAMS.length;
 
   var table = el("table", "schnelltable offlinejurytable");
@@ -5529,8 +5187,7 @@ function buildOfflineJuryTable(container) {
     th.appendChild(nameInp);
     head.appendChild(th);
   });
-  // The "add" column stays to the right of the last judge, so the table
-  // itself never has to stretch to make room for it.
+  // The add column stays right of the last judge so the table never has to stretch
   var addTh = el("th", "offlinejudgeaddcell");
   addTh.appendChild(addBtn());
   head.appendChild(addTh);
@@ -5632,8 +5289,7 @@ function renderOfflineJudges() {
   );
 }
 
-// Adjudikationsblatt: one speech at a time, 4 columns (Sac+Urt merged).
-// Shares cs with mobile Reden, so switching views keeps the same speaker.
+// Adjudikationsblatt: one speech at a time in 4 columns (Sac and Urt merged), sharing cs with mobile Reden
 var BLATT_GROUPS = [
   { key: "spr", critIdx: [0], label: "Sprachkraft" },
   { key: "auf", critIdx: [1], label: "Auftreten" },
@@ -5670,16 +5326,14 @@ function nudgeSpeakerCriterion(s, c, d) {
   updateBlattScore(s, c);
 }
 
-// True once every speaker criterion has a score - used to jump straight to
-// the next speech on Enter instead of stopping at the last score field.
+// True once every speaker criterion has a score, so Enter can jump to the next speech
 function allSpeakerScoresFilled(s) {
   return CRITERIA.every(function (_, c) {
     return sget(s, c) !== null;
   });
 }
 
-// Moves the room to the next active speech and refocuses its first score
-// field, so Enter can keep going without the hands leaving the keyboard.
+// Moves to the next active speech and focuses its first score field
 function advanceToNextSpeech() {
   var n = nextActiveSpeaker(cs);
   if (n === -1) return;
@@ -5745,7 +5399,7 @@ function blattScoreField(s, c, tabIdx) {
   return wrap;
 }
 
-// Replacements for symbols in text
+// Text shortcuts replaced with symbols in notes
 var NOTE_AUTOREPLACE = [
   ["==>", "⇒"],
   ["-->", "→"],
@@ -5759,7 +5413,7 @@ var NOTE_AUTOREPLACE = [
   ["-- ", "— "],
 ];
 
-// Checks text for replacement strings and replaces the text with symbols
+// Replaces text shortcuts in a notes field with their symbols
 function applyNoteAutoReplace(ta) {
   var pos = ta.selectionStart;
   var text = ta.value;
@@ -5789,11 +5443,7 @@ function blattNotesField(s, group, tabIdx) {
   return ta;
 }
 
-// Notes come before scores in tab order. tabIndex alone isn't enough:
-// focus resting on a tabindex=-1 chrome button (nav switch, prev/next)
-// makes the browser fall back to plain DOM order for "next focusable", so
-// notes must also come first in the DOM - CSS `order` restores the usual
-// scores-on-top-notes-below layout.
+// Notes come first in the DOM (not just tabIndex) so tab order works from tabindex=-1 buttons; CSS order puts scores on top
 function blattColumn(s, group, scoreTabStart, noteTabIdx, width) {
   var col = el("div", "blattcol");
   if (group.critIdx.length > 1) col.classList.add("blattcol-wide");
@@ -5807,8 +5457,7 @@ function blattColumn(s, group, scoreTabStart, noteTabIdx, width) {
   return col;
 }
 
-// User-dragged Blatt column widths, keyed by BLATT_GROUPS[].key. The last
-// group never gets a stored width - it always soaks up remaining space.
+// User-dragged Blatt column widths by group key; the last column always takes the remaining space
 function getBlattColWidths() {
   try {
     return JSON.parse(localStorage.getItem("blattColWidths") || "{}");
@@ -5824,16 +5473,10 @@ function setBlattColWidth(key, w) {
   } catch (e) {}
 }
 
-// Every Blatt column keeps at least this much width, so dragging one
-// column can never push a sibling (or itself) out of the visible body.
-// The unresized last column (Sachverstand & Urteilskraft, .blattcol-wide)
-// holds two score fields instead of one, so its floor is double - matches
-// the min-width set on .blattcol-wide in style.css.
+// Minimum Blatt column width; the wide last column needs double (matches .blattcol-wide in style.css)
 var BLATT_COL_MIN = 150;
 
-// Drag handle placed between two Blatt columns; resizes the column to its
-// left by tracking the pointer, then persists the result via
-// setBlattColWidth. Mirrors a standard split-pane resizer.
+// Drag handle that resizes the column to its left and persists the width
 function blattResizer(leftCol, groupKey) {
   var handle = el("div", "blattresizer");
   handle.addEventListener("mousedown", function (e) {
@@ -5843,9 +5486,7 @@ function blattResizer(leftCol, groupKey) {
     var body = leftCol.parentNode;
     var cols = body.querySelectorAll(".blattcol");
     var lastCol = cols[cols.length - 1];
-    // Only the last column is flex:1 (fills leftover space) - every other
-    // column between leftCol and it is a fixed px width that won't shrink
-    // to make room, so it counts fully against the available max.
+    // Fixed-width columns between leftCol and the flexible last column count fully against the maximum
     var otherFixedWidth = 0;
     cols.forEach(function (c) {
       if (c !== leftCol && c !== lastCol)
@@ -5965,7 +5606,7 @@ function renderBlatt() {
   root.appendChild(head);
 
   var body = el("div", "blattbody");
-  // Notes get the first BLATT_GROUPS.length tab stops, scores follow.
+  // Notes get the first tab stops, scores follow
   var noteTab = 1;
   var scoreTab = 1 + BLATT_GROUPS.length;
   var savedWidths = getBlattColWidths();
@@ -6004,7 +5645,7 @@ function renderBlatt() {
       var b = el("button", "dedopt" + (o.l === lvl ? " on" : ""), o.t);
       b.tabIndex = -1;
       b.addEventListener("click", function () {
-        setDeduction(cs, o.l); // calls render() itself
+        setDeduction(cs, o.l); // Calls render() itself
       });
       dedu.appendChild(b);
     });
@@ -6012,11 +5653,9 @@ function renderBlatt() {
   }
 }
 
-// A printable sheet with all scores and notes (for handing to teams for
-// feedback purposes), most likely just to save as pdf.
+// Printable sheet with all scores and notes for team feedback, usually saved as PDF
 
-// Lets the judge pick whether their own points are on the printout before
-// building it
+// Lets the judge choose whether their own points appear on the printout
 function openPrintNotesModal() {
   openModal("printNotesModal", function (box) {
     box.appendChild(el("h2", null, "Notizen exportieren"));
@@ -6166,7 +5805,7 @@ function buildPrintSheet(hideOwn) {
   });
 }
 
-// Team-first sibling to Blatt - both teams' 7 categories + notes on one screen, no paging.
+// Teampunkte: both teams' categories and notes on one screen
 function teamPointsHintText(v, max) {
   if (v === null) return "–";
   var m = markOf(katOf(v, max));
@@ -6280,9 +5919,7 @@ function teamPointsNotesField(t, cat, tabIdx) {
   return wrap;
 }
 
-// Notes precede the score in the DOM (see blattColumn's comment for why);
-// .teampointscatscore{order:1} / .blattnotes{order:2} keep the score
-// visually on top.
+// Notes precede the score in the DOM (see blattColumn); CSS order keeps the score on top
 function teamPointsCategoryBlock(t, catIdx, tabIdx, noteTabIdx) {
   var cat = TEAMCATS[catIdx];
   var block = el("div", "teampointscatblock");
@@ -6293,7 +5930,7 @@ function teamPointsCategoryBlock(t, catIdx, tabIdx, noteTabIdx) {
   return block;
 }
 
-// Notes come before scores in tab order, same as Blatt.
+// Notes come before scores in tab order, same as Blatt
 function teamPointsColumn(t, group, scoreTabStart, noteTabStart) {
   var col = el("div", "blattcol teampointscol-" + group.cats.length);
   var row = el("div", "teampointscatrow");
@@ -6306,9 +5943,7 @@ function teamPointsColumn(t, group, scoreTabStart, noteTabStart) {
   return col;
 }
 
-// noteTabStart/scoreTabStart are shared counters across both team sections,
-// so tab order goes through every note field (both teams) before any score
-// field - see renderTeamPoints.
+// Shared tab counters so every note field (both teams) comes before any score field
 function teamPointsSection(t, noteTabStart, scoreTabStart) {
   var teamCls = teamClass(t);
   var sec = el("div", "teampointssec " + teamCls);
@@ -6365,8 +6000,7 @@ function renderTeamPoints() {
   root.innerHTML = "";
 
   var wrap = el("div", "teampointswrap");
-  // Both teams' notes (1..2*TEAMCATS.length) come before either team's
-  // scores, same idea as Blatt's notes-before-scores tab order.
+  // Both teams' notes come before either team's scores in tab order
   var noteTab = 1;
   var scoreTab = 1 + 2 * TEAMCATS.length;
   for (var t = 0; t < 2; t++) {
@@ -6406,7 +6040,7 @@ function renderNotes() {
   root.appendChild(wrap);
 }
 
-// Mobile "Namen" tab - a stacked list of name inputs in speaking order.
+// Mobile "Namen" tab: name inputs in speaking order
 function renderNamen() {
   var list = document.getElementById("namenList");
   if (!list) return;
@@ -6421,8 +6055,7 @@ function renderNamen() {
   });
 }
 
-// Builds one seat: a label plus a name input bound to getName/setName.
-// tabIndex follows speaking order (activeOrdinal)
+// One seat: a label and a name input, tab order following speaking order
 function namenSeat(s, label) {
   var seat = el("div", "seat");
   seat.appendChild(el("div", "slbl", label));
@@ -6438,8 +6071,7 @@ function namenSeat(s, label) {
   return seat;
 }
 
-// Desktop "Namen" view - the room shape (Gov/Opp facing tables, Fraktionsfrei
-// and Jury below), matching where each role actually sits during a debate.
+// Desktop "Namen" view laid out like the room: facing team tables, Fraktionsfrei and Jury below
 function renderNamenRoom() {
   var root = document.getElementById("v-namenroom");
   if (!root) return;
@@ -6509,8 +6141,7 @@ function renderNamenRoom() {
         j.name + (j.is_chair ? " - Chair" : j.hidden ? " - Trainee" : ""),
       ),
     );
-    // Only the chair can flip a wing to trainee (and back) - the server
-    // enforces this too, this just avoids showing a button that 403s.
+    // Only the chair can toggle a wing's trainee status (the server enforces this too)
     if (ME.is_chair && !j.is_chair) {
       var btn = el("button", "juryab", j.hidden ? "Zu Wing" : "Zu Trainee");
       btn.type = "button";
@@ -6568,10 +6199,7 @@ function renderNamenRoom() {
   root.appendChild(wrap);
 }
 
-// Maps every ballot.speeches[] entry OpenTab returns onto our own SPEAKERS
-// index: government/opposition position 0/1 are the two early speeches,
-// position 2+ is the closing speech; non_aligned speeches fill the active
-// free-speaker slots in position order. Returns {s: speech}.
+// Maps OpenTab's ballot.speeches[] onto SPEAKERS indices; returns {s: speech}
 function otBuildSlotMap(ballot) {
   var map = {};
   var freeSpeeches = ballot.speeches
@@ -6604,10 +6232,7 @@ function otBuildSlotMap(ballot) {
   });
   return map;
 }
-// Builds the SubmitBallotRequest.ballot payload for every judge currently
-// mapped in otState.judgeMap, pulling that judge's own computed totals via
-// personPunkteFor()/teamPunkteFor(). A judge missing a total (not fully
-// scored yet) simply gets no entry for that cell rather than a guessed 0.
+// Builds the OpenTab ballot payload for every mapped judge; unfinished totals are left out rather than sent as 0
 function otBuildSubmission(ballot, slotMap) {
   var speeches = ballot.speeches.map(function (sp) {
     var sIdx = null;
@@ -6670,10 +6295,7 @@ function otLabeledField(labelText, id, placeholder) {
   row.appendChild(input);
   return row;
 }
-// Clears a tournament's saved token and points the view back at the
-// registration step for it (with the debate id it already knew, so the
-// chair doesn't have to re-paste the ballot URL too) - shared by every
-// call site that can discover a stale/expired token.
+// Drops a stale token and returns to the registration step, keeping the known debate id
 function otHandleStaleToken(tournamentId, debateId, apiBase) {
   otForgetToken(tournamentId);
   otPendingTournamentId = tournamentId;
@@ -6691,8 +6313,7 @@ function otHandleStaleToken(tournamentId, debateId, apiBase) {
 function otIsAuthError(err) {
   return err && (err.otStatus === 401 || err.otStatus === 403);
 }
-// Chair puts in the ballot url; Check if secret exists and works,
-// otherwise prompt the user for registration url
+// Connects via a pasted ballot URL, asking for a registration URL if no working token exists
 function otDoConnectFromBallotUrl(root) {
   var url = document.getElementById("otBallotUrl").value.trim();
   var debateId = otExtractDebateId(url);
@@ -6744,7 +6365,7 @@ function otDoConnectFromBallotUrl(root) {
       otStatusMsg(root, err.message || String(err), true);
     });
 }
-// Prompt the user for a registration url and save the token
+// Registers with a pasted registration URL and saves the token
 function otDoRegisterAndConnect(root) {
   var regUrl = document.getElementById("otRegUrl").value.trim();
   var secret = otExtractSecret(regUrl);
@@ -6755,8 +6376,7 @@ function otDoRegisterAndConnect(root) {
   var tournamentId = otPendingTournamentId;
   var debateId = otPendingDebateId;
   var apiBase = otPendingApiBase || OPENTAB_DEFAULT_API;
-  // The registration link has to come from the same OpenTab server as the
-  // ballot link - a secret only exists on the server that issued it.
+  // Secrets only exist on the issuing server, so the registration link must match the ballot link's server
   var regBase = otApiBaseFor(regUrl);
   if (!regBase) {
     otStatusMsg(root, otUnknownServerMsg(regUrl), true);
@@ -6835,8 +6455,7 @@ function otDoRefresh(root) {
       otStatusMsg(root, err.message || String(err), true);
     });
 }
-// "Trennen" only leaves this round's view/mapping. The tournament's saved
-// token stays put so the next room for the same tournament reuses it.
+// Disconnects this round only; the tournament's token stays saved for the next room
 function otDoDisconnect(root) {
   otState = {
     debateId: "",
@@ -6906,18 +6525,14 @@ function otDoSubmit(root) {
       otStatusMsg(root, err.message || String(err), true);
     });
 }
-// Desktop "OpenTab" view (chair-only). Pulls names from the tournament's
-// own OpenTab instance and, after the round, submits each room judge's
-// computed totals back as that judge's OpenTab ballot.
+// OpenTab view (chair-only): imports names and submits each judge's computed totals as their ballot
 function renderOpenTab(rootId) {
   var root = document.getElementById(rootId || "v-opentab");
   if (!root) return;
   if (dashEditGuard(root)) return;
   root.innerHTML = "";
 
-  // Desktop (#v-opentab) shows the sections as folder tabs, with the
-  // connection line in the strip; mobile (#v-opentabm) keeps them as
-  // stacked cards. sections: [{key, label, build}] as for dashTabbedSheet.
+  // Desktop shows sections as folder tabs, mobile as stacked cards
   var mobile = root.id === "v-opentabm";
   function finish(sections, aside, asideLabel) {
     if (mobile) {
@@ -7054,13 +6669,10 @@ function renderOpenTab(rootId) {
   connBody.appendChild(refreshBtn);
   connBody.appendChild(disconnectBtn);
 
-  // Same ordering/formatting as the Offline-Jurierende table
+  // Same ordering and formatting as the Offline-Jurierende table
   var slotMap = otBuildSlotMap(ballot);
   var speechWrap = el("div");
-  // On desktop each tab carries its own status line (otStatusMsg writes into
-  // the first .otstatus in root), so "Ballot neu laden"/"Trennen" in the tab
-  // strip report on whichever tab is open. Mobile shows every card at once
-  // and keeps the single one next to "Ballot absenden".
+  // On desktop each tab has its own status line for the strip's actions; mobile has one next to "Ballot absenden"
   if (!mobile) speechWrap.appendChild(el("div", "otstatus"));
   var speechTable = el("table", "schnelltable otspeechtable");
   var speechTableHead = el("tr");
@@ -7077,7 +6689,7 @@ function renderOpenTab(rootId) {
     tr.appendChild(lbl);
     var td = el("td");
     if (SPEAKERS[s].team === null) {
-      // Free speaker are pre assigned and can't be modified
+      // Free speakers are pre-assigned and can't be changed
       var sp = slotMap[s];
       td.appendChild(
         el(
@@ -7087,8 +6699,7 @@ function renderOpenTab(rootId) {
         ),
       );
     } else {
-      // Team speech order isn't authoritative in OpenTab, so the chair
-      // picks who actually gave it.
+      // OpenTab's team speech order isn't authoritative, so the chair picks who gave each speech
       var team = teamsByIdx[SPEAKERS[s].team];
       var select = document.createElement("select");
       var blank = document.createElement("option");
@@ -7140,7 +6751,7 @@ function renderOpenTab(rootId) {
   applyFreeWrap.appendChild(applyFreeBtn);
   speechWrap.appendChild(applyFreeWrap);
 
-  // Map judges to ballot names
+  // Map room judges to ballot names
   var judgePanel = el("div");
   judgePanel.appendChild(el("div", "otstatus"));
   var judgeBody = el("div", "offlinejurywrap");
@@ -7242,13 +6853,12 @@ function render() {
   paintBar();
 }
 
-// Lobby session
+// Lobby and session
 function urlCode() {
   var m = location.pathname.match(/^\/r\/([A-Za-z0-9]{4})$/);
   return m ? m[1].toUpperCase() : null;
 }
-// A small most-recent-first index of past rooms (code/name/filled count/
-// timestamp)
+// Most-recent-first index of past rooms (code, name, filled count, timestamp)
 function recordRecentRoom(code, name, isChair) {
   var list = LS.get("opd.recent", []) || [];
   list = list.filter(function (r) {
@@ -7318,9 +6928,7 @@ function showLobby() {
   document.getElementById("v-lobby").classList.remove("hide");
   document.getElementById("main").classList.add("hide");
   document.getElementById("dock").classList.add("hide");
-  // render()/applyLayoutMode() never run again once ME is null (leaveRoom's
-  // resetRoomState clears it), so the desktop chrome classes from before
-  // leaving would otherwise stay stuck on #app, stretching the lobby card.
+  // render() no longer runs once ME is null, so drop the desktop class here or it stretches the lobby card
   document.getElementById("app").classList.remove("dashboard-mode");
   if (code) {
     document.getElementById("lobbyCode").textContent = code;
@@ -7345,8 +6953,7 @@ function startSession(s) {
   };
   LS.set("opd.session." + s.code, ME);
   LS.set("opd.lastname", s.name);
-  // Land back on whatever tab/dashboard view was open before a reload,
-  // instead of always resetting to Namen.
+  // Restore the last open view after a reload
   view = LS.get("opd.view." + s.code, "namen") || "namen";
   dashboardView = LS.get("opd.dashboardView." + s.code, "namen") || "namen";
   loadLocal();
@@ -7363,9 +6970,7 @@ function startSession(s) {
   render();
 }
 
-// Wings can't join an offline room (joining needs the server too), so once
-// promotion gets it a real code the chair needs to know, in order to
-// (re-)share the link - the status-bar text alone is too easy to miss.
+// Tell the chair the new code after promotion, since wings need the real link to join
 function showPromotionNotice(code) {
   openInfoModal(
     "Raum wurde online geschaltet",
@@ -7375,10 +6980,8 @@ function showPromotionNotice(code) {
   );
 }
 
-// Tries to turn a pending offline room into a real server one, migrating
-// all locally-queued scores/notes across. Called from the same signals
-// that already drive reconnection (resume(), the 20s heartbeat) rather
-// than a dedicated poller.
+// Turns a pending offline room into a server room and migrates local scores and notes;
+// driven by resume() and the heartbeat rather than its own poller
 var promotingOffline = false;
 function promoteOfflineRoom() {
   if (!ME || !ME.pendingCreate || promotingOffline) return;
@@ -7394,9 +6997,7 @@ function promoteOfflineRoom() {
       return r.json();
     })
     .then(function (s) {
-      // The judge can have left (or swapped rooms) while this was in flight -
-      // the new server room is then simply abandoned, rather than having this
-      // room's local scores migrated into it.
+      // If the judge left or switched rooms meanwhile, abandon the new server room instead of migrating into it
       if (!ME || !ME.pendingCreate || ME.code !== forCode) {
         promotingOffline = false;
         return;
@@ -7421,7 +7022,7 @@ function promoteOfflineRoom() {
         is_chair: s.is_chair,
       };
       LS.set("opd.session." + ME.code, ME);
-      saveLocal(); // re-persists mine/queue under the new code
+      saveLocal(); // Re-persists mine/queue under the new code
       LS.set("opd.notes." + ME.code, notes);
       LS.set("opd.names." + ME.code, speakerNames);
       recordRecentRoom(ME.code, ME.name, ME.is_chair);
@@ -7436,15 +7037,14 @@ function promoteOfflineRoom() {
       showPromotionNotice(ME.code);
     })
     .catch(function () {
-      promotingOffline = false; // still offline - retried on the next resume()/heartbeat
+      promotingOffline = false; // Still offline, retried on the next resume() or heartbeat
     });
 }
 function lobbyErr(msg) {
   document.getElementById("lobbyErr").textContent = msg || "";
 }
 
-// Offered when POST /api/rooms fails at the network level (no connectivity) -
-// a reachable server that merely rejected the request should not offer this.
+// Offered only when creating a room fails for lack of connectivity, not when the server rejects it
 function openOfflineRoomModal(name) {
   openConfirmModal({
     title: "Server nicht erreichbar",
@@ -7459,10 +7059,7 @@ function openOfflineRoomModal(name) {
   });
 }
 
-// Fabricates a room/judge identity in the same shape POST /api/rooms
-// returns, so startSession() needs no special-casing. The code is drawn
-// only from characters the server's own code alphabet never uses (see
-// genOfflineCode()), so it can never collide with a real server code.
+// Fabricates a room identity shaped like POST /api/rooms' response, with a code that can't collide (see genOfflineCode())
 function createOfflineRoom(name) {
   startSession({
     code: genOfflineCode(),
@@ -7473,8 +7070,7 @@ function createOfflineRoom(name) {
   });
   ME.pendingCreate = true;
   LS.set("opd.session." + ME.code, ME);
-  // startSession() already called connect() before pendingCreate was set -
-  // stop that one attempt rather than let it dangle until it times out.
+  // Stop the connect() attempt startSession() already began
   if (ws) {
     try {
       ws.close();
@@ -7517,10 +7113,10 @@ document.getElementById("btnCreate").addEventListener("click", function () {
       return r.json();
     })
     .then(function (data) {
-      if (data) startSession(data); // navigates away - no need to restore the button
+      if (data) startSession(data); // Navigates away, so no need to restore the button
     })
     .catch(function () {
-      // fetch() itself rejected - no connectivity, not a server-side error.
+      // fetch() rejected: no connectivity rather than a server error
       restore();
       openOfflineRoomModal(name);
     });
@@ -7567,8 +7163,7 @@ document.getElementById("nm").addEventListener("keydown", function (e) {
     else document.getElementById("btnCreate").click();
   }
 });
-// navigator.clipboard needs https/localhost; this app usually runs on plain
-// http (see run.sh), so execCommand("copy") is the fallback every caller needs.
+// navigator.clipboard needs https or localhost, so fall back to execCommand("copy") on plain http
 function copyText(text) {
   if (navigator.clipboard && window.isSecureContext) {
     return navigator.clipboard.writeText(text);
@@ -7684,7 +7279,7 @@ document.getElementById("tprev").addEventListener("click", function () {
   }
 });
 
-// Enable swipe navigation
+// Swipe navigation
 function addSwipe(el, onLeft, onRight) {
   var sx = 0,
     sy = 0,
@@ -7740,7 +7335,7 @@ document.getElementById("tnext").addEventListener("click", function () {
     render();
   }
 });
-// Mobile Abzüge options stay collapsed behind the "Abzüge" toggle (deduOpen)
+// Mobile Abzüge options stay collapsed behind the toggle (deduOpen)
 document.getElementById("deduRow").addEventListener("click", function (e) {
   if (e.target.closest("#deduToggle")) {
     deduOpen = !deduOpen;
@@ -7772,9 +7367,7 @@ document.getElementById("menuBtn").addEventListener("click", function (e) {
 });
 document.getElementById("menuPanel").addEventListener("click", function (e) {
   var item = e.target.closest(".menuitem");
-  // Two exceptions stay open: copying, to show the "Kopiert" confirmation
-  // instead of vanishing the instant it's tapped, and the Zeitsignal
-  // switch, so the two voices can be tapped back and forth and compared.
+  // Copy link stays open to show "Kopiert", and the bell voice switch so voices can be compared
   if (item && item.id !== "menuCopyLink" && item.id !== "menuBellVoice")
     closeMenu();
 });
@@ -7793,8 +7386,7 @@ document.addEventListener("keydown", function (e) {
 window.addEventListener("popstate", function () {
   var code = urlCode();
   if (code && !ME) {
-    // Back-navigated from the post-leave "/" entry to the room's URL:
-    // rejoin using the session kept in localStorage.
+    // Back-navigated to the room's URL after leaving: rejoin from the stored session
     var sess = LS.get("opd.session." + code, null);
     if (sess && sess.token) {
       startSession(sess);
@@ -7803,8 +7395,7 @@ window.addEventListener("popstate", function () {
     }
   }
   if (!code && ME) {
-    // Forward-navigated back to the post-leave "/" entry: mirror leaveRoom
-    // without touching history again (the URL already matches).
+    // Forward-navigated to the post-leave "/" entry: leave without touching history
     resetRoomState();
     showLobby();
   }
@@ -7858,12 +7449,7 @@ document.getElementById("tundoBtn").addEventListener("click", function () {
   render();
 });
 
-// Install button - shown on any phone-width screen, browser support for an
-// automatic prompt or not. Chromium browsers fire beforeinstallprompt, so
-// there the button triggers the native install dialog directly; everywhere
-// else (Firefox Android, iOS Safari) it falls back to a note pointing at the
-// browser's own "Add to Home screen" menu item, since those browsers don't
-// expose an installability API to trigger it from the page.
+// Install button on phone widths: Chromium uses beforeinstallprompt, other browsers get a note about "Add to Home screen"
 var deferredInstallPrompt = null;
 function isMobileViewport() {
   return window.matchMedia("(max-width: 1023px)").matches;
@@ -7890,12 +7476,10 @@ window.addEventListener("appinstalled", function () {
   document.getElementById("installNote").classList.add("hide");
 });
 
-// boot function
+// Boot
 (function () {
   if ("serviceWorker" in navigator) {
-    // Rejects for a copy of the app served from anywhere it can't scope a
-    // worker (a saved-to-disk file:// copy being the obvious one) - that's
-    // just no offline caching, not a reason to leave a rejection dangling.
+    // Registration fails for file:// copies; that just means no offline caching
     navigator.serviceWorker.register("/static/sw.js").catch(function () {});
   }
   if (isMobileViewport() && !isStandalone()) {
@@ -7906,9 +7490,7 @@ window.addEventListener("appinstalled", function () {
   applyKeyLabelLabel();
   applyTimerDisplayLabel();
   applyBellVoiceLabel();
-  // Only an explicit /r/CODE link auto-resumes a session - landing on the
-  // bare app URL always shows the lobby (with the recent-rooms list to
-  // rejoin from), even if a session for some room is still cached.
+  // Only an explicit /r/CODE link auto-resumes a session; the bare URL always shows the lobby
   var code = urlCode();
   var sess = code ? LS.get("opd.session." + code, null) : null;
   if (sess && sess.token) {

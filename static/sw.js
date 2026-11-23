@@ -9,7 +9,7 @@ var SHELL = [
   "/static/fonts/source-serif-4-latin-ext.woff2",
 ];
 
-// How long to wait for the network before falling back to the cached copy.
+// How long to wait for the network before falling back to the cached copy
 var NET_TIMEOUT_MS = 3000;
 
 self.addEventListener("install", function (e) {
@@ -46,13 +46,8 @@ self.addEventListener("activate", function (e) {
   );
 });
 
-// Network-first for the app shell, so a deploy shows up on the next load
-// (stale-while-revalidate needed two loads, and could pair an old
-// index.html with a new app.js). The flaky venue Wi-Fi this app is built
-// for is covered by the fallback: offline, or no answer within
-// NET_TIMEOUT_MS, serves the cached copy - the network response still lands
-// in the cache when it arrives. Fonts never change, so they're cache-first.
-// Only /static/* is handled, so sync/API calls are untouched.
+// Network-first so a deploy shows up on the next load and index.html never pairs with a stale app.js;
+// falls back to the cache when offline or slower than NET_TIMEOUT_MS
 function networkFirst(req) {
   return caches.open(CACHE).then(function (c) {
     var net = fetch(req).then(function (res) {
@@ -64,8 +59,7 @@ function networkFirst(req) {
         return hit || Response.error();
       });
     });
-    // Resolves only if there is a cached copy to fall back to; otherwise
-    // the network (or its offline fallback) decides.
+    // Resolves only if a cached copy exists, otherwise the network decides
     var slow = new Promise(function (resolve) {
       setTimeout(function () {
         c.match(req).then(function (hit) {
@@ -89,6 +83,7 @@ function cacheFirst(req) {
     });
   });
 }
+// Only /static/* is handled so API calls bypass the cache; fonts never change, so they are cache-first
 self.addEventListener("fetch", function (e) {
   if (e.request.method !== "GET") return;
   var url = e.request.url;

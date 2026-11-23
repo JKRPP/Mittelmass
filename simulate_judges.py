@@ -1,18 +1,10 @@
 #!/usr/bin/env python3
-"""
-Dev/test tool — NOT part of the deployed app (not copied into the Docker
-image, not referenced by server.py). Populates a room with N fake judges who
-each submit random scores over the HTTP API, exactly like real clients would.
+"""Dev tool, not deployed: fills a room with N fake judges submitting uniformly random scores over the HTTP API
 
 Usage:
   python simulate_judges.py --judges 8
   python simulate_judges.py --judges 5 --code AB3D --url http://192.168.0.157:8000
   python simulate_judges.py --judges 10 --incomplete 0.3 --seed 42
-
-Scores are uniformly random within each field's valid range (0-20 for speaker
-criteria, 0-max for team categories) — not snapped to the discrete rating-scale
-steps the UI itself offers, since the server doesn't enforce that and it's not
-needed to exercise sync/aggregation/UI behavior under load.
 """
 
 import argparse
@@ -23,14 +15,9 @@ import sys
 import urllib.error
 import urllib.request
 
-# Mirrors the rubric constants at the top of static/app.js (CRITERIA,
-# TEAMCATS, SPEAKERS/freeSpeakerCount). A rubric change there has to be
-# repeated here, or this script starts posting keys the app never reads.
+# Mirrors the rubric constants in static/app.js; keep in sync or this script posts keys the app never reads
 CRITERIA = ["spr", "auf", "kon", "sac", "urt"]
-# SPEAKERS is a fixed 16-slot array: 4 opening speeches (slots 0-3), 10
-# reserved free-speaker slots (4-13) of which a room shows the first
-# `free_speakers`, and the 2 Schlussreden (14-15). Speech targets are
-# "s<slot>", so a round's speeches are NOT simply s0..s8.
+# SPEAKERS has 16 fixed slots: 4 openings (0-3), 10 free-speaker slots (4-13), 2 Schlussreden (14-15)
 FIRST_FREE_SLOT = 4
 CLOSING_SLOTS = [14, 15]
 TEAMCATS = [
@@ -66,7 +53,7 @@ def client_id():
 
 
 def speech_slots(free_speakers):
-    """The SPEAKERS slots a room with `free_speakers` free speeches shows."""
+    """SPEAKERS slots shown by a room with `free_speakers` free speeches"""
     return (
         list(range(FIRST_FREE_SLOT))
         + list(range(FIRST_FREE_SLOT, FIRST_FREE_SLOT + free_speakers))
@@ -75,9 +62,7 @@ def speech_slots(free_speakers):
 
 
 def make_patches(incomplete_frac, slots):
-    """All (target, criterion) fields for one judge, each with a random valid
-    score, minus a random `incomplete_frac` fraction left unscored (simulates
-    a round still in progress)."""
+    """Random scores for every field of one judge, leaving an `incomplete_frac` fraction unscored"""
     fields = []
     for s in slots:
         for crit in CRITERIA:
@@ -152,7 +137,7 @@ def main():
         code = body["code"]
         judges.append(body)
         print(f"created room {code} (chair: {body['name']})")
-        remaining -= 1  # the chair we just created counts as one of --judges
+        remaining -= 1  # The chair counts as one of --judges
 
     for i in range(remaining):
         status, body = http(
@@ -169,8 +154,7 @@ def main():
     if not judges:
         sys.exit("no judge could join - nothing to score")
 
-    # Score exactly the speeches this room shows: its free-speaker count can
-    # differ from the default 3 (the chair can change it in the app).
+    # Score exactly the speeches this room shows, since the chair may have changed its free-speaker count
     status, snap = http(
         "GET", f"{base}/api/rooms/{code}/snapshot?token={judges[0]['token']}"
     )

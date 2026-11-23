@@ -1,6 +1,4 @@
-"""
-Mittelmaß sync backend
-"""
+"""Mittelmaß sync backend"""
 
 import json
 import os
@@ -34,7 +32,7 @@ DB_PATH = os.environ.get("OPD_DB", "opd.sqlite3")
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(ROOT, "static")
 
-# Impressum fields come from the environment (operator-specific "Anbieter"), not hardcoded - see docker-compose.yml.
+# Impressum fields come from the environment (see docker-compose.yml)
 IMPRESSUM_DEFAULTS = {
     "IMPRESSUM_NAME": "[Vor- und Nachname bzw. Firmenname]",
     "IMPRESSUM_STREET": "[Straße und Hausnummer]",
@@ -43,12 +41,10 @@ IMPRESSUM_DEFAULTS = {
     "IMPRESSUM_EMAIL": "[E-Mail-Adresse]",
 }
 
-# No O/0, no I/1/L. Room codes get read aloud across a lecture hall.
+# Unambiguous characters only, since room codes get read aloud across a lecture hall
 ALPHABET = "ACDEFGHJKMNPQRTUVWXY34679"
 
-# Rooms are never closed or deleted by hand - a round just stops being used -
-# so without a cap the db would grow forever. Judges/scores/deductions/
-# exclusions cascade off `rooms`, so evicting a room cleans up everything.
+# Rooms are never closed explicitly, so their number is capped; everything else cascades off rooms
 MAX_ROOMS = 5000
 
 SCHEMA = """
@@ -123,8 +119,7 @@ def db() -> sqlite3.Connection:
 async def lifespan(app: FastAPI):
     con = db()
     con.executescript(SCHEMA)
-    # Columns added after the first release. A fresh DB gets them from SCHEMA
-    # above and every ALTER here is a no-op; an existing one picks them up.
+    # Columns added after the first release; each ALTER is a no-op on a fresh database
     for ddl in (
         "ALTER TABLE rooms ADD COLUMN spread_open INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE rooms ADD COLUMN free_speakers INTEGER NOT NULL DEFAULT 3",
@@ -139,7 +134,7 @@ async def lifespan(app: FastAPI):
         try:
             con.execute(ddl)
         except sqlite3.OperationalError:
-            pass  # already there
+            pass  # Column already exists
     con.commit()
     con.close()
     yield
@@ -152,7 +147,7 @@ app = FastAPI(title="OPD Jurierbogen", lifespan=lifespan)
 
 
 class Hub:
-    """Room code -> live sockets. Presence is derived from this, not stored."""
+    """Live sockets per room code; presence is derived from this, not stored"""
 
     def __init__(self) -> None:
         self.rooms: dict[str, dict[WebSocket, str]] = {}
@@ -197,13 +192,7 @@ hub = Hub()
 
 
 class SlidingWindowLimiter:
-    """Per-key request timestamps in a rolling window.
-
-    Keys are client IPs, so the map has to be pruned or it grows for the
-    lifetime of the process - one entry per address ever seen. Sweeping every
-    `window` seconds (from inside allow(), so there is no background task)
-    keeps it to roughly the addresses actually active in one window.
-    """
+    """Per-key sliding-window rate limiter; idle keys are swept once per window so the map stays small"""
 
     def __init__(self, max_hits: int, window_seconds: float) -> None:
         self.max_hits = max_hits
@@ -225,8 +214,7 @@ class SlidingWindowLimiter:
         return True
 
     def sweep(self, now: float) -> None:
-        """Drops keys whose newest hit has aged out - an all-expired deque is
-        indistinguishable from never having seen the key."""
+        """Drop keys whose newest hit has expired"""
         if now < self.next_sweep:
             return
         self.next_sweep = now + self.window
@@ -236,13 +224,14 @@ class SlidingWindowLimiter:
             del self.hits[key]
 
 
-# Limit users that send more than 300 requests a minute
+# At most 300 API requests per client per minute
 api_limiter = SlidingWindowLimiter(max_hits=300, window_seconds=60)
-# Limit users that try to create more than 10 rooms in 10 minutes
+# At most 10 room creations per client per 10 minutes
 room_create_limiter = SlidingWindowLimiter(max_hits=10, window_seconds=600)
 
 
 def client_key(request: Request) -> str:
+    """Client IP for rate limiting, taken from the first X-Forwarded-For hop behind a proxy"""
     fwd = request.headers.get("x-forwarded-for")
     if fwd:
         return fwd.split(",")[0].strip()
@@ -290,8 +279,7 @@ def new_code(con: sqlite3.Connection) -> str:
 
 
 def evict_oldest_rooms(con: sqlite3.Connection) -> None:
-    """Keep at most MAX_ROOMS around; the oldest ones age out first. Cheap: this
-    only runs when a room is created, never on a timer."""
+    """Delete the oldest rooms beyond MAX_ROOMS; runs only on room creation"""
     (count,) = con.execute("SELECT COUNT(*) FROM rooms").fetchone()
     if count <= MAX_ROOMS:
         return
@@ -304,6 +292,7 @@ def evict_oldest_rooms(con: sqlite3.Connection) -> None:
 
 
 def auth(con: sqlite3.Connection, code: str, token: str) -> sqlite3.Row:
+    """Judge row for a token in this room, or 401"""
     row = con.execute(
         "SELECT * FROM judges WHERE token=? AND room_code=?", (token, code)
     ).fetchone()
@@ -313,6 +302,7 @@ def auth(con: sqlite3.Connection, code: str, token: str) -> sqlite3.Row:
 
 
 def judge_list(con: sqlite3.Connection, code: str) -> list[dict]:
+    """Room's judges with live online status"""
     online = hub.present(code)
     rows = con.execute(
         """SELECT j.id, j.display_name, j.is_chair, j.hidden, j.joined_at,
@@ -350,9 +340,7 @@ class JoinRoom(BaseModel):
 class Patch(BaseModel):
     target: str = Field(min_length=1, max_length=32)
     criterion: str = Field(min_length=1, max_length=32)
-    # null clears the cell (the client's Undo of a first-ever entry). Without
-    # it the only way to "unset" a score was to write a 0, which every other
-    # judge then saw - and counted - as a real score of zero.
+    # None clears the cell; writing 0 instead would count as a real score for other judges
     points: Optional[int] = Field(default=None, ge=0, le=500)
     seq: int = Field(ge=0)
 
@@ -372,10 +360,7 @@ class ExclusionSet(BaseModel):
 
 
 class OfflineJudgeSet(BaseModel):
-    # The client mints the id (so it can use it immediately, before the
-    # round-trip completes) - this upserts, creating a row for a new id or
-    # renaming an existing one. name may be blank: the chair can add a
-    # judge first and fill in the name once the discussion allows it.
+    # Client-minted id, upserted; the name may stay blank until the chair fills it in
     id: str = Field(min_length=1, max_length=64)
     name: str = Field(default="", max_length=60)
 
@@ -386,12 +371,7 @@ class OfflineScoreSet(BaseModel):
     points: Optional[int] = Field(default=None, ge=0, le=500)
 
 
-# Nominal duration per timer type, in milliseconds - the server is the
-# source of truth (mirrors how free_speakers bounds are server-validated),
-# the client only ever sends which type it wants to start. "discussion" is
-# the judges' deliberation clock, not a speech - its "duration" is really
-# just the later of its two flat cues (see TIMER_TYPES.discussion in
-# app.js), used here only to size the room for a fresh start.
+# Server-authoritative timer durations, mirrored by TIMER_TYPES in app.js
 TIMER_DURATIONS_MS = {
     "team": 7 * 60 * 1000,
     "ffr": 3 * 60 * 1000 + 30 * 1000,
@@ -403,18 +383,14 @@ TIMER_DURATIONS_MS = {
 class TimerAction(BaseModel):
     action: str = Field(pattern="^(start|pause|resume|reset|adjust)$")
     type: Optional[str] = Field(default=None, pattern="^(team|ffr|reply|discussion)$")
-    # For "adjust" only - nudges the clock when timing started a bit too
-    # early/late. Bounded well past the buttons' +-5s so a client can't push
-    # the room's clock arbitrarily far in one call.
+    # For "adjust" only; bounded so one call can't move the clock arbitrarily far
     delta_ms: Optional[int] = Field(default=None, ge=-60_000, le=60_000)
 
 
 def timer_payload(room: sqlite3.Row) -> dict:
+    """Room's timer state as sent to clients"""
     return {
-        # updated_at lets a client tell whether a snapshot it just pulled is
-        # older than a timer action it took itself (most obviously one taken
-        # while offline, which the server never heard about) - see
-        # applyTimerState() in app.js.
+        # Lets clients ignore snapshots older than their own offline timer actions (see applyTimerState in app.js)
         "updated_at": room["timer_updated_at"],
         "type": room["timer_type"],
         "status": room["timer_status"],
@@ -466,8 +442,7 @@ async def join_room(code: str, body: JoinRoom):
         if not room:
             raise HTTPException(404, "room not found")
 
-        # Same device rejoining hands back the existing identity, which is
-        # what makes a browser crash cheap.
+        # Same device rejoining gets its existing identity back, so a browser crash is harmless
         existing = con.execute(
             "SELECT * FROM judges WHERE room_code=? AND client_id=?",
             (code, body.client_id),
@@ -517,9 +492,7 @@ async def snapshot(code: str, token: str = Query(...)):
     try:
         me = auth(con, code, token)
         room = con.execute("SELECT * FROM rooms WHERE code=?", (code,)).fetchone()
-        # Hidden (trainee) judges' scores are still sent - the dashboard shows
-        # them greyed out - just excluded from aggregates client-side via
-        # activeJudges()/computeChairSummary().
+        # Hidden judges' scores are still sent; the client excludes them from aggregates
         rows = con.execute(
             """SELECT s.judge_id, s.target, s.criterion, s.points, s.seq
                FROM scores s JOIN judges j ON j.id = s.judge_id
@@ -571,8 +544,7 @@ async def apply_patches(code: str, body: PatchBatch, token: str = Query(...)):
     con = db()
     try:
         me = auth(con, code, token)
-        # A hidden judge can still score - their scores are sent as usual,
-        # just excluded from the client's chair-summary aggregates until un-hidden.
+        # Hidden judges may still score; only client-side aggregates skip them
         now = time.time()
         applied, stale = [], 0
         for p in body.patches:
@@ -581,7 +553,7 @@ async def apply_patches(code: str, body: PatchBatch, token: str = Query(...)):
                 (me["id"], p.target, p.criterion),
             ).fetchone()
             if cur and cur["seq"] >= p.seq:
-                stale += 1  # a late arrival from before a reconnect
+                stale += 1  # Late arrival from before a reconnect
                 continue
             if p.points is None:
                 con.execute(
@@ -633,7 +605,7 @@ async def set_hidden(
         )
         con.commit()
         await hub.broadcast(code, {"type": "judges", "judges": judge_list(con, code)})
-        # Removal only hides their points from aggregates (reversible) - never disconnects them.
+        # Hiding is reversible and never disconnects the judge
         notice = {"type": "removed" if hidden else "restored"}
         for ws in hub.sockets_for(code, judge_id):
             try:
@@ -785,8 +757,7 @@ async def set_offline_hidden(
             (1 if hidden else 0, offline_id, code),
         )
         con.commit()
-        # No per-socket "removed"/"restored" notice, unlike set_hidden - an
-        # offline judge has no live connection to notify.
+        # No removed/restored notice, since offline judges have no socket to notify
         await hub.broadcast(
             code,
             {
@@ -926,10 +897,7 @@ async def set_timer(code: str, body: TimerAction, token: str = Query(...)):
             if body.delta_ms is None:
                 raise HTTPException(400, "delta_ms is required to adjust")
             if room["timer_status"] == "running":
-                # Live elapsed = timer_elapsed_ms (banked) + (now - started_at)
-                # * 1000 - so moving started_at earlier by delta_ms increases
-                # the live elapsed by delta_ms, later decreases it. Clamp so
-                # a large -5s tap right after starting can't push it negative.
+                # Moving started_at earlier increases the live elapsed time; clamp so it never goes negative
                 new_started_at = room["timer_started_at"] - body.delta_ms / 1000.0
                 max_started_at = now + room["timer_elapsed_ms"] / 1000.0
                 if new_started_at > max_started_at:
@@ -945,8 +913,7 @@ async def set_timer(code: str, body: TimerAction, token: str = Query(...)):
                     (new_elapsed, code),
                 )
 
-        # Every branch above either changed the timer or raised, so this is
-        # unconditional - it stamps when this room's timer last moved.
+        # Every branch above changed the timer or raised, so always stamp the update time
         con.execute("UPDATE rooms SET timer_updated_at=? WHERE code=?", (now, code))
         con.commit()
         room = con.execute("SELECT * FROM rooms WHERE code=?", (code,)).fetchone()
@@ -957,14 +924,12 @@ async def set_timer(code: str, body: TimerAction, token: str = Query(...)):
         con.close()
 
 
-# API hosts of the OpenTab deployments the app supports - the only hosts
-# this proxy relays to (keeps it from being an open relay). Keep in step with
-# OPENTAB_SERVERS in static/app.js.
+# The only hosts the proxy relays to, so it can't act as an open relay; keep in sync with OPENTAB_SERVERS in app.js
 OPENTAB_ALLOWED_HOSTS = {"api.debateresult.com", "api.opentab2.limperg.de"}
 
 
 class OpenTabProxyRequest(BaseModel):
-    # Thin forward-only proxy for the OpenTab judge-ballot API
+    # Request body for the forward-only OpenTab judge-ballot proxy
     method: str = Field(pattern="^(GET|POST)$")
     url: str
     body: Optional[dict] = None
@@ -1029,8 +994,7 @@ async def ws_endpoint(ws: WebSocket, code: str, token: str = Query(...)):
 
     try:
         while True:
-            # Inbound is only keepalive. All writes go through POST /patches so
-            # that a half-dead socket can never silently swallow a score.
+            # Inbound messages are keepalive only; all writes go through POST /patches so a half-dead socket can't drop scores
             msg = await ws.receive_text()
             if msg == "ping":
                 await ws.send_text('{"type":"pong"}')
