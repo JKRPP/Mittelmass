@@ -432,17 +432,6 @@ body {
   background: var(--live-bg);
   color: var(--live);
 }
-#shortcutsBtn {
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 1px solid var(--line-2);
-  border-radius: 50%;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
 .menupanel {
   position: absolute;
   top: 100%;
@@ -632,9 +621,7 @@ body {
   justify-content: center;
   gap: 0;
   height: 40px;
-}
-.navbtn.blattnav .navhint {
-  font-size: 8px;
+  position: relative;
 }
 .sub {
   font-size: 12px;
@@ -1336,8 +1323,9 @@ body {
   gap: 3px;
   margin-left: 10px;
 }
-/* Folder tabs shared by the top nav and the dashboard's .dashtabs */
+/* Folder tabs shared by the top nav, the Einstellungen tab and the dashboard's .dashtabs */
 .dashnav button,
+#settingsTab,
 .dashtabs > button {
   display: flex;
   flex-direction: column;
@@ -1354,11 +1342,36 @@ body {
   padding: 5px 12px;
   cursor: pointer;
 }
+/* Alt-held shortcut badges (see setAltHints) */
+.dashnav button,
+.dashtabs > button,
+.timerwidget {
+  position: relative;
+}
+body.althints [data-hint]::after {
+  content: attr(data-hint);
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 12px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 13px;
+  text-align: center;
+  pointer-events: none;
+  z-index: 1;
+}
 .dashnav button:hover,
+#settingsTab:hover,
 .dashtabs > button:hover {
   color: var(--ink);
 }
 .dashnav button[aria-pressed="true"],
+#settingsTab[aria-pressed="true"],
 .dashtabs > button[aria-pressed="true"] {
   background: var(--team-accent, var(--paper));
   color: var(--team-on, var(--ink));
@@ -1371,61 +1384,119 @@ body {
 .tabicon .tabiconph {
   stroke-dasharray: 1.6 1.8;
 }
-.navhint {
-  font-size: 9px;
-  line-height: 1.2;
-  color: var(--ink-3);
-}
-.dashroom {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--ink-3);
-  margin-right: 2px;
-  flex: 0 0 auto;
-  cursor: pointer;
-  border-bottom: 1px dotted var(--line-2);
-}
-.dashroom:hover {
-  color: var(--ink-2);
-}
+/* Right-hand bar: the Raum tab (text-only, full bar height) and the Einstellungen tab, both folder tabs */
 .dashjury {
   display: flex;
-  align-items: center;
+  align-self: stretch;
   min-width: 0;
-  max-width: 40vw;
-  gap: 8px;
 }
-.dashjurychips {
+.dashroom {
   display: flex;
   align-items: center;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  min-width: 0;
-  gap: 8px;
-}
-.dashjsummary {
-  font-size: 12px;
-  color: var(--ink-3);
+  gap: 5px;
+  padding: 5px 12px;
+  border: 1px solid var(--line-2);
+  border-bottom: 0;
+  border-radius: 3px 3px 0 0;
+  background: color-mix(in srgb, var(--ink) 10%, var(--paper));
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.2;
   white-space: nowrap;
   cursor: pointer;
-  border-bottom: 1px dotted var(--line-2);
 }
-/* Judge-list popover positioned via JS, since .dashjurychips scrolls and would clip an absolute child */
-.jurypanel {
+.dashroom:hover {
+  color: var(--ink);
+}
+/* Open: joins the panel below by covering the bar's bottom line, like a pressed nav tab */
+.dashroom[aria-expanded="true"] {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--line);
+  margin-bottom: -1px;
+}
+#settingsTab {
+  align-self: flex-end;
+  /* Closes the bar's 8px gap down to the 3px tab spacing */
+  margin-left: -5px;
+}
+/* Room panel hanging from the open Raum tab (see renderRoomPanel); the bar's bottom line is its top edge */
+.roompanel {
   position: fixed;
   z-index: 40;
-  min-width: 220px;
-  max-width: 300px;
-  max-height: 320px;
+  width: 300px;
+  max-height: 70vh;
   overflow-y: auto;
-  background: var(--card);
+  background: var(--paper);
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 4px 10px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  border-top: 0;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+  font-size: 13px;
 }
-.jurypanel .jrow:last-child {
+.roomsec {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line-2);
+}
+.roomlbl {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  margin-bottom: 6px;
+}
+.roomline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.roombtn {
+  flex: 0 0 auto;
+  width: auto;
+  margin: 0;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.roompanel .jrow {
+  padding: 6px 0;
+  border-bottom-color: var(--line-2);
+}
+.roompanel .jrow .n {
+  font-size: 13px;
+}
+.roompanel .jrow:last-child {
   border-bottom: 0;
+}
+.roomfoot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 14px;
+}
+.roomleave {
+  border: 0;
+  background: transparent;
+  color: var(--warn);
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 0;
+  cursor: pointer;
+}
+/* Settings view (renderSettings): rows reuse .gradeinputrow */
+.settingswrap {
+  max-width: 640px;
+}
+.settingswrap .btn {
+  width: auto;
+  margin: 0;
+  padding: 6px 14px;
+  font-size: 13px;
+}
+.settingslinks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
 }
 .dashjbtn {
   margin-top: 0;
@@ -2115,6 +2186,10 @@ tr.deducted td.l {
   font-size: 11px;
   color: var(--ink-3);
 }
+/* Only revealed while Alt is held (see setAltHints); keeps its space so nothing shifts */
+body:not(.althints) .blattswaphint {
+  visibility: hidden;
+}
 .blattstat {
   display: flex;
   flex-direction: column;
@@ -2320,7 +2395,6 @@ body.blattresizing .blattcol {
 .teampointssechead .exclbtn,
 .blatthead .sub,
 .blatthead .blattswaphint,
-.blatthead .navhint,
 .blatthead .blatttotlbl,
 .blatthead .dedbadge,
 .blatthead .exclbtn {

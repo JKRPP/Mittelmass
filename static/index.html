@@ -277,13 +277,13 @@
             <span class="sp"></span>
             <div class="dashjury hide" id="dashJury"></div>
             <button
-              class="menubtn hide"
-              id="shortcutsBtn"
-              aria-label="Tastenkürzel"
-              title="Tastenkürzel anzeigen"
+              class="settingstab hide"
+              id="settingsTab"
+              data-dv="settings"
+              aria-pressed="false"
               tabindex="-1"
             >
-              ?
+              <span class="navlabel">Einstellungen</span>
             </button>
             <button
               class="menubtn"
@@ -298,17 +298,9 @@
               <div class="menuwho" id="whoami"></div>
               <button class="menuitem" id="menuCopyLink">Link kopieren</button>
               <button class="menuitem" id="themeBtn"></button>
-              <button class="menuitem hide" id="menuGradeInput"></button>
-              <button class="menuitem hide" id="menuKeyLabel"></button>
+              <button class="menuitem" id="menuKeyLabel"></button>
               <button class="menuitem" id="menuTimerDisplay"></button>
               <button class="menuitem" id="menuBellVoice"></button>
-              <hr class="menudivider hide" id="menuBlattDivider" />
-              <button class="menuitem hide" id="menuResetBlattCols">
-                Layout zurücksetzen
-              </button>
-              <button class="menuitem hide" id="menuPrintNotes">
-                Notizen exportieren
-              </button>
               <a
                 class="menuitem"
                 href="/impressum"
@@ -606,6 +598,24 @@
             />
             <path d="M5.5 6.8L9.3 10.8L11.3 9.2" />
           </svg>
+          <!-- Traced from handdrawn/GuySettings.png: stick figure holding up a wrench -->
+          <svg
+            class="tabicon"
+            data-icon="settings"
+            viewBox="0 0 20 20"
+            aria-hidden="true"
+          >
+            <path
+              d="M12.15 2.25C13.65 2.2 14.75 3.5 14.7 5C14.65 6.5 13.55 7.6 12.15 7.6C10.65 7.6 9.55 6.4 9.6 4.9C9.65 3.5 10.75 2.3 12.45 2.3"
+            />
+            <path
+              d="M11.8 7.65Q11.55 11 11.7 14.4M11.7 14.3Q10.65 15.8 9.45 17.15M11.7 14.3Q12.65 16.2 14.05 18.4"
+            />
+            <path d="M11.75 9.8Q13.15 10.4 13.55 12.4M11.75 9.8Q9.85 10.4 8.3 10.2" />
+            <path
+              d="M8.2 10.2L7.1 8Q7.45 7.2 7 6.5L6.55 6.3L6.2 7.15L5.35 7.1L5.3 7.5Q5.8 8.2 6.45 8.35L7.7 10.45Q8 10.55 8.2 10.2Z"
+            />
+          </svg>
         </div>
 
         <div id="v-namenroom" class="hide"></div>
@@ -616,6 +626,7 @@
         <div id="v-notes" class="hide"></div>
         <div id="v-offline" class="hide"></div>
         <div id="v-opentab" class="hide"></div>
+        <div id="v-settings" class="hide"></div>
       </div>
     </div>
 
