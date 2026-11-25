@@ -2321,7 +2321,31 @@ tr.deducted td.l {
 .schnellgrid tr.deducted td.schnellsum {
   background: color-mix(in srgb, var(--danger) 14%, var(--danger-bg));
 }
+/* Mobile Übersicht: read-only schnellgrid tables, so cells get their padding back and everything packs tighter */
+#matrix .schnellgrid th {
+  padding: 6px 2px;
+}
+#matrix .schnellgrid td:not(.l) {
+  padding: 6px 2px;
+}
+#matrix .schnellgrid td.l {
+  padding: 4px 6px;
+  white-space: normal;
+}
+/* Same first-column share in both tables so Rede and Team line up; long names wrap instead of widening it */
+#matrix .schnellgrid th.l {
+  width: 30%;
+}
+.matrixname {
+  display: block;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+#matrix .matrixteams {
+  margin-top: 14px;
+}
 /* Team marking in desktop entry tables: team-coloured names, no side rail */
+#matrix td.team-gov,
 #v-schnell td.team-gov,
 #v-schnell th.team-gov,
 .offlinejurytable td.team-gov,
@@ -2329,6 +2353,7 @@ tr.deducted td.l {
 .otspeechtable td.team-gov {
   color: var(--team-gov);
 }
+#matrix td.team-opp,
 #v-schnell td.team-opp,
 #v-schnell th.team-opp,
 .offlinejurytable td.team-opp,
@@ -2336,6 +2361,7 @@ tr.deducted td.l {
 .otspeechtable td.team-opp {
   color: var(--team-opp);
 }
+#matrix td.team-free,
 #v-schnell td.team-free,
 #v-schnell th.team-free,
 .offlinejurytable td.team-free,

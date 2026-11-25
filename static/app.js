@@ -2468,12 +2468,16 @@ function renderTeam() {
     .classList.toggle("hide", thist.length === 0);
 }
 
+// Read-only mobile counterpart of the desktop Komplette Wertung tables (same schnellgrid look, short headers)
 function renderMatrix() {
-  var h = ['<table><tr><th class="l">Rede</th>'];
+  var h = [
+    '<table class="schnelltable schnellgrid matrixgrid"><tr><th class="l">Rede</th>',
+  ];
   CRITERIA.forEach(function (c) {
     h.push("<th>" + c.short + "</th>");
   });
-  h.push("<th>Ab</th><th>Σ</th></tr>");
+  h.push('<th class="schnellsum schnellgstart">Ab</th>');
+  h.push('<th class="schnellsum">Σ</th></tr>');
   activeSpeakerIndices().forEach(function (s) {
     var sp = SPEAKERS[s];
     var lbl = sp.label
@@ -2483,13 +2487,16 @@ function renderMatrix() {
       .replace("Fraktionsfreie Rede", "FFR")
       .replace("Regierung", "Reg")
       .replace("Opposition", "Opp");
+    // The name goes on a second line so the criteria columns keep their width
     var nm = getName(s);
-    if (nm) lbl += " (" + nm + ")";
     h.push(
       '<tr class="' +
         (deductionPoints(s) ? "deducted" : "") +
-        '"><td class="l">' +
+        '"><td class="l ' +
+        teamClass(sp.team) +
+        '">' +
         esc(lbl) +
+        (nm ? '<span class="matrixname">' + esc(nm) + "</span>" : "") +
         "</td>",
     );
     for (var c = 0; c < NC; c++) {
@@ -2503,38 +2510,41 @@ function renderMatrix() {
       );
     }
     var z = zwischensumme(s);
-    h.push('<td class="mt">' + (deductionPoints(s) || "-") + "</td>");
     h.push(
-      '<td class="' +
+      '<td class="mt schnellsum schnellgstart">' +
+        (deductionPoints(s) || "-") +
+        "</td>",
+    );
+    h.push(
+      '<td class="schnellsum ' +
         (z === null ? "mt" : "tot") +
         '">' +
         (z === null ? "-" : personPunkte(s)) +
         "</td></tr>",
     );
   });
+  h.push("</table>");
   h.push(
-    '</table><div style="margin-top:14px"><table><tr><th class="l">Team</th><th>Teampunkte</th><th>Gesamt</th></tr>',
+    '<table class="schnelltable schnellgrid matrixgrid matrixteams"><tr><th class="l">Team</th><th>Teampunkte</th><th class="schnellsum schnellgstart">Gesamt</th></tr>',
   );
   TEAMS.forEach(function (t, i) {
     var g = myTeamGrand(i);
-    var grand = g.grand;
-    var partial = g.partial;
     h.push(
-      '<tr><td class="l">' +
+      '<tr><td class="l ' +
+        teamClass(i) +
+        '">' +
         t +
         '</td><td class="tot">' +
         teamPunkte(i) +
-        "/ " +
+        " / " +
         TEAM_MAX +
-        " </td>" +
-        '<td class="tot">' +
-        grand +
-        (partial ? " *" : "") +
+        '</td><td class="tot schnellsum schnellgstart">' +
+        g.grand +
+        (g.partial ? " *" : "") +
         "</td></tr>",
     );
   });
   h.push("</table>");
-  h.push("</div>");
   document.getElementById("matrix").innerHTML = h.join("");
 }
 
@@ -3661,9 +3671,8 @@ function initDashNavIcons() {
       b.insertBefore(tabIcon(DASHNAV_ICON_FROM[b.dataset.dv]), b.firstChild);
     },
   );
-  // Mobile Raum tab carries the same icon as the desktop Einstellungen tab
-  var menuBtn = document.getElementById("menuBtn");
-  menuBtn.insertBefore(tabIcon("settings"), menuBtn.firstChild);
+  // Mobile Raum tab carries the same icon as the desktop Einstellungen tab, after the label
+  document.getElementById("menuBtn").appendChild(tabIcon("settings"));
 }
 initDashNavIcons();
 document.getElementById("dashNav").addEventListener("click", function (e) {
@@ -5135,11 +5144,7 @@ function schnellTeamTable() {
         tr.appendChild(td);
       });
     });
-    var sumTd = el(
-      "td",
-      "tot schnellgstart schnellsum",
-      String(teamPunkte(t)),
-    );
+    var sumTd = el("td", "tot schnellgstart schnellsum", String(teamPunkte(t)));
     sumTd.id = "schnell-tsum-" + t;
     tr.appendChild(sumTd);
     var g = myTeamGrand(t);
@@ -5150,11 +5155,7 @@ function schnellTeamTable() {
     );
     speakersTd.id = "schnell-tspk-" + t;
     tr.appendChild(speakersTd);
-    var grandTd = el(
-      "td",
-      "tot schnellsum",
-      g.grand + (g.partial ? " *" : ""),
-    );
+    var grandTd = el("td", "tot schnellsum", g.grand + (g.partial ? " *" : ""));
     grandTd.id = "schnell-tgrand-" + t;
     tr.appendChild(grandTd);
     table.appendChild(tr);
@@ -6225,7 +6226,6 @@ function renderNamenRoom() {
     ),
   );
 
-
   var stage = el("div", "roomstage");
   var gov = el("div", "namenside gov team-gov");
   gov.appendChild(el("div", "namensidehead", "Regierung"));
@@ -6376,10 +6376,15 @@ function namenFocus(s) {
   var old = stage.querySelector(".namenarrow");
   if (old) stage.removeChild(old);
   if (s < 0) return;
-  var nextCard = n < 0 ? null : stage.querySelector('.namecard[data-s="' + n + '"]');
+  var nextCard =
+    n < 0 ? null : stage.querySelector('.namecard[data-s="' + n + '"]');
   if (!nextCard) return;
   stage.appendChild(
-    namenArrow(stage, stage.querySelector('.namecard[data-s="' + s + '"]'), nextCard),
+    namenArrow(
+      stage,
+      stage.querySelector('.namecard[data-s="' + s + '"]'),
+      nextCard,
+    ),
   );
 }
 // Curved SVG arrow between the edges of two cards inside stage
@@ -6405,7 +6410,10 @@ function namenArrow(stage, from, to) {
       1,
     );
     var len = Math.sqrt(dx * dx + dy * dy) || 1;
-    return { x: p.x + dx * k + (dx / len) * 6, y: p.y + dy * k + (dy / len) * 6 };
+    return {
+      x: p.x + dx * k + (dx / len) * 6,
+      y: p.y + dy * k + (dy / len) * 6,
+    };
   }
   var a = rect(from),
     b = rect(to);
@@ -6437,9 +6445,18 @@ function namenArrow(stage, from, to) {
   var head = document.createElementNS(NS, "path");
   head.setAttribute(
     "d",
-    "M" + p1.x + "," + p1.y +
-      " L" + (p1.x - tx * 9 - ty * 4.5) + "," + (p1.y - ty * 9 + tx * 4.5) +
-      " L" + (p1.x - tx * 9 + ty * 4.5) + "," + (p1.y - ty * 9 - tx * 4.5) +
+    "M" +
+      p1.x +
+      "," +
+      p1.y +
+      " L" +
+      (p1.x - tx * 9 - ty * 4.5) +
+      "," +
+      (p1.y - ty * 9 + tx * 4.5) +
+      " L" +
+      (p1.x - tx * 9 + ty * 4.5) +
+      "," +
+      (p1.y - ty * 9 - tx * 4.5) +
       " Z",
   );
   head.setAttribute("class", "namenarrowhead");
@@ -7625,8 +7642,8 @@ function renderMenuBody() {
   sec.appendChild(el("div", "roomlbl", "Einstellungen"));
   var grid = el("div", "settingsgrid");
   grid.appendChild(themeSettingIcon(renderMenuBody));
-  grid.appendChild(keyGradeFirstIcon("Tasten Reden", "speaker"));
-  grid.appendChild(keyGradeFirstIcon("Tasten Team", "team"));
+  grid.appendChild(keyGradeFirstIcon("Redepunkte", "speaker"));
+  grid.appendChild(keyGradeFirstIcon("Teampunkte", "team"));
   grid.appendChild(timerCountSettingIcon(renderMenuBody));
   grid.appendChild(bellVoiceSettingIcon(renderMenuBody));
   grid.appendChild(leaveSettingIcon());
