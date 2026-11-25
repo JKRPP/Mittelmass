@@ -2546,12 +2546,10 @@ function renderMatrix() {
   h.push(
     '</table><div style="margin-top:14px"><table><tr><th class="l">Team</th><th>Teampunkte</th><th>Gesamt</th></tr>',
   );
-  var anyPartial = false;
   TEAMS.forEach(function (t, i) {
     var g = myTeamGrand(i);
     var grand = g.grand;
     var partial = g.partial;
-    if (partial) anyPartial = true;
     h.push(
       '<tr><td class="l">' +
         t +
@@ -2567,10 +2565,6 @@ function renderMatrix() {
     );
   });
   h.push("</table>");
-  if (anyPartial)
-    h.push(
-      '<p class="note">* vorläufig — noch nicht alle Reden dieses Teams bewertet.</p>',
-    );
   h.push("</div>");
   document.getElementById("matrix").innerHTML = h.join("");
 }
@@ -2582,9 +2576,13 @@ var offlineJudgesOpen = false;
 // The mobile chair room card starts collapsed so the spreads come first
 var chairRoomOpen = false;
 var spreadOpen = false;
+// Room-wide results (spreads, dashboard, averages) are for the chair, or everyone once the chair shares them
+function canSeeRoomResults() {
+  return !!(ME && (ME.is_chair || spreadOpen));
+}
 function updateChairTab() {
   var tab = document.getElementById("tabChair");
-  var show = ME.is_chair || spreadOpen;
+  var show = canSeeRoomResults();
   tab.classList.toggle("hide", !show);
   document.getElementById("tabChairLabel").textContent = ME.is_chair
     ? "Chair"
@@ -2962,13 +2960,6 @@ function finalResultHTML(summary) {
     );
   });
   fh.push("</table>");
-  var anyTeamPartial = summary.teamRows.some(function (r) {
-    return r.partial;
-  });
-  if (anyTeamPartial)
-    fh.push(
-      '<p class="note">* vorläufig — noch nicht alle Reden dieses Teams bewertet.</p>',
-    );
   return fh.join("");
 }
 
@@ -4847,20 +4838,7 @@ function dashEinzelTable(summary) {
   line("Beste Rede ohne Sieger", function (c) {
     return speechCell(c.v.bestEx, c.v.r.dec);
   });
-  var wrap = el("div");
-  wrap.appendChild(table);
-  var anyProv = cols.some(function (c) {
-    return c.v.r.partial[0] || c.v.r.partial[1];
-  });
-  if (anyProv)
-    wrap.appendChild(
-      el(
-        "p",
-        "note",
-        "* vorläufig - bei diesem Team sind noch nicht alle Reden und Teampunkte bewertet.",
-      ),
-    );
-  return wrap;
+  return table;
 }
 
 function renderDashboard() {
@@ -5842,20 +5820,34 @@ function renderBlatt() {
 function buildNotesExportSection() {
   var wrap = el("div", "otform");
   var row = el("div", "exportoptions");
+  var canAvg = canSeeRoomResults();
   [
     // [icon, caption, showOwn, showAvg]
     ["export-withpoints", "Mit eigenen Punkten", true, true],
     ["export-average", "Nur Durchschnitt", false, true],
     ["export-onlyown", "Nur eigene Punkte", true, false],
-  ].forEach(function (o) {
-    var btn = settingsIconButton(o[0], o[1], function () {
-      buildPrintSheet(o[2], o[3]);
-      window.print();
+  ]
+    // Options with the average would leak it before the chair shares the dashboard
+    .filter(function (o) {
+      return canAvg || !o[3];
+    })
+    .forEach(function (o) {
+      var btn = settingsIconButton(o[0], o[1], function () {
+        buildPrintSheet(o[2], o[3]);
+        window.print();
+      });
+      btn.classList.add("exportoption");
+      row.appendChild(btn);
     });
-    btn.classList.add("exportoption");
-    row.appendChild(btn);
-  });
   wrap.appendChild(row);
+  if (!canAvg)
+    wrap.appendChild(
+      el(
+        "p",
+        "note",
+        "Der Durchschnitt kann exportiert werden, sobald der Chair das Dashboard freigibt.",
+      ),
+    );
   return wrap;
 }
 
@@ -5887,6 +5879,11 @@ function printScoreTable(cats, own, avgVals, showOwn, showAvg) {
 
 // Printable sheet with all notes for team feedback, usually saved as PDF; showOwn/showAvg pick which points appear
 function buildPrintSheet(showOwn, showAvg) {
+  // Re-checked here in case access was revoked after the options were drawn
+  if (!canSeeRoomResults()) {
+    showAvg = false;
+    showOwn = true;
+  }
   var root = document.getElementById("printSheet");
   root.innerHTML = "";
   var summary = computeChairSummary(false);
