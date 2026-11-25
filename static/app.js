@@ -5013,7 +5013,10 @@ function commitScoreField(inp, max, target, criterion, kind, refresh) {
 
 // Speaker criteria use the 0-20 Notenskala; in grade mode the cell shows the grade mark itself
 function schnellSpeakerInput(s, c) {
-  var inp = gradeInputMode("speaker") ? gradeTextInput() : schnellNumberInput();
+  // Grid cells size the field, so no fixed width
+  var inp = gradeInputMode("speaker")
+    ? gradeTextInput({ width: false })
+    : schnellNumberInput({ width: false });
   function refresh() {
     var v = sget(s, c);
     inp.value =
@@ -5030,7 +5033,9 @@ function schnellSpeakerInput(s, c) {
 // Team categories use their own point scale (e.g. 0-25)
 function schnellTeamInput(t, catIdx) {
   var cat = TEAMCATS[catIdx];
-  var inp = gradeInputMode("team") ? gradeTextInput() : schnellNumberInput();
+  var inp = gradeInputMode("team")
+    ? gradeTextInput({ width: false })
+    : schnellNumberInput({ width: false });
   function refresh() {
     var v = tget(t, catIdx);
     inp.value =
@@ -5083,14 +5088,14 @@ function schnellSpeakerRow(s, teamCls) {
   var lbl = el("td", "l", speakerLabel(s));
   if (teamCls) lbl.classList.add(teamCls);
   tr.appendChild(lbl);
-  tr.appendChild(el("td", "schnellspacer"));
   for (var c = 0; c < NC; c++) {
     var td = el("td");
     td.appendChild(schnellSpeakerInput(s, c));
     tr.appendChild(td);
   }
   var z = zwischensumme(s);
-  var abTd = el("td", "mt");
+  // Ab and Σ open with a rule, like the Summe block of the Teampunkte table
+  var abTd = el("td", "mt schnellsum schnellgstart");
   abTd.id = "schnell-ab-" + s;
   if (ME.is_chair) {
     var abBtn = el(
@@ -5110,75 +5115,38 @@ function schnellSpeakerRow(s, teamCls) {
     abTd.textContent = deductionPoints(s) || "-";
   }
   tr.appendChild(abTd);
-  var pTd = el("td", "tot", z === null ? "-" : String(personPunkte(s)));
+  var pTd = el(
+    "td",
+    "tot schnellsum",
+    z === null ? "-" : String(personPunkte(s)),
+  );
   pTd.id = "schnell-p-" + s;
   tr.appendChild(pTd);
   return tr;
 }
 
-// Speaking-order phase of a speech, matching SPEAKERS' order
-function schnellSpeakerPhase(label) {
-  if (label.indexOf("Eröffnungsrede") !== -1) return "Eröffnungsreden";
-  if (label.indexOf("Ergänzungsrede") !== -1) return "Ergänzungsreden";
-  if (label.indexOf("Fraktionsfreie Rede") !== -1)
-    return "Fraktionsfreie Reden";
-  if (label.indexOf("Schlussrede") !== -1) return "Schlussreden";
-  return label;
-}
-
-function schnellSpeakerGroupRows(label, speakers, teamCls) {
-  var rows = [];
-  var grpTr = el("tr");
-  var grpTd = el("td", "schnellgrp", label);
-  // Rede, spacer, the criteria, Ab and Σ
-  grpTd.setAttribute("colspan", String(NC + 4));
-  grpTr.appendChild(grpTd);
-  rows.push(grpTr);
-  speakers.forEach(function (s) {
-    rows.push(schnellSpeakerRow(s, teamCls(s)));
-  });
-  return rows;
-}
-
+// Speeches in speaking order, no group rows; the team shows in the name's colour
 function schnellSpeakerTable() {
-  var table = el("table", "schnelltable schnelltable-speaker");
+  var table = el("table", "schnelltable schnellgrid schnelltable-speaker");
   var head = el("tr");
   head.appendChild(el("th", "l", "Rede"));
-  head.appendChild(el("th", "schnellspacer"));
   CRITERIA.forEach(function (c) {
-    head.appendChild(el("th", null, c.label));
+    head.appendChild(el("th", "schnellcrit", c.label));
   });
   // Ab = deduction; Σ = the speech's points after it
-  head.appendChild(el("th", null, "Ab"));
-  head.appendChild(el("th", null, "Σ"));
+  head.appendChild(el("th", "schnellsum schnellgstart", "Ab"));
+  head.appendChild(el("th", "schnellsum", "Σ"));
   table.appendChild(head);
 
-  function teamClsOf(s) {
-    return teamClass(SPEAKERS[s].team);
-  }
-
-  var active = activeSpeakerIndices();
-  var i = 0;
-  while (i < active.length) {
-    var phase = schnellSpeakerPhase(SPEAKERS[active[i]].label);
-    var speakers = [];
-    while (
-      i < active.length &&
-      schnellSpeakerPhase(SPEAKERS[active[i]].label) === phase
-    ) {
-      speakers.push(active[i]);
-      i++;
-    }
-    schnellSpeakerGroupRows(phase, speakers, teamClsOf).forEach(function (row) {
-      table.appendChild(row);
-    });
-  }
+  activeSpeakerIndices().forEach(function (s) {
+    table.appendChild(schnellSpeakerRow(s, teamClass(SPEAKERS[s].team)));
+  });
 
   return table;
 }
 
 function schnellTeamTable() {
-  var table = el("table", "schnelltable");
+  var table = el("table", "schnelltable schnellgrid");
   var head1 = el("tr");
   var teamTh = el("th", "l", "Team");
   teamTh.setAttribute("rowspan", "2");
@@ -5188,7 +5156,7 @@ function schnellTeamTable() {
     th.setAttribute("colspan", String(g.cats.length));
     head1.appendChild(th);
   });
-  var summeTh = el("th", "schnellgstart", "Summe");
+  var summeTh = el("th", "schnellgstart schnellsum", "Summe");
   summeTh.setAttribute("colspan", "3");
   head1.appendChild(summeTh);
   table.appendChild(head1);
@@ -5204,9 +5172,9 @@ function schnellTeamTable() {
       head2.appendChild(th);
     });
   });
-  head2.appendChild(el("th", "schnellsub schnellgstart", "Team"));
-  head2.appendChild(el("th", "schnellsub", "Reden"));
-  head2.appendChild(el("th", "schnellsub", "Gesamt"));
+  head2.appendChild(el("th", "schnellsub schnellgstart schnellsum", "Team"));
+  head2.appendChild(el("th", "schnellsub schnellsum", "Reden"));
+  head2.appendChild(el("th", "schnellsub schnellsum", "Gesamt"));
   table.appendChild(head2);
 
   TEAMS.forEach(function (tm, t) {
@@ -5220,14 +5188,26 @@ function schnellTeamTable() {
         tr.appendChild(td);
       });
     });
-    var sumTd = el("td", "tot schnellgstart", String(teamPunkte(t)));
+    var sumTd = el(
+      "td",
+      "tot schnellgstart schnellsum",
+      String(teamPunkte(t)),
+    );
     sumTd.id = "schnell-tsum-" + t;
     tr.appendChild(sumTd);
     var g = myTeamGrand(t);
-    var speakersTd = el("td", "tot", g.speakerSum + (g.partial ? " *" : ""));
+    var speakersTd = el(
+      "td",
+      "tot schnellsum",
+      g.speakerSum + (g.partial ? " *" : ""),
+    );
     speakersTd.id = "schnell-tspk-" + t;
     tr.appendChild(speakersTd);
-    var grandTd = el("td", "tot", g.grand + (g.partial ? " *" : ""));
+    var grandTd = el(
+      "td",
+      "tot schnellsum",
+      g.grand + (g.partial ? " *" : ""),
+    );
     grandTd.id = "schnell-tgrand-" + t;
     tr.appendChild(grandTd);
     table.appendChild(tr);
@@ -5307,7 +5287,7 @@ function focusNextByTabIndex(inp) {
   if (next) next.focus();
 }
 function offlineScoreInput(offlineId, target, max, tabIdx) {
-  var inp = schnellNumberInput({ onEnter: focusNextByTabIndex });
+  var inp = schnellNumberInput({ onEnter: focusNextByTabIndex, width: false });
   inp.tabIndex = tabIdx;
   function refresh() {
     var v = (offlineScores[offlineId] || {})[target];
@@ -5339,7 +5319,7 @@ function buildOfflineJuryTable(container) {
   container.innerHTML = "";
   var ids = Object.keys(offlineJudges);
   function addBtn() {
-    var b = el("button", "offlinejudgeadd", "+");
+    var b = el("button", "offlinejudgeadd", "+ Offline-Juror:in");
     b.type = "button";
     b.tabIndex = -1;
     b.addEventListener("click", function () {
@@ -5363,21 +5343,47 @@ function buildOfflineJuryTable(container) {
     return byJudge ? col * rowsPerCol + row + 1 : row * ids.length + col + 1;
   }
 
-  var table = el("table", "schnelltable offlinejurytable");
+  var table = el("table", "schnelltable schnellgrid offlinejurytable");
 
   var head = el("tr");
   head.appendChild(el("th", "l", "Offline-Jurierende"));
   ids.forEach(function (id, col) {
-    var th = el("th");
+    // Grey head band like the Jury card: frameless name field plus a remove button
+    var th = el("th", "offlinejudgehead");
+    var band = el("div", "offlinejudgeband");
     var nameInp = el("input", "offlinejudgename");
     nameInp.type = "text";
-    nameInp.placeholder = "Name";
+    nameInp.placeholder = "Offline " + (col + 1);
     nameInp.value = (offlineJudges[id] || {}).name || "";
     nameInp.tabIndex = tabFor(0, col);
     nameInp.addEventListener("change", function () {
       renameOfflineJudge(id, nameInp.value.trim());
     });
-    th.appendChild(nameInp);
+    band.appendChild(nameInp);
+    var del = el("button", "offlinejudgedel", "×");
+    del.type = "button";
+    del.tabIndex = -1;
+    del.title = "Entfernen";
+    del.setAttribute("aria-label", "Entfernen");
+    del.addEventListener("click", function () {
+      var name = (offlineJudges[id] || {}).name;
+      // Nothing to lose yet, so no confirmation
+      if (!name && !offlineFilledCount(id)) {
+        removeOfflineJudge(id);
+        return;
+      }
+      openConfirmModal({
+        text:
+          (name ? name : "Offline-Juror:in") +
+          " wirklich entfernen? Die eingegebenen Punkte gehen dabei verloren.",
+        confirmLabel: "Entfernen",
+        onConfirm: function () {
+          removeOfflineJudge(id);
+        },
+      });
+    });
+    band.appendChild(del);
+    th.appendChild(band);
     head.appendChild(th);
   });
   // The add column stays right of the last judge so the table never has to stretch
@@ -5399,7 +5405,7 @@ function buildOfflineJuryTable(container) {
       );
       tr.appendChild(td);
     });
-    tr.appendChild(el("td"));
+    tr.appendChild(el("td", "schnellspacer"));
     table.appendChild(tr);
   });
 
@@ -5416,34 +5422,9 @@ function buildOfflineJuryTable(container) {
       );
       tr.appendChild(td);
     });
-    tr.appendChild(el("td"));
+    tr.appendChild(el("td", "schnellspacer"));
     table.appendChild(tr);
   });
-
-  var delTr = el("tr");
-  delTr.appendChild(el("td", "l"));
-  ids.forEach(function (id) {
-    var td = el("td");
-    var del = el("button", "offlinejudgedel", "Entfernen");
-    del.type = "button";
-    del.tabIndex = -1;
-    del.addEventListener("click", function () {
-      var name = (offlineJudges[id] || {}).name;
-      openConfirmModal({
-        text:
-          (name ? name : "Offline-Juror:in") +
-          " wirklich entfernen? Die eingegebenen Punkte gehen dabei verloren.",
-        confirmLabel: "Entfernen",
-        onConfirm: function () {
-          removeOfflineJudge(id);
-        },
-      });
-    });
-    td.appendChild(del);
-    delTr.appendChild(td);
-  });
-  delTr.appendChild(el("td"));
-  table.appendChild(delTr);
 
   container.appendChild(table);
 }
@@ -6278,7 +6259,6 @@ function renderNamenRoom() {
     ),
   );
 
-  wrap.appendChild(el("div", "namenhint"));
 
   var stage = el("div", "roomstage");
   var gov = el("div", "namenside gov team-gov");
@@ -6416,12 +6396,11 @@ function namenCardInput(s) {
     '#v-namenroom .namecard[data-s="' + s + '"] input',
   );
 }
-// Marks the focused card and the next speech, with a "Danach" hint and an arrow between them (-1 clears)
+// Marks the focused card and the next speech with an arrow between them (-1 clears)
 function namenFocus(s) {
   var root = document.getElementById("v-namenroom");
   var stage = root.querySelector(".roomstage");
-  var hint = root.querySelector(".namenhint");
-  if (!stage || !hint) return;
+  if (!stage) return;
   var n = s < 0 ? -1 : nextActiveSpeaker(s);
   [].forEach.call(root.querySelectorAll(".namecard"), function (c) {
     var k = +c.getAttribute("data-s");
@@ -6430,25 +6409,9 @@ function namenFocus(s) {
   });
   var old = stage.querySelector(".namenarrow");
   if (old) stage.removeChild(old);
-  hint.textContent = "";
   if (s < 0) return;
   var nextCard = n < 0 ? null : stage.querySelector('.namecard[data-s="' + n + '"]');
-  if (!nextCard) {
-    hint.textContent = "Letzte Rede der Runde";
-    return;
-  }
-  var team = teamOf(n);
-  hint.appendChild(document.createTextNode("Danach: "));
-  hint.appendChild(
-    el(
-      "b",
-      null,
-      (team === null ? "Fraktionsfrei" : TEAMS[team]) +
-        ", " +
-        nextCard.querySelector(".slbl").textContent,
-    ),
-  );
-  hint.appendChild(document.createTextNode(" · Enter springt weiter"));
+  if (!nextCard) return;
   stage.appendChild(
     namenArrow(stage, stage.querySelector('.namecard[data-s="' + s + '"]'), nextCard),
   );

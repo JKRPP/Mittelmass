@@ -1667,23 +1667,47 @@ body.althints [data-hint]::after {
 table.offlinejurytable {
   width: auto;
 }
+/* Offline judge column head: an ordinary header-band cell holding a frameless name and a remove × */
+.schnellgrid th.offlinejudgehead {
+  padding: 0;
+}
+.offlinejudgeband {
+  display: flex;
+  align-items: center;
+  min-width: 130px;
+}
 input.offlinejudgename {
-  width: 95px;
-  text-align: center;
+  flex: 1;
+  min-width: 0;
+  width: 100px;
+  text-align: left;
   font: inherit;
   font-size: 13px;
-  padding: 6px 6px;
-  border: 1px solid var(--line-2);
-  background: var(--card);
+  font-weight: 600;
+  padding: 6px 4px 6px 10px;
+  border: 0;
+  background: transparent;
   color: var(--ink);
+}
+input.offlinejudgename::placeholder {
+  color: var(--ink-3);
+  font-weight: 400;
+}
+input.offlinejudgename:focus-visible {
+  outline-offset: -2px;
 }
 .offlinejudgedel {
   border: 0;
   background: transparent;
   color: var(--ink-3);
   font: inherit;
-  font-size: 12px;
+  font-size: 15px;
+  line-height: 1;
+  padding: 4px 8px;
   cursor: pointer;
+}
+.offlinejudgedel:hover {
+  color: var(--danger);
 }
 .schnelltable th.offlinejudgeaddcell {
   padding-left: 14px;
@@ -1702,8 +1726,12 @@ input.offlinejudgename {
   overflow-wrap: break-word;
   white-space: normal;
 }
-.schnelltable-speaker .schnellspacer {
-  width: 20%;
+/* Equal criteria columns joined to the Rede column, then the shaded Ab and Σ columns */
+.schnelltable-speaker .schnellcrit {
+  width: 12%;
+}
+.schnelltable-speaker th.schnellsum {
+  width: 6%;
 }
 
 .dashgrp {
@@ -2131,14 +2159,6 @@ tr.deducted td.l {
   background: var(--card);
   color: var(--ink);
 }
-.schnellgrp {
-  padding: 8px 10px 4px;
-  font-size: 10px;
-  color: var(--ink-3);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  text-align: left;
-}
 .schnellsub {
   font-size: 10px;
   font-weight: 400;
@@ -2186,9 +2206,6 @@ tr.deducted td.l {
   z-index: 1;
   outline-offset: 0;
 }
-#v-schnell .schnelltable td.schnellgrp {
-  padding: 8px 10px 1px;
-}
 #v-schnell .schnelltable th.schnellsub {
   padding: 1px 4px 4px;
 }
@@ -2197,6 +2214,51 @@ tr.deducted td.l {
 }
 #v-schnell .dashsubhead:first-child {
   margin-top: 0;
+}
+/* Entry grid (Komplette Wertung, Offline-Jurierende): grey header band, continuous cell grid, shaded sums */
+.schnellgrid th {
+  background: color-mix(in srgb, var(--ink) 10%, var(--paper));
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+.schnellgrid th.schnellsub {
+  color: var(--ink-2);
+  font-size: 10.5px;
+  font-weight: 400;
+}
+.schnellgrid th.schnellspacer,
+.schnellgrid th.offlinejudgeaddcell {
+  background: transparent;
+}
+.schnellgrid td {
+  border: 1px solid var(--line-2);
+}
+.schnellgrid td.schnellspacer,
+.schnellgrid tr.deducted td.schnellspacer {
+  border: 0;
+  background: transparent;
+}
+/* Fields fill their cell; the id selector outranks the compact #v-schnell padding */
+.schnellgrid td:not(.l),
+#v-schnell .schnellgrid td:not(.l) {
+  padding: 0;
+}
+.schnellgrid .schnellinput {
+  display: block;
+  width: 100%;
+  min-width: 64px;
+  border: 0;
+  background: transparent;
+}
+.schnellgrid .schnellinput:focus-visible {
+  outline-offset: -2px;
+}
+.schnellgrid .schnellsum {
+  background: color-mix(in srgb, var(--ink) 6%, var(--card));
+}
+.schnellgrid tr.deducted td.schnellsum {
+  background: color-mix(in srgb, var(--danger) 14%, var(--danger-bg));
 }
 /* Team marking in desktop entry tables: team-coloured names, no side rail */
 #v-schnell td.team-gov,
@@ -2700,17 +2762,6 @@ body.blattresizing .blattcol {
 }
 .namenside.gov .namecard.is-focus {
   box-shadow: inset -3px 0 0 var(--team-accent);
-}
-.namenhint {
-  text-align: center;
-  font-size: 13px;
-  color: var(--ink-3);
-  min-height: 1.5em;
-  margin: -8px 0 14px;
-}
-.namenhint b {
-  color: var(--ink);
-  font-weight: 600;
 }
 .namenarrow {
   position: absolute;
