@@ -1921,11 +1921,13 @@ function applyTheme(t) {
   var b = document.getElementById("themeBtn");
   if (b) b.textContent = THEME_LABEL[t] || "Light";
 }
+function setTheme(t) {
+  LS.set("opd.theme", t);
+  applyTheme(t);
+}
 function cycleTheme() {
   var cur = LS.get("opd.theme", "light");
-  var next = THEME_CYCLE[(THEME_CYCLE.indexOf(cur) + 1) % THEME_CYCLE.length];
-  LS.set("opd.theme", next);
-  applyTheme(next);
+  setTheme(THEME_CYCLE[(THEME_CYCLE.indexOf(cur) + 1) % THEME_CYCLE.length]);
 }
 
 // Per-device preference to type school grades (e.g. "2+") instead of points, set separately for Redepunkte and Teampunkte
@@ -1939,11 +1941,6 @@ function gradeInputMode(kind) {
 function setGradeInputMode(kind, on) {
   LS.set(GRADE_INPUT_LS_KEY[kind], !!on);
 }
-function applyGradeInputLabel() {
-  var b = document.getElementById("menuGradeInput");
-  if (b) b.textContent = "Eingabemodus";
-}
-
 // Per-device preference for the mobile Notenskala keypad
 function keyGradeFirst() {
   return !!LS.get("opd.keyGradeFirst", false);
@@ -1983,38 +1980,6 @@ function toggleBellVoice() {
   applyBellVoiceLabel();
   testBell();
 }
-function openGradeInputModal() {
-  openModal("gradeInputModal", function (box) {
-    box.appendChild(el("h2", null, "Eingabemodus"));
-    box.appendChild(gradeInputModeRow("Redepunkte", "speaker"));
-    box.appendChild(gradeInputModeRow("Teampunkte", "team"));
-    box.appendChild(modalCloseRow("gradeInputModal", "Schließen"));
-  });
-}
-function gradeInputModeRow(label, kind) {
-  var row = el("div", "gradeinputrow");
-  row.appendChild(el("div", "gradeinputlbl", label));
-  var opts = el("div", "gradeinputopts");
-  ["Punkte", "Noten"].forEach(function (optLabel, i) {
-    var on = i === 1;
-    var btn = el("button", "btn ghost", optLabel);
-    btn.type = "button";
-    btn.classList.toggle("on", gradeInputMode(kind) === on);
-    btn.addEventListener("click", function () {
-      setGradeInputMode(kind, on);
-      applyGradeInputLabel();
-      render();
-      [].forEach.call(opts.querySelectorAll("button"), function (b) {
-        b.classList.remove("on");
-      });
-      btn.classList.add("on");
-    });
-    opts.appendChild(btn);
-  });
-  row.appendChild(opts);
-  return row;
-}
-
 // Resumes a session when a judge reconnects
 function resume() {
   if (!ME) return;
@@ -2112,24 +2077,6 @@ function paintBar() {
   document.getElementById("whoami").textContent = ME
     ? ME.name + (ME.is_chair ? " - Chair" : "") + " - " + ME.code
     : "";
-  document
-    .getElementById("menuGradeInput")
-    .classList.toggle("hide", !isDesktopWidth());
-  document
-    .getElementById("menuKeyLabel")
-    .classList.toggle("hide", isDesktopWidth());
-  document
-    .getElementById("shortcutsBtn")
-    .classList.toggle("hide", !isDesktopWidth());
-  document
-    .getElementById("menuBlattDivider")
-    .classList.toggle("hide", !isDesktopWidth());
-  document
-    .getElementById("menuResetBlattCols")
-    .classList.toggle("hide", !isDesktopWidth());
-  document
-    .getElementById("menuPrintNotes")
-    .classList.toggle("hide", !isDesktopWidth());
   paintTimer();
 }
 
@@ -3403,7 +3350,6 @@ function effectiveDashboardView() {
     (!ME.is_chair || !Object.keys(offlineJudges).length)
   )
     return "schnell";
-  if (dashboardView === "opentab" && !ME.is_chair) return "schnell";
   if (
     dashboardView === "matrix" ||
     dashboardView === "sheet" ||
@@ -3452,6 +3398,14 @@ function applyLayoutMode() {
   document
     .getElementById("v-opentab")
     .classList.toggle("hide", !dash || ev !== "opentab");
+  document
+    .getElementById("v-settings")
+    .classList.toggle("hide", !dash || ev !== "settings");
+  // Desktop replaces the ⋮ menu with the Einstellungen tab and the Raum tab's panel
+  document.getElementById("settingsTab").classList.toggle("hide", !dash);
+  document.getElementById("menuBtn").classList.toggle("hide", dash);
+  if (dash) closeMenu();
+  else closeRoomPanel();
 
   if (dash) {
     [
@@ -3506,12 +3460,6 @@ function renderDashChrome() {
       );
     },
   );
-  [].forEach.call(
-    document.querySelectorAll('#dashNav button[data-dv="opentab"]'),
-    function (b) {
-      b.classList.toggle("hide", !ME.is_chair);
-    },
-  );
 
   // Show each visible tab's Alt+number shortcut in its tooltip; data-tip keeps the original title
   var visibleTabs = [].filter.call(
@@ -3525,29 +3473,24 @@ function renderDashChrome() {
     b.title = b.dataset.tip + " (Alt+" + (i + 1) + ")";
   });
 
+  // Raum tab: the room code, folding open into the room panel
   var jury = document.getElementById("dashJury");
   jury.innerHTML = "";
-  var roomSpan = el("span", "dashroom", "Raum " + ME.code);
-  roomSpan.title = "Link kopieren";
-  roomSpan.setAttribute("role", "button");
-  roomSpan.tabIndex = 0;
-  roomSpan.addEventListener("click", function () {
-    copyRoomLink(roomSpan, location.origin + "/r/" + ME.code);
+  var roomTab = el("button", "dashroom", "Raum " + ME.code);
+  roomTab.type = "button";
+  roomTab.id = "roomTab";
+  roomTab.tabIndex = -1;
+  roomTab.setAttribute("aria-haspopup", "true");
+  roomTab.setAttribute("aria-expanded", String(roomPanelOpen()));
+  roomTab.addEventListener("click", function (e) {
+    e.stopPropagation();
+    toggleRoomPanel();
   });
-  roomSpan.addEventListener("keydown", function (e) {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      roomSpan.click();
-    }
-  });
-  jury.appendChild(roomSpan);
-  var chips = el("div", "dashjurychips");
-  jury.appendChild(chips);
+  jury.appendChild(roomTab);
 
-  // The active tab is highlighted for every judge; the rest of this function is chair-only
   var ev = effectiveDashboardView();
   [].forEach.call(
-    document.querySelectorAll("#dashNav button[data-dv]"),
+    document.querySelectorAll("#dashNav button[data-dv], #settingsTab"),
     function (b) {
       b.setAttribute("aria-pressed", String(b.dataset.dv === ev));
     },
@@ -3559,74 +3502,92 @@ function renderDashChrome() {
   else if (ev === "teampoints" || ev === "notes")
     nav.classList.add(teamClass(0));
 
-  if (!ME.is_chair) return;
-
-  var ids = Object.keys(peers);
-  var judgeIds = ids.filter(function (id) {
-    return !peers[id].hidden;
-  });
-  var offlineIds = Object.keys(offlineJudges);
-  var offlineVisibleIds = offlineIds.filter(function (id) {
-    return !offlineJudges[id].hidden;
-  });
-  var traineeCount =
-    ids.length -
-    judgeIds.length +
-    (offlineIds.length - offlineVisibleIds.length);
-  // Offline judges never count as online
-  var onlineCount = judgeIds.filter(function (id) {
-    return peers[id].online;
-  }).length;
-  var completeCount =
-    judgeIds.filter(function (id) {
-      return peers[id].filled >= expectedCellCount();
-    }).length +
-    offlineVisibleIds.filter(function (id) {
-      return offlineFilledCount(id) >= offlineExpectedCellCount();
-    }).length;
-  var summary =
-    judgeIds.length +
-    offlineVisibleIds.length +
-    " Judges" +
-    (traineeCount ? " - " + traineeCount + " Trainees" : "") +
-    " - " +
-    onlineCount +
-    " Online - " +
-    completeCount +
-    " Vollständig";
-  var summarySpan = el("span", "dashjsummary", summary);
-  summarySpan.setAttribute("role", "button");
-  summarySpan.setAttribute("aria-haspopup", "true");
-  summarySpan.tabIndex = 0;
-  summarySpan.addEventListener("click", function (e) {
-    e.stopPropagation();
-    toggleJuryPanel(summarySpan);
-  });
-  summarySpan.addEventListener("keydown", function (e) {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      toggleJuryPanel(summarySpan);
-    }
-  });
-  chips.appendChild(summarySpan);
-
-  // Keep an open judge panel live, since the chips are rebuilt on every render()
-  var openPanel = document.getElementById("juryPanel");
-  if (openPanel && !openPanel.classList.contains("hide")) renderJuryPanel();
+  // Keep an open room panel live, since the tab is rebuilt on every render()
+  if (roomPanelOpen()) renderRoomPanel();
 }
 
-// Judge-list popover for the dashboard summary chip, built from the Chair tab's .jrow rows
-function ensureJuryPanel() {
-  var p = document.getElementById("juryPanel");
+// Judges that count towards the averages: non-trainee online and offline judges
+function visibleJudgeCount() {
+  var online = Object.keys(peers).filter(function (id) {
+    return !peers[id].hidden;
+  }).length;
+  var offline = Object.keys(offlineJudges).filter(function (id) {
+    return !offlineJudges[id].hidden;
+  }).length;
+  return online + offline;
+}
+
+// Room panel below the Raum tab: room code and link, the jury (chairs only, as .jrow rows), and leaving
+// Fixed to the body rather than inside .bar, so it isn't clipped and stays put while the bar is rebuilt
+function ensureRoomPanel() {
+  var p = document.getElementById("roomPanel");
   if (p) return p;
-  p = el("div", "jurypanel hide");
-  p.id = "juryPanel";
+  p = el("div", "roompanel hide");
+  p.id = "roomPanel";
   document.body.appendChild(p);
   return p;
 }
-function renderJuryPanel() {
-  var p = ensureJuryPanel();
+function roomPanelOpen() {
+  var p = document.getElementById("roomPanel");
+  return !!p && !p.classList.contains("hide");
+}
+function renderRoomPanel() {
+  var p = ensureRoomPanel();
   p.textContent = "";
+
+  var room = el("div", "roomsec");
+  room.appendChild(el("div", "roomlbl", "Raum"));
+  var line = el("div", "roomline");
+  line.appendChild(el("span", null, ME.code));
+  var copy = el("button", "btn ghost roombtn", "Link kopieren");
+  copy.type = "button";
+  copy.tabIndex = -1;
+  copy.addEventListener("click", function () {
+    copyRoomLink(copy, location.origin + "/r/" + ME.code);
+  });
+  line.appendChild(copy);
+  room.appendChild(line);
+  p.appendChild(room);
+
+  if (ME.is_chair) {
+    var jury = el("div", "roomsec");
+    var n = visibleJudgeCount();
+    var total = Object.keys(peers).length + Object.keys(offlineJudges).length;
+    jury.appendChild(
+      el(
+        "div",
+        "roomlbl",
+        n +
+          (n === 1 ? " Jurierende:r" : " Jurierende") +
+          (total > n
+            ? ", " + (total - n) + " Trainee" + (total - n === 1 ? "" : "s")
+            : ""),
+      ),
+    );
+    appendJuryRows(jury);
+    p.appendChild(jury);
+  }
+
+  var foot = el("div", "roomfoot");
+  var leave = el("button", "roomleave", "Raum verlassen");
+  leave.type = "button";
+  leave.tabIndex = -1;
+  leave.addEventListener("click", function () {
+    closeRoomPanel();
+    leaveRoom();
+  });
+  foot.appendChild(leave);
+  p.appendChild(foot);
+
+  // Hangs from the tab's lower edge, right-aligned with it, like a folder sheet
+  var tab = document.getElementById("roomTab");
+  if (tab) {
+    var r = tab.getBoundingClientRect();
+    p.style.top = r.bottom + "px";
+    p.style.left = Math.max(8, r.right - p.offsetWidth) + "px";
+  }
+}
+function appendJuryRows(p) {
   var ids = Object.keys(peers);
   var offlineIds = Object.keys(offlineJudges);
   if (!ids.length && !offlineIds.length) {
@@ -3666,28 +3627,30 @@ function renderJuryPanel() {
     p.appendChild(row);
   });
 }
-function closeJuryPanel() {
-  var p = document.getElementById("juryPanel");
+function closeRoomPanel() {
+  var p = document.getElementById("roomPanel");
   if (p) p.classList.add("hide");
+  var tab = document.getElementById("roomTab");
+  if (tab) tab.setAttribute("aria-expanded", "false");
 }
-function toggleJuryPanel(anchor) {
-  var p = ensureJuryPanel();
-  if (!p.classList.contains("hide")) {
-    closeJuryPanel();
+function toggleRoomPanel() {
+  if (roomPanelOpen()) {
+    closeRoomPanel();
     return;
   }
-  renderJuryPanel();
-  var r = anchor.getBoundingClientRect();
-  p.style.top = r.bottom + 6 + "px";
-  p.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 308)) + "px";
-  p.classList.remove("hide");
+  ensureRoomPanel().classList.remove("hide");
+  var tab = document.getElementById("roomTab");
+  if (tab) tab.setAttribute("aria-expanded", "true");
+  // Rendered after the tab takes its open look, so the panel lines up with its final edge
+  renderRoomPanel();
 }
 document.addEventListener("click", function (e) {
-  var p = document.getElementById("juryPanel");
-  if (!p || p.classList.contains("hide")) return;
-  if (e.target.closest("#juryPanel") || e.target.closest(".dashjsummary"))
-    return;
-  closeJuryPanel();
+  if (!roomPanelOpen()) return;
+  if (e.target.closest("#roomPanel") || e.target.closest("#roomTab")) return;
+  closeRoomPanel();
+});
+document.addEventListener("keydown", function (e) {
+  if (e.key === "Escape" && roomPanelOpen()) closeRoomPanel();
 });
 var DASHNAV_ICON_FROM = {
   namen: "namen",
@@ -3698,6 +3661,7 @@ var DASHNAV_ICON_FROM = {
   notes: "notes",
   offline: "offline",
   opentab: "opentab",
+  settings: "settings",
 };
 function placeholderTabIcon() {
   var NS = "http://www.w3.org/2000/svg";
@@ -3732,7 +3696,7 @@ function tabIcon(name) {
 }
 function initDashNavIcons() {
   [].forEach.call(
-    document.querySelectorAll("#dashNav button[data-dv]"),
+    document.querySelectorAll("#dashNav button[data-dv], #settingsTab"),
     function (b) {
       b.insertBefore(tabIcon(DASHNAV_ICON_FROM[b.dataset.dv]), b.firstChild);
     },
@@ -3744,7 +3708,6 @@ document.getElementById("dashNav").addEventListener("click", function (e) {
   if (!b) return;
   if (b.dataset.dv === "dashboard" && !ME.is_chair && !spreadOpen) return;
   if (b.dataset.dv === "offline" && !ME.is_chair) return;
-  if (b.dataset.dv === "opentab" && !ME.is_chair) return;
   setDashboardView(b.dataset.dv);
   render();
 });
@@ -3807,6 +3770,38 @@ document.addEventListener("keydown", function (e) {
   if (restoreEl) restoreEl.focus();
 });
 
+// Holding Alt reveals key badges on the nav tabs and timer; numbers follow the visible tabs
+function setAltHints(on) {
+  if (on) {
+    var btns = document.querySelectorAll("#dashNav button[data-dv]");
+    var n = 0;
+    for (var i = 0; i < btns.length; i++) {
+      if (btns[i].classList.contains("hide") || n >= 9) {
+        btns[i].removeAttribute("data-hint");
+      } else {
+        btns[i].setAttribute("data-hint", String(++n));
+      }
+    }
+    document.getElementById("timerWidget").setAttribute("data-hint", "T");
+  }
+  document.body.classList.toggle("althints", on);
+}
+document.addEventListener("keydown", function (e) {
+  if (e.key !== "Alt" || e.repeat) return;
+  if (!ME || !isDesktopWidth()) return;
+  setAltHints(true);
+});
+document.addEventListener("keyup", function (e) {
+  if (e.key !== "Alt") return;
+  // Stops a lone Alt tap from moving focus to the browser's menu
+  if (document.body.classList.contains("althints")) e.preventDefault();
+  setAltHints(false);
+});
+// Alt+Tab never delivers the keyup, so clear on focus loss too
+window.addEventListener("blur", function () {
+  setAltHints(false);
+});
+
 // Alt+T toggles the timer modal
 document.addEventListener("keydown", function (e) {
   if (!ME || !isDesktopWidth()) return;
@@ -3839,11 +3834,26 @@ document.addEventListener("keydown", function (e) {
   }
 });
 
-// Alt+, / Alt+. step to the previous/next speech on Blatt, keeping the same kind of field focused
+// Alt+, / Alt+. step to the previous/next speech on Blatt (same field kind focused), else through the view's folder tabs
 document.addEventListener("keydown", function (e) {
   if (!ME || !isDesktopWidth()) return;
   if (!e.altKey || (e.key !== "," && e.key !== ".")) return;
-  if (effectiveDashboardView() !== "blatt") return;
+  var view = effectiveDashboardView();
+  if (view !== "blatt") {
+    var tabs = [].slice.call(
+      document.querySelectorAll("#v-" + view + " .dashtabs > button"),
+    );
+    var cur = -1;
+    for (var i = 0; i < tabs.length; i++) {
+      if (tabs[i].getAttribute("aria-pressed") === "true") cur = i;
+    }
+    var to = tabs[cur + (e.key === "." ? 1 : -1)];
+    if (cur === -1 || !to) return;
+    e.preventDefault();
+    commitActiveInput();
+    to.click();
+    return;
+  }
   var wasNote =
     document.activeElement &&
     document.activeElement.classList.contains("blattnotes");
@@ -3960,11 +3970,15 @@ function dashTabbedSheet(viewKey, sections, aside, rerender) {
   }
   var sheet = el("div", "dashsheet");
   var strip = el("div", "dashtabs");
-  sections.forEach(function (s) {
+  var curIdx = sections.indexOf(active);
+  sections.forEach(function (s, i) {
     var b = el("button", null, s.label);
     b.type = "button";
     b.tabIndex = -1;
     b.setAttribute("aria-pressed", String(s.key === cur));
+    // Alt+, / Alt+. targets, shown as badges while Alt is held
+    if (i === curIdx - 1) b.dataset.hint = ",";
+    if (i === curIdx + 1) b.dataset.hint = ".";
     b.addEventListener("click", function () {
       dashSectionByView[viewKey] = s.key;
       rerender();
@@ -3998,6 +4012,8 @@ function dashDashboardAside(cur) {
     exportBtn.type = "button";
     exportBtn.tabIndex = -1;
     exportBtn.addEventListener("click", function () {
+      // Skip past the Notizen tab straight to the OpenTab part
+      dashSectionByView.opentab = otState.ballot ? "ballot" : "connect";
       setDashboardView("opentab");
       render();
     });
@@ -4304,79 +4320,233 @@ function dashTeamBallotTable(summary, t, grp) {
 
 // Desktop keyboard shortcut cheat sheet
 var SHORTCUTS = [
-  ["Bild ↑ / Bild ↓", "Nächsten / vorherigen Tab auswählen"],
-  ["Alt + 1 – 5", "Tabs direkt anzeigen"],
-  ["Alt + , / Alt + .", "Vorherige / nächste Rede (Einzelreden)"],
-  ["Alt + I", "Wechsel von Einzelrede zu Interaktionen der Gegenseite"],
+  ["Bild ↑ / Bild ↓", "Vorherigen / nächsten Tab auswählen"],
+  ["Alt + 1 – 9", "Zu Tab springen"],
+  ["Alt halten", "Shortcuts anzeigen"],
+  ["Alt + , / Alt + .", "Vorherige / nächste Rede / Unterseite auswählen"],
+  [
+    "Alt + I",
+    "Von Einzelrede zu den Interaktionen der Gegenseite (Teampunkte) und zurück springen",
+  ],
   ["Alt + T", "Timer öffnen/schließen"],
+  ["Tab", "Zum nächsten Textfeld springen"],
+  ["Enter", "Punkte übernehmen und zum nächsten Feld springen"],
+  ["Esc", "Popup schließen"],
+  ["?", "Diese Übersicht öffnen"],
 ];
-// Features without a visible label, listed for people who know OPD but not this tool
-var MORE_FEATURES = [
-  [
-    "Eingabemodus: Noten/Punkte",
-    "Im Menü (oben Rechts) kannst du den Eingabe Modus für Redepunkte und Teampunkte getrennt von Punkten (9,12,15 etc.) auf Noten (3+, 1-, 1+ etc.) umschalten. Bereits eingegebene Werte werden automatisch umgerechnet.",
-  ],
-  [
-    "Abzüge",
-    "Chairs können durch die Knöpfe bei Einzelreden oder das Anklicken der 'Abz.' Spalte im 'Komplette Wertung' Tab zwischen Keinen, Kleinen (-3) und Großen (-15) Abzügen hin- und herschalten.",
-  ],
-  [
-    "Aus Wertung nehmen",
-    "Der Knopf 'aus Wertung nehmen' in Einzelreden / Teamkategorien lässt eure Punkte nicht mit in die Finalwertung einfließen.",
-  ],
-  [
-    "Zu Trainee",
-    "Chairs können auf dem Namen-Tab Wings zu Trainees machen. Sie können dann Punkte wie alle Jurierenden vergeben, fließen aber nicht in den Durchschnitt ein.",
-  ],
-  [
-    "Dashboard freigeben",
-    "Der Button 'Dashboard Freigeben' erlaubt es Chairs, Wings und Trainees die Ansicht der Abweichungen freizugeben",
-  ],
-  [
-    "Anzahl FFRs",
-    "Chairs können im Menü oben Rechts mehr freie Reden einstellen (min. 3, max. 10)",
-  ],
-  [
-    "Link kopieren",
-    "Menü: Einladungslink für diesen Raum in die Zwischenablage kopieren",
-  ],
-];
-function openShortcutsModal() {
-  openModal("shortcutsModal", function (box) {
-    box.appendChild(el("h2", null, "Tastenkürzel"));
-    var list = el("div", "shortcutlist");
-    SHORTCUTS.forEach(function (sc) {
-      var row = el("div", "shortcutrow");
-      row.appendChild(el("kbd", null, sc[0]));
-      row.appendChild(el("span", null, sc[1]));
-      list.appendChild(row);
-    });
-    box.appendChild(list);
+// Settings view's Info tab: shortcuts and legal links side by side
+function buildInfoSection() {
+  var wrap = el("div", "infocols");
+  function column(title, body) {
+    var col = el("div", "infocol");
+    col.appendChild(el("h2", "shortcutsub", title));
+    col.appendChild(body);
+    wrap.appendChild(col);
+  }
 
-    box.appendChild(el("h2", "shortcutsub", "Weitere Funktionen"));
-    var more = el("div", "shortcutlist");
-    MORE_FEATURES.forEach(function (f) {
-      var mrow = el("div", "shortcutrow featurerow");
-      mrow.appendChild(el("span", "featurename", f[0]));
-      mrow.appendChild(el("span", null, f[1]));
-      more.appendChild(mrow);
-    });
-    box.appendChild(more);
+  var list = el("div", "shortcutlist");
+  SHORTCUTS.forEach(function (sc) {
+    var row = el("div", "shortcutrow");
+    row.appendChild(el("kbd", null, sc[0]));
+    row.appendChild(el("span", null, sc[1]));
+    list.appendChild(row);
+  });
+  column("Tastenkürzel", list);
 
-    box.appendChild(modalCloseRow("shortcutsModal", "OK"));
+  function newTabLink(label, href) {
+    var a = el("a", null, label);
+    a.href = href;
+    a.target = "_blank";
+    a.rel = "noopener";
+    return a;
+  }
+  var about = el("div", "infocredit");
+  about.appendChild(
+    el("p", null, "Mittelmaß 2.0 ist freie Software unter MIT-Lizenz."),
+  );
+  about.appendChild(el("p", null, "Entwickelt von:"));
+  var devs = el("ul");
+  ["Jonathan Krapp"].forEach(function (name) {
+    devs.appendChild(el("li", null, name));
+  });
+  about.appendChild(devs);
+  var basis = el("p");
+  basis.appendChild(document.createTextNode("Auf Basis des "));
+  basis.appendChild(
+    newTabLink(
+      "OPD-Regelwerks der OPD-Regelkommission der Streitkultur e.V.",
+      "https://www.streitkultur.net/debattieren/opd-service/",
+    ),
+  );
+  about.appendChild(basis);
+  var links = el("div", "settingslinks");
+  [
+    ["Impressum", "/impressum"],
+    ["Lizenz", "/license"],
+    ["GitHub", "https://github.com/JKRPP/Mittelmass"],
+  ].forEach(function (l) {
+    links.appendChild(newTabLink(l[0], l[1]));
+  });
+  about.appendChild(links);
+  column("Über", about);
+  return wrap;
+}
+
+// Clickable icon of the settings grid; icons come from #iconTemplates [data-icon=name], else tabIcon's placeholder
+function settingsIconButton(iconName, caption, onClick) {
+  var btn = el("button", "settingsicon");
+  btn.type = "button";
+  btn.tabIndex = -1;
+  btn.title = caption;
+  btn.setAttribute("aria-label", caption);
+  btn.appendChild(tabIcon(iconName));
+  btn.appendChild(el("span", "settingscaption", caption));
+  btn.addEventListener("click", onClick);
+  return btn;
+}
+// Cycling icon: shows the current choice's icon, a click picks the next one; choices: [{label, value, icon}]
+function settingsCycleIcon(label, choices, current, onPick) {
+  var idx = 0;
+  choices.forEach(function (c, i) {
+    if (c.value === current) idx = i;
+  });
+  var cur = choices[idx];
+  return settingsIconButton(cur.icon, label + ": " + cur.label, function () {
+    onPick(choices[(idx + 1) % choices.length].value);
   });
 }
-document
-  .getElementById("shortcutsBtn")
-  .addEventListener("click", openShortcutsModal);
-// "?" also opens the shortcuts cheat sheet
+function gradeInputModeIcon(label, kind) {
+  return settingsCycleIcon(
+    label,
+    [
+      { label: "Punkte", value: false, icon: "set-punkte" },
+      { label: "Noten", value: true, icon: "set-noten" },
+    ],
+    gradeInputMode(kind),
+    function (on) {
+      setGradeInputMode(kind, on);
+      render();
+    },
+  );
+}
+// Desktop settings view (the mobile ⋮ menu keeps its own items); one sub-tab per topic
+function renderSettings() {
+  var root = document.getElementById("v-settings");
+  if (!root) return;
+  root.innerHTML = "";
+  root.appendChild(
+    dashTabbedSheet(
+      "settings",
+      [
+        {
+          key: "allgemein",
+          label: "Einstellungen",
+          build: function () {
+            var grid = el("div", "settingsgrid");
+            grid.appendChild(
+              settingsCycleIcon(
+                "Design",
+                [
+                  { label: "Hell", value: "light", icon: "set-theme-light" },
+                  { label: "Dunkel", value: "dark", icon: "set-theme-dark" },
+                ],
+                LS.get("opd.theme", "light"),
+                function (t) {
+                  setTheme(t);
+                  render();
+                },
+              ),
+            );
+            grid.appendChild(gradeInputModeIcon("Redepunkte", "speaker"));
+            grid.appendChild(gradeInputModeIcon("Teampunkte", "team"));
+            grid.appendChild(
+              settingsCycleIcon(
+                "Timer",
+                [
+                  { label: "hochzählen", value: true, icon: "set-timer-up" },
+                  {
+                    label: "herunterzählen",
+                    value: false,
+                    icon: "set-timer-down",
+                  },
+                ],
+                timerCountUp(),
+                function (up) {
+                  if (up !== timerCountUp()) toggleTimerCountUp();
+                  render();
+                },
+              ),
+            );
+            grid.appendChild(
+              settingsCycleIcon(
+                "Zeitsignal",
+                Object.keys(BELL_VOICES).map(function (k) {
+                  return {
+                    label: BELL_VOICES[k].label,
+                    value: k,
+                    icon: "set-bell-" + k,
+                  };
+                }),
+                bellVoice(),
+                // Rings on every pick so the new voice is heard right away
+                function (v) {
+                  LS.set("opd.bellVoice", v);
+                  applyBellVoiceLabel();
+                  testBell();
+                  render();
+                },
+              ),
+            );
+            // One-shot action, no state to show
+            grid.appendChild(
+              settingsIconButton(
+                "set-colwidths",
+                "Spaltenbreiten zurücksetzen",
+                resetBlattColWidths,
+              ),
+            );
+            grid.appendChild(
+              // Confirms first, since it sits in a row of harmless toggles
+              settingsIconButton("set-leave", "Raum verlassen", function () {
+                openConfirmModal({
+                  title: "Raum verlassen?",
+                  text: "Deine Eingaben bleiben gespeichert. Du kannst dem Raum über die Startseite wieder beitreten.",
+                  confirmLabel: "Raum verlassen",
+                  onConfirm: leaveRoom,
+                });
+              }),
+            );
+            return grid;
+          },
+        },
+        {
+          key: "info",
+          label: "Info",
+          build: buildInfoSection,
+        },
+      ],
+      null,
+      renderSettings,
+    ),
+  );
+}
+function openSettings(section) {
+  commitActiveInput();
+  if (section) dashSectionByView.settings = section;
+  setDashboardView("settings");
+  render();
+}
+document.getElementById("settingsTab").addEventListener("click", function () {
+  openSettings();
+});
+// "?" opens the Info page (shortcuts first) of the settings view
 document.addEventListener("keydown", function (e) {
   if (!ME || !isDesktopWidth()) return;
   if (e.key !== "?") return;
   var ae = document.activeElement;
   if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA")) return;
   e.preventDefault();
-  openShortcutsModal();
+  openSettings("info");
 });
 
 // Chair-only: number of active free-speaker slots; lowering never deletes scores
@@ -4577,13 +4747,17 @@ function dashEinzelTable(summary) {
   function line(label, cellFor, sep) {
     var tr = el("tr", sep ? "dasheinzelsep" : null);
     var lbl = el("td", "l");
-    lbl.appendChild(typeof label === "string" ? document.createTextNode(label) : label);
+    lbl.appendChild(
+      typeof label === "string" ? document.createTextNode(label) : label,
+    );
     tr.appendChild(lbl);
     cols.forEach(function (c) {
       var td = el("td", c.panel ? "dashpanelcol" : null);
       var content = cellFor(c);
       td.appendChild(
-        typeof content === "string" ? document.createTextNode(content) : content,
+        typeof content === "string"
+          ? document.createTextNode(content)
+          : content,
       );
       tr.appendChild(td);
     });
@@ -5531,7 +5705,7 @@ function renderBlatt() {
   var head = el("div", "blatthead " + teamCls);
   var prev = el("button", "navbtn blattnav");
   prev.appendChild(el("span", null, "‹"));
-  prev.appendChild(el("span", "navhint", "Alt+,"));
+  prev.dataset.hint = ",";
   prev.tabIndex = -1;
   prev.title = "Vorherige Rede (Alt+,)";
   prev.disabled = prevActiveSpeaker(cs) === -1;
@@ -5555,7 +5729,7 @@ function renderBlatt() {
     el(
       "span",
       "blattswaphint",
-      "Alt + I, um zu Interaktion des anderen Teams zu wechseln. Tab, um zwischen Textfeldern zu wechseln.",
+      "Alt + I, um zu Interaktion des anderen Teams zu wechseln.",
     ),
   );
   mid.appendChild(sub);
@@ -5563,7 +5737,7 @@ function renderBlatt() {
 
   var next = el("button", "navbtn blattnav");
   next.appendChild(el("span", null, "›"));
-  next.appendChild(el("span", "navhint", "Alt+."));
+  next.dataset.hint = ".";
   next.tabIndex = -1;
   next.title = "Nächste Rede (Alt+.)";
   next.disabled = nextActiveSpeaker(cs) === -1;
@@ -5653,41 +5827,55 @@ function renderBlatt() {
   }
 }
 
-// Printable sheet with all scores and notes for team feedback, usually saved as PDF
-
-// Lets the judge choose whether their own points appear on the printout
-function openPrintNotesModal() {
-  openModal("printNotesModal", function (box) {
-    box.appendChild(el("h2", null, "Notizen exportieren"));
-    box.appendChild(
-      el(
-        "p",
-        "note",
-        "Eigene Punkte anzeigen, oder nur den Durchschnitt aller Jurierenden?",
-      ),
-    );
-    var actions = el("div", "modalactions");
-    var withOwnBtn = el("button", "btn", "Mit eigenen Punkten");
-    withOwnBtn.type = "button";
-    withOwnBtn.addEventListener("click", function () {
-      closeModal("printNotesModal");
-      buildPrintSheet(false);
+// Export view's Notizen tab: the judge picks which points appear next to the notes on the printout
+function buildNotesExportSection() {
+  var wrap = el("div", "otform");
+  var row = el("div", "exportoptions");
+  [
+    // [icon, caption, showOwn, showAvg]
+    ["export-withpoints", "Mit eigenen Punkten", true, true],
+    ["export-average", "Nur Durchschnitt", false, true],
+    ["export-onlyown", "Nur eigene Punkte", true, false],
+  ].forEach(function (o) {
+    var btn = settingsIconButton(o[0], o[1], function () {
+      buildPrintSheet(o[2], o[3]);
       window.print();
     });
-    var avgOnlyBtn = el("button", "btn ghost", "Nur Durchschnitt");
-    avgOnlyBtn.type = "button";
-    avgOnlyBtn.addEventListener("click", function () {
-      closeModal("printNotesModal");
-      buildPrintSheet(true);
-      window.print();
-    });
-    actions.appendChild(withOwnBtn);
-    actions.appendChild(avgOnlyBtn);
-    box.appendChild(actions);
+    btn.classList.add("exportoption");
+    row.appendChild(btn);
   });
+  wrap.appendChild(row);
+  return wrap;
 }
 
-function buildPrintSheet(hideOwn) {
+// Printout card's score table, own points and/or the average; cats: [{label, v}], avgVals: each included judge's total
+function printScoreTable(cats, own, avgVals, showOwn, showAvg) {
+  var table = el("table", "printscores");
+  // Without own points there are no category rows, so the header would head an empty column
+  if (showOwn) {
+    var head = el("tr");
+    head.appendChild(el("th", "l", "Kategorie"));
+    head.appendChild(el("th", null, "Meine Punkte"));
+    table.appendChild(head);
+  }
+  function row(cls, label, v) {
+    var tr = el("tr", cls);
+    tr.appendChild(el("td", "l", label));
+    tr.appendChild(el("td", null, v === null ? "–" : String(v)));
+    table.appendChild(tr);
+  }
+  if (showOwn) {
+    cats.forEach(function (c) {
+      row(null, c.label, c.v);
+    });
+    row("tot", "Gesamt", own);
+  }
+  if (showAvg) row("tot", "Ø Gesamt (alle Jurierenden)", avgRound(avgVals));
+  return table;
+}
+
+// Printable sheet with all notes for team feedback, usually saved as PDF; showOwn/showAvg pick which points appear
+function buildPrintSheet(showOwn, showAvg) {
   var root = document.getElementById("printSheet");
   root.innerHTML = "";
   var summary = computeChairSummary(false);
@@ -5700,19 +5888,6 @@ function buildPrintSheet(hideOwn) {
     if (deductionLevel(s)) heading += " (Abzug: −" + deductionPoints(s) + ")";
     card.appendChild(el("h2", "printspeakerlbl", heading));
 
-    var scoreTable = el("table", "printscores");
-    var head = el("tr");
-    head.appendChild(el("th", "l", "Kategorie"));
-    if (!hideOwn) head.appendChild(el("th", null, "Meine Punkte"));
-    scoreTable.appendChild(head);
-    if (!hideOwn)
-      CRITERIA.forEach(function (c, ci) {
-        var tr = el("tr");
-        tr.appendChild(el("td", "l", c.label));
-        var v = sget(s, ci);
-        tr.appendChild(el("td", null, v === null ? "–" : String(v)));
-        scoreTable.appendChild(tr);
-      });
     var totVals = summary.ids
       .filter(function (id) {
         return summary.includedFor(id, "s" + s);
@@ -5723,18 +5898,17 @@ function buildPrintSheet(hideOwn) {
       .filter(function (v) {
         return v !== null;
       });
-    if (!hideOwn) {
-      var totTr = el("tr", "tot");
-      totTr.appendChild(el("td", "l", "Gesamt"));
-      totTr.appendChild(el("td", null, String(personPunkte(s))));
-      scoreTable.appendChild(totTr);
-    }
-    var finalTr = el("tr", "tot");
-    finalTr.appendChild(el("td", "l", "Ø Gesamt (alle Jurierenden)"));
-    var final = avgRound(totVals);
-    finalTr.appendChild(el("td", null, final === null ? "–" : String(final)));
-    scoreTable.appendChild(finalTr);
-    card.appendChild(scoreTable);
+    card.appendChild(
+      printScoreTable(
+        CRITERIA.map(function (c, ci) {
+          return { label: c.label, v: sget(s, ci) };
+        }),
+        personPunkte(s),
+        totVals,
+        showOwn,
+        showAvg,
+      ),
+    );
 
     BLATT_GROUPS.forEach(function (group) {
       var note = getNote(s, group.key);
@@ -5752,19 +5926,6 @@ function buildPrintSheet(hideOwn) {
     var card = el("div", "printspeaker");
     card.appendChild(el("h2", "printspeakerlbl", "Teampunkte " + tm));
 
-    var scoreTable = el("table", "printscores");
-    var head = el("tr");
-    head.appendChild(el("th", "l", "Kategorie"));
-    if (!hideOwn) head.appendChild(el("th", null, "Meine Punkte"));
-    scoreTable.appendChild(head);
-    if (!hideOwn)
-      TEAMCATS.forEach(function (cat, ci) {
-        var tr = el("tr");
-        tr.appendChild(el("td", "l", cat.label));
-        var v = tget(t, ci);
-        tr.appendChild(el("td", null, v === null ? "–" : String(v)));
-        scoreTable.appendChild(tr);
-      });
     var totVals = summary.ids
       .filter(function (id) {
         return summary.includedFor(id, "t" + t) && summary.teamEntered(id, t);
@@ -5772,18 +5933,17 @@ function buildPrintSheet(hideOwn) {
       .map(function (id) {
         return summary.remoteTeamTotal(id, t);
       });
-    if (!hideOwn) {
-      var totTr = el("tr", "tot");
-      totTr.appendChild(el("td", "l", "Gesamt"));
-      totTr.appendChild(el("td", null, String(teamPunkte(t))));
-      scoreTable.appendChild(totTr);
-    }
-    var finalTr = el("tr", "tot");
-    finalTr.appendChild(el("td", "l", "Ø Gesamt (alle Jurierenden)"));
-    var final = avgRound(totVals);
-    finalTr.appendChild(el("td", null, final === null ? "–" : String(final)));
-    scoreTable.appendChild(finalTr);
-    card.appendChild(scoreTable);
+    card.appendChild(
+      printScoreTable(
+        TEAMCATS.map(function (cat, ci) {
+          return { label: cat.label, v: tget(t, ci) };
+        }),
+        teamPunkte(t),
+        totVals,
+        showOwn,
+        showAvg,
+      ),
+    );
 
     TEAMCATS.forEach(function (cat) {
       var note = getTeamNote(t, cat.key);
@@ -6417,11 +6577,7 @@ function otDoRefresh(root) {
   if (!otState.ballot) return;
   var saved = otLoadTokens()[otState.tournamentId];
   if (!saved) {
-    otHandleStaleToken(
-          otState.tournamentId,
-          otState.debateId,
-          otState.apiBase,
-        );
+    otHandleStaleToken(otState.tournamentId, otState.debateId, otState.apiBase);
     renderOpenTab(root.id);
     otStatusMsg(
       root,
@@ -6479,11 +6635,7 @@ function otDoSubmit(root) {
   }
   var saved = otLoadTokens()[otState.tournamentId];
   if (!saved) {
-    otHandleStaleToken(
-          otState.tournamentId,
-          otState.debateId,
-          otState.apiBase,
-        );
+    otHandleStaleToken(otState.tournamentId, otState.debateId, otState.apiBase);
     renderOpenTab(root.id);
     otStatusMsg(
       root,
@@ -6525,14 +6677,14 @@ function otDoSubmit(root) {
       otStatusMsg(root, err.message || String(err), true);
     });
 }
-// OpenTab view (chair-only): imports names and submits each judge's computed totals as their ballot
+// Export view: notes printout for every judge, then chair-only OpenTab name import and ballot submission
 function renderOpenTab(rootId) {
   var root = document.getElementById(rootId || "v-opentab");
   if (!root) return;
   if (dashEditGuard(root)) return;
   root.innerHTML = "";
 
-  // Desktop shows sections as folder tabs, mobile as stacked cards
+  // Desktop shows sections as folder tabs, mobile as stacked cards (chair-only, OpenTab part only)
   var mobile = root.id === "v-opentabm";
   function finish(sections, aside, asideLabel) {
     if (mobile) {
@@ -6547,10 +6699,17 @@ function renderOpenTab(rootId) {
     root.appendChild(
       dashTabbedSheet(
         "opentab",
-        sections,
+        [
+          {
+            key: "notizen",
+            label: "Als .pdf exportieren",
+            build: buildNotesExportSection,
+          },
+        ].concat(sections),
         aside
-          ? function () {
-              return aside;
+          ? function (cur) {
+              // The OpenTab connection bar has nothing to do with the notes printout
+              return cur === "notizen" ? null : aside;
             }
           : null,
         function () {
@@ -6561,15 +6720,7 @@ function renderOpenTab(rootId) {
   }
 
   if (!ME.is_chair) {
-    finish([
-      {
-        key: "info",
-        label: "OpenTab",
-        build: function () {
-          return el("p", null, "Nur der Chair kann OpenTab verbinden.");
-        },
-      },
-    ]);
+    finish([]);
     return;
   }
 
@@ -6840,6 +6991,7 @@ function render() {
     else if (ev === "notes") renderNotes();
     else if (ev === "offline") renderOfflineJudges();
     else if (ev === "opentab") renderOpenTab();
+    else if (ev === "settings") renderSettings();
     else renderDashboard();
   } else {
     var mv = effectiveMobileView();
@@ -7203,17 +7355,12 @@ document.getElementById("btnCopy").addEventListener("click", function () {
 document.getElementById("menuCopyLink").addEventListener("click", function () {
   copyRoomLink(this, location.origin + "/r/" + ME.code);
 });
-document
-  .getElementById("menuResetBlattCols")
-  .addEventListener("click", function () {
-    try {
-      localStorage.removeItem("blattColWidths");
-    } catch (e) {}
-    render();
-  });
-document
-  .getElementById("menuPrintNotes")
-  .addEventListener("click", openPrintNotesModal);
+function resetBlattColWidths() {
+  try {
+    localStorage.removeItem("blattColWidths");
+  } catch (e) {}
+  render();
+}
 document.getElementById("btnSpreadOpen").addEventListener("click", function () {
   var next = !spreadOpen;
   fetch(
@@ -7378,10 +7525,7 @@ document.addEventListener("click", function (e) {
   closeMenu();
 });
 document.addEventListener("keydown", function (e) {
-  if (e.key === "Escape") {
-    closeMenu();
-    closeJuryPanel();
-  }
+  if (e.key === "Escape") closeMenu();
 });
 window.addEventListener("popstate", function () {
   var code = urlCode();
@@ -7420,9 +7564,6 @@ document
   .getElementById("btnFreeSpeakers")
   .addEventListener("click", openFreeSpeakersModal);
 document.getElementById("themeBtn").addEventListener("click", cycleTheme);
-document
-  .getElementById("menuGradeInput")
-  .addEventListener("click", openGradeInputModal);
 document
   .getElementById("menuTimerDisplay")
   .addEventListener("click", toggleTimerCountUp);
@@ -7486,7 +7627,6 @@ window.addEventListener("appinstalled", function () {
     document.getElementById("btnInstall").classList.remove("hide");
   }
   applyTheme(LS.get("opd.theme", "light"));
-  applyGradeInputLabel();
   applyKeyLabelLabel();
   applyTimerDisplayLabel();
   applyBellVoiceLabel();
