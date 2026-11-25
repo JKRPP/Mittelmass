@@ -285,33 +285,19 @@
             >
               <span class="navlabel">Einstellungen / Infos</span>
             </button>
+            <!-- Mobile Raum tab, settings icon inserted by initDashNavIcons, label set by paintBar -->
             <button
               class="menubtn"
               id="menuBtn"
-              aria-label="Menü"
+              aria-label="Raum und Einstellungen"
+              aria-haspopup="true"
               aria-expanded="false"
               tabindex="-1"
             >
-              &#8942;
+              <span id="menuBtnLabel"></span>
             </button>
             <div class="menupanel hide" id="menuPanel">
-              <div class="menuwho" id="whoami"></div>
-              <button class="menuitem" id="menuCopyLink">Link kopieren</button>
-              <button class="menuitem" id="themeBtn"></button>
-              <button class="menuitem" id="menuKeyLabel"></button>
-              <button class="menuitem" id="menuTimerDisplay"></button>
-              <button class="menuitem" id="menuBellVoice"></button>
-              <a
-                class="menuitem"
-                href="/impressum"
-                target="_blank"
-                rel="noopener"
-                >Impressum</a
-              >
-              <a class="menuitem" href="/license" target="_blank" rel="noopener"
-                >Lizenz</a
-              >
-              <button class="menuitem" id="leaveBtn">Raum verlassen</button>
+              <div id="menuBody"></div>
             </div>
           </div>
 

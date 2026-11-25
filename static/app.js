@@ -1913,21 +1913,13 @@ function leaveRoom() {
   showLobby();
 }
 
-// Always starts light regardless of system setting; only the theme button switches to dark
-var THEME_CYCLE = ["light", "dark"];
-var THEME_LABEL = { light: "Heller Modus", dark: "Dunkler Modus" };
+// Always starts light regardless of system setting; only the Design setting switches to dark
 function applyTheme(t) {
   document.documentElement.setAttribute("data-theme", t || "light");
-  var b = document.getElementById("themeBtn");
-  if (b) b.textContent = THEME_LABEL[t] || "Light";
 }
 function setTheme(t) {
   LS.set("opd.theme", t);
   applyTheme(t);
-}
-function cycleTheme() {
-  var cur = LS.get("opd.theme", "light");
-  setTheme(THEME_CYCLE[(THEME_CYCLE.indexOf(cur) + 1) % THEME_CYCLE.length]);
 }
 
 // Per-device preference to type school grades (e.g. "2+") instead of points, set separately for Redepunkte and Teampunkte
@@ -1941,44 +1933,21 @@ function gradeInputMode(kind) {
 function setGradeInputMode(kind, on) {
   LS.set(GRADE_INPUT_LS_KEY[kind], !!on);
 }
-// Per-device preference for the mobile Notenskala keypad
-function keyGradeFirst() {
-  return !!LS.get("opd.keyGradeFirst", false);
-}
-function applyKeyLabelLabel() {
-  var b = document.getElementById("menuKeyLabel");
-  if (b)
-    b.textContent =
-      "Tasten: " + (keyGradeFirst() ? "Noten zuerst" : "Punkte zuerst");
-}
-function toggleKeyGradeFirst() {
-  LS.set("opd.keyGradeFirst", !keyGradeFirst());
-  applyKeyLabelLabel();
-  render();
-}
-
-function applyTimerDisplayLabel() {
-  var b = document.getElementById("menuTimerDisplay");
-  if (b)
-    b.textContent =
-      "Timeranzeige: " + (timerCountUp() ? "hochzählen" : "herunterzählen");
+// Per-device choice whether the mobile keypad shows grades or points, set separately for Reden and Team; the old shared key seeds both
+var KEY_GRADE_FIRST_LS_KEY = {
+  speaker: "opd.keyGradeFirstSpeaker",
+  team: "opd.keyGradeFirstTeam",
+};
+function keyGradeFirst(kind) {
+  return !!LS.get(
+    KEY_GRADE_FIRST_LS_KEY[kind],
+    LS.get("opd.keyGradeFirst", false),
+  );
 }
 function toggleTimerCountUp() {
   LS.set("opd.timerCountUp", !timerCountUp());
-  applyTimerDisplayLabel();
   paintTimer();
   refreshTimerModal();
-}
-
-function applyBellVoiceLabel() {
-  var b = document.getElementById("menuBellVoice");
-  if (b) b.textContent = "Zeitsignal: " + BELL_VOICES[bellVoice()].label;
-}
-// Rings the newly picked voice right away via testBell(), which ignores mute
-function toggleBellVoice() {
-  LS.set("opd.bellVoice", bellVoice() === "hoch" ? "tief" : "hoch");
-  applyBellVoiceLabel();
-  testBell();
 }
 // Resumes a session when a judge reconnects
 function resume() {
@@ -2074,8 +2043,8 @@ function paintBar() {
         : pending
           ? "offline - " + pending + " gespeichert"
           : "offline";
-  document.getElementById("whoami").textContent = ME
-    ? ME.name + (ME.is_chair ? " - Chair" : "") + " - " + ME.code
+  document.getElementById("menuBtnLabel").textContent = ME
+    ? "Raum: " + ME.code
     : "";
   paintTimer();
 }
@@ -2277,7 +2246,7 @@ function spreadDetailTable(total, catCells) {
   return scroll;
 }
 
-function buildPad(host, scaleMax, onPick) {
+function buildPad(host, kind, scaleMax, onPick) {
   host.innerHTML = "";
   (topOpen ? NOTEN : NOTEN.slice(TOPROWS, NOTEN.length - BOTTOMROWS)).forEach(
     function (n) {
@@ -2290,18 +2259,13 @@ function buildPad(host, scaleMax, onPick) {
         "div",
         "notekeys" + (n.cells.length < 3 ? " notekeys-fill" : ""),
       );
-      var gradeFirst = keyGradeFirst();
+      var gradeFirst = keyGradeFirst(kind);
       n.cells.forEach(function (v, j) {
         var b = el("button", "key");
         var pts = String(mid(convert(v, scaleMax)));
         var mark = (n.marks[j] || "").trim();
-        if (gradeFirst && mark) {
-          b.appendChild(el("div", "n", mark));
-          b.appendChild(el("div", "m", pts + " P."));
-        } else {
-          b.appendChild(el("div", "n", pts));
-          b.appendChild(el("div", "m", n.marks[j] || "Kat. " + v));
-        }
+        // Only the chosen value is shown; a cell without a grade mark falls back to its points
+        b.appendChild(el("div", "n", gradeFirst && mark ? mark : pts));
         b.addEventListener("click", function () {
           onPick(v);
         });
@@ -2400,7 +2364,7 @@ function renderSheet() {
     .querySelector("#v-sheet .card")
     .classList.toggle("excluded", excluded);
 
-  buildPad(document.getElementById("padHost"), 20, pickSpeaker);
+  buildPad(document.getElementById("padHost"), "speaker", 20, pickSpeaker);
 
   document
     .getElementById("undoBtn")
@@ -2492,7 +2456,12 @@ function renderTeam() {
     .querySelector("#v-team .card")
     .classList.toggle("excluded", texcluded);
 
-  buildPad(document.getElementById("tpadHost"), TEAMCATS[ctc].max, pickTeam);
+  buildPad(
+    document.getElementById("tpadHost"),
+    "team",
+    TEAMCATS[ctc].max,
+    pickTeam,
+  );
 
   document
     .getElementById("tundoBtn")
@@ -3692,6 +3661,9 @@ function initDashNavIcons() {
       b.insertBefore(tabIcon(DASHNAV_ICON_FROM[b.dataset.dv]), b.firstChild);
     },
   );
+  // Mobile Raum tab carries the same icon as the desktop Einstellungen tab
+  var menuBtn = document.getElementById("menuBtn");
+  menuBtn.insertBefore(tabIcon("settings"), menuBtn.firstChild);
 }
 initDashNavIcons();
 document.getElementById("dashNav").addEventListener("click", function (e) {
@@ -4420,6 +4392,62 @@ function gradeInputModeIcon(label, kind) {
     },
   );
 }
+// Settings icons shared by the desktop settings view and the mobile Raum menu; after() repaints whichever shows them
+function themeSettingIcon(after) {
+  return settingsCycleIcon(
+    "Design",
+    [
+      { label: "Hell", value: "light", icon: "set-theme-light" },
+      { label: "Dunkel", value: "dark", icon: "set-theme-dark" },
+    ],
+    LS.get("opd.theme", "light"),
+    function (t) {
+      setTheme(t);
+      after();
+    },
+  );
+}
+function timerCountSettingIcon(after) {
+  return settingsCycleIcon(
+    "Timer",
+    [
+      { label: "hochzählen", value: true, icon: "set-timer-up" },
+      { label: "herunterzählen", value: false, icon: "set-timer-down" },
+    ],
+    timerCountUp(),
+    function (up) {
+      if (up !== timerCountUp()) toggleTimerCountUp();
+      after();
+    },
+  );
+}
+function bellVoiceSettingIcon(after) {
+  return settingsCycleIcon(
+    "Zeitsignal",
+    Object.keys(BELL_VOICES).map(function (k) {
+      return { label: BELL_VOICES[k].label, value: k, icon: "set-bell-" + k };
+    }),
+    bellVoice(),
+    // Rings on every pick so the new voice is heard right away
+    function (v) {
+      LS.set("opd.bellVoice", v);
+      testBell();
+      after();
+    },
+  );
+}
+// Confirms first, since it sits in a row of harmless toggles
+function leaveSettingIcon() {
+  return settingsIconButton("set-leave", "Raum verlassen", function () {
+    closeMenu();
+    openConfirmModal({
+      title: "Raum verlassen?",
+      text: "Deine Eingaben bleiben gespeichert. Du kannst dem Raum über die Startseite wieder beitreten.",
+      confirmLabel: "Raum verlassen",
+      onConfirm: leaveRoom,
+    });
+  });
+}
 // Desktop settings view (the mobile ⋮ menu keeps its own items); one sub-tab per topic
 function renderSettings() {
   var root = document.getElementById("v-settings");
@@ -4434,60 +4462,11 @@ function renderSettings() {
           label: "Einstellungen",
           build: function () {
             var grid = el("div", "settingsgrid");
-            grid.appendChild(
-              settingsCycleIcon(
-                "Design",
-                [
-                  { label: "Hell", value: "light", icon: "set-theme-light" },
-                  { label: "Dunkel", value: "dark", icon: "set-theme-dark" },
-                ],
-                LS.get("opd.theme", "light"),
-                function (t) {
-                  setTheme(t);
-                  render();
-                },
-              ),
-            );
+            grid.appendChild(themeSettingIcon(render));
             grid.appendChild(gradeInputModeIcon("Redepunkte", "speaker"));
             grid.appendChild(gradeInputModeIcon("Teampunkte", "team"));
-            grid.appendChild(
-              settingsCycleIcon(
-                "Timer",
-                [
-                  { label: "hochzählen", value: true, icon: "set-timer-up" },
-                  {
-                    label: "herunterzählen",
-                    value: false,
-                    icon: "set-timer-down",
-                  },
-                ],
-                timerCountUp(),
-                function (up) {
-                  if (up !== timerCountUp()) toggleTimerCountUp();
-                  render();
-                },
-              ),
-            );
-            grid.appendChild(
-              settingsCycleIcon(
-                "Zeitsignal",
-                Object.keys(BELL_VOICES).map(function (k) {
-                  return {
-                    label: BELL_VOICES[k].label,
-                    value: k,
-                    icon: "set-bell-" + k,
-                  };
-                }),
-                bellVoice(),
-                // Rings on every pick so the new voice is heard right away
-                function (v) {
-                  LS.set("opd.bellVoice", v);
-                  applyBellVoiceLabel();
-                  testBell();
-                  render();
-                },
-              ),
-            );
+            grid.appendChild(timerCountSettingIcon(render));
+            grid.appendChild(bellVoiceSettingIcon(render));
             // One-shot action, no state to show
             grid.appendChild(
               settingsIconButton(
@@ -4496,17 +4475,7 @@ function renderSettings() {
                 resetBlattColWidths,
               ),
             );
-            grid.appendChild(
-              // Confirms first, since it sits in a row of harmless toggles
-              settingsIconButton("set-leave", "Raum verlassen", function () {
-                openConfirmModal({
-                  title: "Raum verlassen?",
-                  text: "Deine Eingaben bleiben gespeichert. Du kannst dem Raum über die Startseite wieder beitreten.",
-                  confirmLabel: "Raum verlassen",
-                  onConfirm: leaveRoom,
-                });
-              }),
-            );
+            grid.appendChild(leaveSettingIcon());
             return grid;
           },
         },
@@ -7471,9 +7440,6 @@ function copyRoomLink(btn, url) {
 document.getElementById("btnCopy").addEventListener("click", function () {
   copyRoomLink(this, document.getElementById("shareUrl").value);
 });
-document.getElementById("menuCopyLink").addEventListener("click", function () {
-  copyRoomLink(this, location.origin + "/r/" + ME.code);
-});
 function resetBlattColWidths() {
   try {
     localStorage.removeItem("blattColWidths");
@@ -7619,8 +7585,67 @@ document.getElementById("exclBtn").addEventListener("click", function () {
 document.getElementById("texclBtn").addEventListener("click", function () {
   setExclusion("t" + ct, !myExclusions["t" + ct]);
 });
-document.getElementById("leaveBtn").addEventListener("click", leaveRoom);
+// Mobile keypad order per kind (see buildPad), the counterpart of the desktop gradeInputModeIcon
+function keyGradeFirstIcon(label, kind) {
+  return settingsCycleIcon(
+    label,
+    [
+      { label: "Punkte", value: false, icon: "set-punkte" },
+      { label: "Noten", value: true, icon: "set-noten" },
+    ],
+    keyGradeFirst(kind),
+    function (on) {
+      LS.set(KEY_GRADE_FIRST_LS_KEY[kind], on);
+      render();
+      renderMenuBody();
+    },
+  );
+}
+// Mobile Raum menu: room code + link, then the settings as an icon grid like the desktop settings view
+function renderMenuBody() {
+  var body = document.getElementById("menuBody");
+  if (!body || !ME) return;
+  body.textContent = "";
 
+  var room = el("div", "roomsec");
+  room.appendChild(el("div", "roomlbl", "Raumcode"));
+  var line = el("div", "roomline");
+  line.appendChild(el("span", null, ME.code));
+  var copy = el("button", "btn ghost roombtn", "Link kopieren");
+  copy.type = "button";
+  copy.addEventListener("click", function () {
+    copyRoomLink(copy, location.origin + "/r/" + ME.code);
+  });
+  line.appendChild(copy);
+  room.appendChild(line);
+  body.appendChild(room);
+
+  // Picks rebuild the grid in place so each icon shows its new state while the menu stays open
+  var sec = el("div", "roomsec");
+  sec.appendChild(el("div", "roomlbl", "Einstellungen"));
+  var grid = el("div", "settingsgrid");
+  grid.appendChild(themeSettingIcon(renderMenuBody));
+  grid.appendChild(keyGradeFirstIcon("Tasten Reden", "speaker"));
+  grid.appendChild(keyGradeFirstIcon("Tasten Team", "team"));
+  grid.appendChild(timerCountSettingIcon(renderMenuBody));
+  grid.appendChild(bellVoiceSettingIcon(renderMenuBody));
+  grid.appendChild(leaveSettingIcon());
+  sec.appendChild(grid);
+  body.appendChild(sec);
+
+  var links = el("div", "roomsec menulinks");
+  [
+    ["Impressum", "/impressum"],
+    ["Lizenz", "/license"],
+  ].forEach(function (l) {
+    var a = el("a", "legallink", l[0]);
+    a.href = l[1];
+    a.target = "_blank";
+    a.rel = "noopener";
+    links.appendChild(a);
+  });
+  body.appendChild(links);
+}
 function closeMenu() {
   document.getElementById("menuPanel").classList.add("hide");
   document.getElementById("menuBtn").setAttribute("aria-expanded", "false");
@@ -7629,13 +7654,12 @@ document.getElementById("menuBtn").addEventListener("click", function (e) {
   e.stopPropagation();
   var panel = document.getElementById("menuPanel");
   var open = panel.classList.toggle("hide") === false;
+  if (open) renderMenuBody();
   this.setAttribute("aria-expanded", String(open));
 });
+// Clicks inside stay in the menu; a rebuilt grid detaches the clicked icon, which would otherwise read as an outside click
 document.getElementById("menuPanel").addEventListener("click", function (e) {
-  var item = e.target.closest(".menuitem");
-  // Copy link stays open to show "Kopiert", and the bell voice switch so voices can be compared
-  if (item && item.id !== "menuCopyLink" && item.id !== "menuBellVoice")
-    closeMenu();
+  e.stopPropagation();
 });
 document.addEventListener("click", function (e) {
   var panel = document.getElementById("menuPanel");
@@ -7682,16 +7706,6 @@ document
 document
   .getElementById("btnFreeSpeakers")
   .addEventListener("click", openFreeSpeakersModal);
-document.getElementById("themeBtn").addEventListener("click", cycleTheme);
-document
-  .getElementById("menuTimerDisplay")
-  .addEventListener("click", toggleTimerCountUp);
-document
-  .getElementById("menuKeyLabel")
-  .addEventListener("click", toggleKeyGradeFirst);
-document
-  .getElementById("menuBellVoice")
-  .addEventListener("click", toggleBellVoice);
 document.getElementById("undoBtn").addEventListener("click", function () {
   var h = hist.pop();
   if (!h) return;
@@ -7746,9 +7760,6 @@ window.addEventListener("appinstalled", function () {
     document.getElementById("btnInstall").classList.remove("hide");
   }
   applyTheme(LS.get("opd.theme", "light"));
-  applyKeyLabelLabel();
-  applyTimerDisplayLabel();
-  applyBellVoiceLabel();
   // Only an explicit /r/CODE link auto-resumes a session; the bare URL always shows the lobby
   var code = urlCode();
   var sess = code ? LS.get("opd.session." + code, null) : null;

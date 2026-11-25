@@ -241,15 +241,9 @@ body {
   padding: 2px 4px 8px;
 }
 .menubtn {
-  border: 0;
-  background: transparent;
-  color: var(--ink-3);
   font: inherit;
-  font-size: 18px;
   line-height: 1;
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 0px;
 }
 /* Debate timer widget, lives in .bar so it adds no layout height */
 .timerwidget {
@@ -358,25 +352,98 @@ body {
   white-space: nowrap;
   flex: 0 0 auto;
 }
+/* Mobile top bar mirrors the desktop header: a tinted strip with the timer and menu as folder tabs on its bottom rule */
+/* The border-image paints tint and rule out to the screen edges without widening the layout (outset is ink overflow) */
+#app:not(.dashboard-mode) .bar {
+  align-items: flex-end;
+  gap: 6px;
+  margin: -10px 0 10px;
+  /* The 1px bottom padding is where the rule shows; tabs stand on it and a pressed one covers it */
+  padding: 6px 0 1px;
+  border-image: linear-gradient(
+      to top,
+      var(--line) 1px,
+      color-mix(in srgb, var(--ink) 5%, var(--paper)) 1px
+    )
+    fill 0 / 0 / 0 100vw;
+}
+#app:not(.dashboard-mode) .bar .dot {
+  align-self: center;
+}
+#app:not(.dashboard-mode) #cstate {
+  align-self: center;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#app:not(.dashboard-mode) .timerwidget,
+#app:not(.dashboard-mode) .menubtn {
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  border: 1px solid var(--line-2);
+  border-bottom: 0;
+  border-radius: 3px 3px 0 0;
+  background: color-mix(in srgb, var(--ink) 10%, var(--paper));
+  color: var(--ink-2);
+}
+/* Timer tab: icon only while idle, grows to icon + clock + label while a speech runs (state colours from .timerwidget.live etc.) */
 #app:not(.dashboard-mode) .timerwidget {
-  flex: 1 1 auto;
   min-width: 0;
   max-width: none;
+  padding: 4px 10px;
 }
-#app:not(.dashboard-mode) .timerclock {
-  margin-left: auto;
+/* A running timer covers the rule and joins the view below, like a pressed tab */
+#app:not(.dashboard-mode) .timerwidget:not(.idle) {
+  margin-bottom: -1px;
+  padding-bottom: 5px;
 }
-/* The idle clock shows only "Timer", so it needs the auto margin itself to stay centred */
+#app:not(.dashboard-mode) .timerwidget.live {
+  background: var(--ok-bg);
+  color: var(--ok);
+  border-color: var(--ok-line);
+}
+#app:not(.dashboard-mode) .timerwidget.warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+#app:not(.dashboard-mode) .timerwidget.danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+#app:not(.dashboard-mode) .timerwidget .tabicon {
+  display: block;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+}
 #app:not(.dashboard-mode) .timerwidget.idle .timerclock {
-  margin-right: auto;
+  display: none;
 }
 #app:not(.dashboard-mode) .timerlabel {
-  flex: 0 1 auto;
   min-width: 0;
-  margin-right: auto;
 }
-#app:not(.dashboard-mode) .timerwidget:not(.hide) ~ .sp {
-  flex: 0;
+/* Raum tab: wrench icon + "Raum: CODE", replacing the old ⋮ button */
+#app:not(.dashboard-mode) .menubtn {
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+#app:not(.dashboard-mode) .menubtn .tabicon {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+}
+/* Open menu joins its panel below by covering the rule, like a pressed tab */
+#app:not(.dashboard-mode) .menubtn[aria-expanded="true"] {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--line);
+  margin-bottom: -1px;
+  padding-bottom: 5px;
 }
 .timertypes {
   display: flex;
@@ -428,53 +495,37 @@ body {
   width: 1px;
   background: var(--ink-3);
 }
-.menubtn[aria-expanded="true"] {
-  background: var(--live-bg);
-  color: var(--live);
-}
+/* Mobile Raum menu, a folder sheet hanging from the bar's rule like the desktop .roompanel */
 .menupanel {
   position: absolute;
   top: 100%;
   right: 0;
   z-index: 30;
-  display: flex;
-  flex-direction: column;
-  min-width: 180px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 0px;
-  padding: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-}
-.menuwho {
-  font-size: 12px;
-  color: var(--ink-3);
-  padding: 6px 10px 8px;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 4px;
-}
-.menudivider {
-  border: 0;
-  border-top: 1px solid var(--line);
-  margin: 4px 6px;
-}
-.menuitem {
-  display: block;
-  width: 100%;
-  text-align: left;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  font: inherit;
-  font-size: 14px;
-  cursor: pointer;
-  padding: 9px 10px;
-  border-radius: 8px;
-  text-decoration: none;
-}
-.menuitem:hover,
-.menuitem:active {
+  width: 300px;
+  max-width: 100%;
+  max-height: 75vh;
+  overflow-y: auto;
   background: var(--paper);
+  border: 1px solid var(--line);
+  border-top: 0;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+  font-size: 13px;
+}
+.menupanel .settingsgrid {
+  grid-auto-flow: row;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 6px;
+}
+.menupanel .settingsicon .tabicon {
+  width: 44px;
+  height: 44px;
+}
+.menupanel .settingscaption {
+  font-size: 11px;
+}
+.menulinks {
+  border-bottom: 0;
+  text-align: center;
 }
 .dot {
   width: 8px;
@@ -1042,12 +1093,17 @@ p.note {
   line-height: 1.55;
   margin: 12px 0 0;
 }
+/* Mobile nav mirrors the desktop .dashnav upside down: a tinted strip whose top rule the folder tabs hang from */
 .tabs {
   z-index: 20;
-  background: var(--paper);
+  background: color-mix(in srgb, var(--ink) 5%, var(--paper));
   border-top: 1px solid var(--line);
   display: flex;
-  padding: 4px 8px calc(6px + env(safe-area-inset-bottom));
+  align-items: flex-start;
+  gap: 3px;
+  /* Strip spans the full width, side padding keeps the tabs inside the 440px .wrap column */
+  padding: 0 max(8px, calc((100% - 440px) / 2 + 8px))
+    calc(8px + env(safe-area-inset-bottom));
 }
 /* Fixed so the tab bar stays reachable on tall views while the document still scrolls (lets mobile toolbars auto-hide);
    syncDockSpacer() pads .viewport to the bar's height */
@@ -1056,8 +1112,6 @@ p.note {
   left: 0;
   right: 0;
   bottom: 0;
-  max-width: 440px;
-  margin: 0 auto;
   /* Own compositor layer, since some standalone PWAs otherwise fail to repaint this fixed bar after sibling content changes */
   transform: translateZ(0);
 }
@@ -1067,18 +1121,25 @@ p.note {
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  border: 0;
-  background: transparent;
-  color: var(--ink-3);
+  min-width: 0;
+  border: 1px solid var(--line-2);
+  border-top: 0;
+  border-radius: 0 0 3px 3px;
+  background: color-mix(in srgb, var(--ink) 10%, var(--paper));
+  color: var(--ink-2);
   font: inherit;
   font-size: 11px;
   padding: 6px 2px;
-  border-radius: 0px;
   cursor: pointer;
 }
+/* Active tab covers the strip's top rule to join the view above, like a pressed .dashnav tab */
 .tabs button[aria-pressed="true"] {
-  color: var(--live);
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--line);
   font-weight: 600;
+  margin-top: -1px;
+  padding-top: 7px;
 }
 .tabicon {
   width: 21px;
