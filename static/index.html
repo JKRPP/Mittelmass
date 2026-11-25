@@ -375,69 +375,8 @@
             </div>
           </section>
 
-          <section id="v-chair" class="hide">
-            <div class="card" id="chairRoomCard">
-              <h2 class="roomhead">
-                <button
-                  id="chairRoomToggle"
-                  aria-expanded="false"
-                  aria-controls="chairRoomBody"
-                >
-                  <span>Raum <span id="chCode"></span></span
-                  ><span class="roomsum" id="chairRoomSum"></span
-                  ><span class="dedchev" aria-hidden="true">&#9662;</span>
-                </button>
-              </h2>
-              <div id="chairRoomBody" class="hide">
-                <div class="sub">Link zum Teilen</div>
-                <input type="text" id="shareUrl" readonly />
-                <button class="btn ghost" id="btnCopy">Link kopieren</button>
-                <div id="judges" style="margin-top: 14px"></div>
-                <button
-                  class="btn ghost"
-                  id="btnSpreadOpen"
-                  style="margin-top: 14px"
-                >
-                  Spreads freigeben
-                </button>
-                <button
-                  class="btn ghost"
-                  id="btnOfflineJudges"
-                  style="margin-top: 14px"
-                >
-                  Offline-Jurierende
-                </button>
-                <div
-                  id="offlineJudgesWrap"
-                  class="hide"
-                  style="margin-top: 12px"
-                ></div>
-                <button
-                  class="btn ghost"
-                  id="btnFreeSpeakers"
-                  style="margin-top: 14px"
-                >
-                  Anzahl FFRs ändern
-                </button>
-              </div>
-            </div>
-            <div class="card">
-              <h2>Abweichungen - Reden</h2>
-              <div id="totspread"></div>
-            </div>
-            <div class="card">
-              <h2>Abweichungen - Teampunkte</h2>
-              <div id="spread"></div>
-            </div>
-            <div class="card" id="chairFinalCard">
-              <h2>Endergebnis</h2>
-              <div id="finalResult"></div>
-              <button class="btn ghost" id="btnBallot">
-                Ballot anzeigen / übermitteln
-              </button>
-              <div id="ballotWrap" class="hide" style="margin-top: 12px"></div>
-            </div>
-          </section>
+          <!-- Built by renderChair: folder tabs for the chair, spread tables only for wings -->
+          <section id="v-chair" class="hide"></section>
 
           <section id="v-opentabm" class="hide"></section>
 

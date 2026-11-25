@@ -1894,9 +1894,8 @@ function resetRoomState() {
   // Reset server-owned room settings so the next room doesn't briefly show this one's
   spreadOpen = false;
   freeSpeakerCount = 3;
-  // Reset per-room view state (expanded spreads, dashboard selection, open ballot)
+  // Reset per-room view state (expanded spreads, dashboard selection)
   openSpread = {};
-  ballotOpen = false;
   dashboardSelected = { kind: "speaker", s: 0 };
   dashIncludeTrainees = false;
   lastFocusByView = {};
@@ -2468,6 +2467,16 @@ function renderTeam() {
     .classList.toggle("hide", thist.length === 0);
 }
 
+// Phone-width wording for speech and team labels, e.g. "Eröff. Reg", "Opp - Strategie"
+function shortLabel(text) {
+  return text
+    .replace("Eröffnungsrede", "Eröff.")
+    .replace("Ergänzungsrede", "Ergän.")
+    .replace("Schlussrede", "Schluss")
+    .replace("Fraktionsfreie Rede", "FFR")
+    .replace("Regierung", "Reg")
+    .replace("Opposition", "Opp");
+}
 // Read-only mobile counterpart of the desktop Komplette Wertung tables (same schnellgrid look, short headers)
 function renderMatrix() {
   var h = [
@@ -2480,13 +2489,7 @@ function renderMatrix() {
   h.push('<th class="schnellsum">Σ</th></tr>');
   activeSpeakerIndices().forEach(function (s) {
     var sp = SPEAKERS[s];
-    var lbl = sp.label
-      .replace("Eröffnungsrede", "Eröff.")
-      .replace("Ergänzungsrede", "Ergän.")
-      .replace("Schlussrede", "Schluss")
-      .replace("Fraktionsfreie Rede", "FFR")
-      .replace("Regierung", "Reg")
-      .replace("Opposition", "Opp");
+    var lbl = shortLabel(sp.label);
     // The name goes on a second line so the criteria columns keep their width
     var nm = getName(s);
     h.push(
@@ -2550,10 +2553,7 @@ function renderMatrix() {
 
 // Chair
 var openSpread = {};
-var ballotOpen = false;
 var offlineJudgesOpen = false;
-// The mobile chair room card starts collapsed so the spreads come first
-var chairRoomOpen = false;
 var spreadOpen = false;
 // Room-wide results (spreads, dashboard, averages) are for the chair, or everyone once the chair shares them
 function canSeeRoomResults() {
@@ -2887,10 +2887,10 @@ function computeChairSummary(includeHidden) {
   };
 }
 
-// Speaker and team result tables for the mobile Endergebnis and the desktop result panel
+// Speaker and team result tables for the mobile Chair's Ergebnis tab, in the schnellgrid look
 function finalResultHTML(summary) {
   var fh = [
-    '<table class="finalTbl"><tr><th class="l">Redner:in</th><th>Ø Punkte</th></tr>',
+    '<table class="schnelltable schnellgrid finalTbl"><tr><th class="l">Redner:in</th><th class="schnellsum schnellgstart">Ø Punkte</th></tr>',
   ];
   summary.speakerRows.forEach(function (r, s) {
     if (!isActiveSpeaker(s)) return;
@@ -2898,11 +2898,12 @@ function finalResultHTML(summary) {
     fh.push(
       '<tr class="' +
         (deductionPoints(s) ? "deducted" : "") +
-        '"><td class="l' +
+        '"><td class="l ' +
+        teamClass(SPEAKERS[s].team) +
         (isBest ? " best" : "") +
         '">' +
-        esc(r.label) +
-        '</td><td class="' +
+        esc(shortLabel(r.label)) +
+        '</td><td class="schnellsum schnellgstart ' +
         (r.avg === null ? "mt" : "tot") +
         (isBest ? " best" : "") +
         '">' +
@@ -2912,9 +2913,9 @@ function finalResultHTML(summary) {
   });
 
   fh.push(
-    '</table><table class="finalTbl" style="margin-top:14px"><tr><th class="l">Team</th><th>Ø Team</th><th>Gesamt</th></tr>',
+    '</table><table class="schnelltable schnellgrid finalTbl"><tr><th class="l">Team</th><th>Ø Team</th><th class="schnellsum schnellgstart">Gesamt</th></tr>',
   );
-  summary.teamRows.forEach(function (r) {
+  summary.teamRows.forEach(function (r, t) {
     var isBest =
       summary.teamsComparable &&
       r.grand !== null &&
@@ -2922,7 +2923,8 @@ function finalResultHTML(summary) {
     var grandLabel =
       r.grand === null ? "-" : r.grand.toFixed(1) + (r.partial ? " *" : "");
     fh.push(
-      '<tr><td class="l' +
+      '<tr><td class="l ' +
+        teamClass(t) +
         (isBest ? " best" : "") +
         '">' +
         esc(r.label) +
@@ -2930,7 +2932,7 @@ function finalResultHTML(summary) {
         (r.teamAvg === null ? "mt" : "") +
         '">' +
         (r.teamAvg === null ? "-" : r.teamAvg.toFixed(1)) +
-        '</td><td class="' +
+        '</td><td class="schnellsum schnellgstart ' +
         (r.grand === null ? "mt" : "tot") +
         (isBest ? " best" : "") +
         '">' +
@@ -2951,7 +2953,8 @@ function ballotSepRow(ncols) {
   return tr;
 }
 
-function fullBallotTable(summary) {
+// short: phone-width speech labels (mobile Chair's Ballot tab); team classes only colour names inside the mobile views
+function fullBallotTable(summary, short) {
   var chairFirst = chairFirstIds(summary.ids);
   var ncols = chairFirst.length + 2;
   var table = el("table", "ballottable");
@@ -2967,7 +2970,13 @@ function fullBallotTable(summary) {
   var speakerMeta = [];
   activeSpeakerIndices().forEach(function (s) {
     var tr = el("tr", deductionLevel(s) ? "deducted" : null);
-    tr.appendChild(el("td", "l", speakerLabel(s)));
+    tr.appendChild(
+      el(
+        "td",
+        "l " + teamClass(SPEAKERS[s].team),
+        short ? shortLabel(speakerLabel(s)) : speakerLabel(s),
+      ),
+    );
     var vals = [],
       tds = [];
     chairFirst.forEach(function (id) {
@@ -2993,7 +3002,7 @@ function fullBallotTable(summary) {
   TEAMS.forEach(function (tm, t) {
     var tr = el("tr");
     var teamAbbr = tm.replace("Regierung", "Reg").replace("Opposition", "Opp");
-    tr.appendChild(el("td", "l tot", "Teampunkte " + teamAbbr));
+    tr.appendChild(el("td", "l tot " + teamClass(t), "Teampunkte " + teamAbbr));
     var vals = [];
     chairFirst.forEach(function (id) {
       var entered = summary.teamEntered(id, t);
@@ -3014,7 +3023,7 @@ function fullBallotTable(summary) {
     var teamSpeakers = speakersOfTeam(t);
     var tr = el("tr", "grandtot");
     var teamAbbr = tm.replace("Regierung", "Reg").replace("Opposition", "Opp");
-    tr.appendChild(el("td", "l tot", "Gesamt " + teamAbbr));
+    tr.appendChild(el("td", "l tot " + teamClass(t), "Gesamt " + teamAbbr));
     var vals = [],
       tds = [];
     chairFirst.forEach(function (id) {
@@ -3092,205 +3101,259 @@ function markColumnBest(rows, ncols) {
   }
 }
 
-function renderChair() {
-  document
-    .getElementById("chairRoomCard")
-    .classList.toggle("hide", !ME.is_chair);
-  document
-    .getElementById("chairFinalCard")
-    .classList.toggle("hide", !ME.is_chair);
-
+// Mobile spread grid (Rede/Team | Ø | n | ±), largest spread first; a tap opens the criteria breakdown as a row below
+function chairSpreadTable(rows, headLabel, teamOfRow, detailCells) {
+  var table = el("table", "schnelltable schnellgrid chairspreads");
+  var head = el("tr");
+  head.appendChild(el("th", "l", headLabel));
+  head.appendChild(el("th", null, "Ø"));
+  head.appendChild(el("th", null, "n"));
+  head.appendChild(el("th", "schnellsum schnellgstart", "±"));
+  table.appendChild(head);
+  rows.forEach(function (c) {
+    var open = !!openSpread[c.key];
+    var tr = el("tr", "chairspreadrow" + (c.spread >= 5 ? " hot" : ""));
+    var lbl = el("td", "l " + teamClass(teamOfRow(c)));
+    lbl.appendChild(el("span", "dashcaret", open ? "▾" : "▸"));
+    lbl.appendChild(document.createTextNode(shortLabel(c.label)));
+    tr.appendChild(lbl);
+    tr.appendChild(el("td", null, c.avg.toFixed(1).replace(".", ",")));
+    tr.appendChild(el("td", "mt", String(c.n)));
+    tr.appendChild(el("td", "tot schnellsum schnellgstart", String(c.spread)));
+    tr.addEventListener("click", function () {
+      openSpread[c.key] = !openSpread[c.key];
+      renderChair();
+    });
+    table.appendChild(tr);
+    if (open) {
+      var dtr = el("tr", "chairspreaddetail");
+      var dtd = el("td");
+      dtd.setAttribute("colspan", "4");
+      dtd.appendChild(spreadDetailTable(c, detailCells(c)));
+      dtr.appendChild(dtd);
+      table.appendChild(dtr);
+    }
+  });
+  return table;
+}
+// Spreads for speeches and team groups; the chair also gets the Freigeben switch on top
+function chairSpreadsSection(summary) {
+  var wrap = el("div");
   if (ME.is_chair) {
-    document.getElementById("chCode").textContent = ME.code;
-    var peerIds = Object.keys(peers);
-    var onlineCount = peerIds.filter(function (id) {
-      return peers[id].online;
-    }).length;
-    document.getElementById("chairRoomSum").textContent =
-      peerIds.length +
-      Object.keys(offlineJudges).length +
-      " Jurierende · " +
-      onlineCount +
-      " online";
-    document
-      .getElementById("chairRoomBody")
-      .classList.toggle("hide", !chairRoomOpen);
-    document
-      .getElementById("chairRoomToggle")
-      .setAttribute("aria-expanded", String(chairRoomOpen));
-    var url = location.origin + "/r/" + ME.code;
-    document.getElementById("shareUrl").value = url;
-
-    var spb = document.getElementById("btnSpreadOpen");
-    spb.textContent = spreadOpen ? "Spreads sperren" : "Spreads freigeben";
-    spb.classList.toggle("on", spreadOpen);
-
-    var jh = document.getElementById("judges");
-    jh.innerHTML = "";
-    Object.keys(peers).forEach(function (id) {
-      var j = peers[id];
-      var row = el("div", "jrow");
-      var dot = el("span", "dot " + (j.online ? "on" : "off"));
-      row.appendChild(dot);
-      row.appendChild(
-        el(
-          "span",
-          "n",
-          j.name +
-            (j.is_chair ? " - Chair" : "") +
-            (j.hidden ? " - (Trainee)" : ""),
-        ),
-      );
-      row.appendChild(el("span", "p", j.filled + " / " + expectedCellCount()));
-      if (!j.is_chair) {
-        var x = el("button", "x", j.hidden ? "Zu Wing" : "Zu Trainee");
-        x.addEventListener("click", function () {
-          confirmHiddenToggle(id, j.name, !j.hidden);
-        });
-        row.appendChild(x);
-      }
-      jh.appendChild(row);
-    });
-    Object.keys(offlineJudges).forEach(function (id) {
-      var j = offlineJudges[id];
-      var row = el("div", "jrow");
-      row.appendChild(el("span", "dot off"));
-      row.appendChild(
-        el(
-          "span",
-          "n",
-          j.name + " - Offline" + (j.hidden ? " - (Trainee)" : ""),
-        ),
-      );
-      row.appendChild(
-        el(
-          "span",
-          "p",
-          offlineFilledCount(id) + " / " + offlineExpectedCellCount(),
-        ),
-      );
-      var x = el("button", "x", j.hidden ? "Zu Wing" : "Zu Trainee");
-      x.addEventListener("click", function () {
-        confirmHiddenToggle(OFFLINE_ID_PREFIX + id, j.name, !j.hidden);
-      });
-      row.appendChild(x);
-      jh.appendChild(row);
-    });
-
-    var ojb = document.getElementById("btnOfflineJudges");
-    ojb.textContent = offlineJudgesOpen
-      ? "Offline-Jurierende ausblenden"
-      : "Offline-Jurierende";
-    var ojWrap = document.getElementById("offlineJudgesWrap");
-    ojWrap.classList.toggle("hide", !offlineJudgesOpen);
-    // Don't rebuild this list mid-edit on a remote update
-    if (offlineJudgesOpen && !dashEditGuard(ojWrap))
-      buildOfflineJuryTable(ojWrap);
+    var rel = el(
+      "button",
+      "btn ghost chairrelease" + (spreadOpen ? " on" : ""),
+      spreadOpen
+        ? "Dashboard für Wings sperren"
+        : "Dashboard für Wings freigeben",
+    );
+    rel.type = "button";
+    rel.addEventListener("click", toggleSpreadOpen);
+    wrap.appendChild(rel);
   }
-
-  var summary = computeChairSummary();
-  var cells = summary.cells,
-    groupCells = summary.groupCells,
-    totals = summary.totals;
-
-  var th = document.getElementById("totspread");
-  th.innerHTML = "";
-  if (!totals.length) {
-    th.appendChild(
+  var cells = summary.cells;
+  wrap.appendChild(el("h2", "chairsubhead", "Abweichungen - Reden"));
+  if (!summary.totals.length) {
+    wrap.appendChild(
       el("p", "note", "Noch keine zwei vollständig bewerteten Reden."),
     );
   } else {
-    totals.forEach(function (c) {
-      var grp = el("div", "totgrp");
-      var row = el("div", "totrow" + (c.spread >= 5 ? " hot" : ""));
-      row.appendChild(el("span", "lb", c.label));
-      row.appendChild(
-        el("span", "sv", "ø " + c.avg.toFixed(1) + " - n " + c.n),
-      );
-      row.appendChild(el("span", "big", "±" + c.spread));
-      grp.appendChild(row);
-      var wrap = el("div", "bkwrap");
-      wrap.style.display = openSpread[c.key] ? "block" : "none";
-      wrap.appendChild(
-        spreadDetailTable(
-          c,
-          cells.filter(function (x) {
+    wrap.appendChild(
+      chairSpreadTable(
+        summary.totals,
+        "Rede",
+        function (c) {
+          return SPEAKERS[+c.key.slice(1)].team;
+        },
+        function (c) {
+          return cells.filter(function (x) {
             return x.key.indexOf(c.key + "/") === 0;
-          }),
-        ),
-      );
-      grp.appendChild(wrap);
-      th.appendChild(grp);
-      row.addEventListener("click", function () {
-        openSpread[c.key] = !openSpread[c.key];
-        renderChair();
-      });
-    });
+          });
+        },
+      ),
+    );
   }
-
-  // Team spread rows, one per category group, tap to drill in like a speech row
-  var sh = document.getElementById("spread");
-  sh.innerHTML = "";
-  if (!groupCells.length) {
-    sh.appendChild(
-      el("p", "note", "Noch keine zwei Vollständigen Teampunkte."),
+  wrap.appendChild(el("h2", "chairsubhead", "Abweichungen - Teampunkte"));
+  if (!summary.groupCells.length) {
+    wrap.appendChild(
+      el("p", "note", "Noch keine zwei vollständigen Teampunkte."),
     );
   } else {
-    groupCells.forEach(function (c) {
-      var grp = el("div", "totgrp");
-      var row = el("div", "totrow" + (c.spread >= 5 ? " hot" : ""));
-      row.appendChild(el("span", "lb", c.label));
-      row.appendChild(
-        el("span", "sv", "ø " + c.avg.toFixed(1) + " - n " + c.n),
-      );
-      row.appendChild(el("span", "big", "±" + c.spread));
-      grp.appendChild(row);
-
-      var wrap = el("div", "bkwrap");
-      wrap.style.display = openSpread[c.key] ? "block" : "none";
-      // Categories with fewer than 2 judges have no cell
-      var catCells = cells.filter(function (x) {
-        return c.catKeys.indexOf(x.key) !== -1;
-      });
-      catCells.sort(function (a, b) {
-        return c.catKeys.indexOf(a.key) - c.catKeys.indexOf(b.key);
-      });
-      wrap.appendChild(spreadDetailTable(c, catCells));
-      grp.appendChild(wrap);
-      sh.appendChild(grp);
-
-      row.addEventListener("click", function () {
-        openSpread[c.key] = !openSpread[c.key];
-        renderChair();
-      });
-    });
+    wrap.appendChild(
+      chairSpreadTable(
+        summary.groupCells,
+        "Team",
+        function (c) {
+          return +c.key.charAt(1);
+        },
+        // Categories with fewer than 2 judges have no cell
+        function (c) {
+          return cells
+            .filter(function (x) {
+              return c.catKeys.indexOf(x.key) !== -1;
+            })
+            .sort(function (a, b) {
+              return c.catKeys.indexOf(a.key) - c.catKeys.indexOf(b.key);
+            });
+        },
+      ),
+    );
   }
-
-  // Full result overview
-  document.getElementById("finalResult").innerHTML = finalResultHTML(summary);
-
-  // Ballot: one column per adjudicator (chair first), in speaking order
-  var btnBallot = document.getElementById("btnBallot");
-  btnBallot.textContent = ballotOpen
-    ? "Ballot ausblenden"
-    : "Ballot anzeigen / übermitteln";
-  var ballotWrap = document.getElementById("ballotWrap");
-  ballotWrap.classList.toggle("hide", !ballotOpen);
-  if (ballotOpen) {
-    var scrollHost = el("div");
-    scrollHost.style.overflowX = "auto";
-    scrollHost.appendChild(fullBallotTable(summary));
-    ballotWrap.innerHTML = "";
-    ballotWrap.appendChild(scrollHost);
-    var otSwitchBtn = el("button", "btn ghost", "Zu OpenTab wechseln");
-    otSwitchBtn.type = "button";
-    otSwitchBtn.style.marginTop = "10px";
-    otSwitchBtn.addEventListener("click", function () {
-      showView("opentabm");
-      render();
+  return wrap;
+}
+// One jury table row: online dot + name, Chair/Wing/Trainee, filled count, and the chair's Wing/Trainee switch
+function chairJuryRow(spec) {
+  var tr = el("tr");
+  var name = el("td", "l");
+  name.appendChild(el("span", "dot " + (spec.online ? "on" : "off")));
+  name.appendChild(document.createTextNode(" " + spec.name));
+  if (spec.offline) name.appendChild(el("span", "matrixname", "Offline"));
+  tr.appendChild(name);
+  tr.appendChild(
+    el(
+      "td",
+      spec.hidden ? "mt" : null,
+      spec.isChair ? "Chair" : spec.hidden ? "Trainee" : "Wing",
+    ),
+  );
+  tr.appendChild(
+    el(
+      "td",
+      "schnellsum schnellgstart" + (spec.filled < spec.expected ? " mt" : ""),
+      spec.filled + "/" + spec.expected,
+    ),
+  );
+  var act = el("td");
+  if (!spec.isChair) {
+    var b = el("button", "x", spec.hidden ? "Zu Wing" : "Zu Trainee");
+    b.type = "button";
+    b.addEventListener("click", function () {
+      confirmHiddenToggle(spec.id, spec.name, !spec.hidden);
     });
-    ballotWrap.appendChild(otSwitchBtn);
+    act.appendChild(b);
   }
+  tr.appendChild(act);
+  return tr;
+}
+function chairJurySection() {
+  var wrap = el("div");
+  var table = el("table", "schnelltable schnellgrid chairjury");
+  var head = el("tr");
+  head.appendChild(el("th", "l", "Name"));
+  head.appendChild(el("th", null, "Status"));
+  head.appendChild(el("th", "schnellsum schnellgstart", "Stand"));
+  head.appendChild(el("th", null, "Aktionen"));
+  table.appendChild(head);
+  Object.keys(peers).forEach(function (id) {
+    var j = peers[id];
+    table.appendChild(
+      chairJuryRow({
+        id: id,
+        name: j.name,
+        online: j.online,
+        isChair: j.is_chair,
+        hidden: j.hidden,
+        filled: j.filled,
+        expected: expectedCellCount(),
+      }),
+    );
+  });
+  Object.keys(offlineJudges).forEach(function (id) {
+    var j = offlineJudges[id];
+    table.appendChild(
+      chairJuryRow({
+        id: OFFLINE_ID_PREFIX + id,
+        name: j.name,
+        online: false,
+        offline: true,
+        hidden: j.hidden,
+        filled: offlineFilledCount(id),
+        expected: offlineExpectedCellCount(),
+      }),
+    );
+  });
+  wrap.appendChild(table);
+
+  var ojb = el(
+    "button",
+    "btn ghost",
+    offlineJudgesOpen ? "Offline-Jurierende ausblenden" : "Offline-Jurierende",
+  );
+  ojb.type = "button";
+  ojb.addEventListener("click", function () {
+    offlineJudgesOpen = !offlineJudgesOpen;
+    render();
+  });
+  wrap.appendChild(ojb);
+  if (offlineJudgesOpen) {
+    var ojWrap = el("div", "chairofflinewrap");
+    buildOfflineJuryTable(ojWrap);
+    wrap.appendChild(ojWrap);
+  }
+  var ffr = el("button", "btn ghost", "Anzahl FFRs ändern");
+  ffr.type = "button";
+  ffr.addEventListener("click", openFreeSpeakersModal);
+  wrap.appendChild(ffr);
+  return wrap;
+}
+// Mobile Chair tab: folder tabs (Spreads, Ergebnis, Ballot, Jury) for the chair; wings with released spreads see only the spreads
+function renderChair() {
+  var root = document.getElementById("v-chair");
+  // The Jury tab's offline score fields would lose focus on a rebuild
+  if (dashEditGuard(root)) return;
+  var summary = computeChairSummary();
+  root.innerHTML = "";
+  if (!ME.is_chair) {
+    root.appendChild(chairSpreadsSection(summary));
+    return;
+  }
+  root.appendChild(
+    dashTabbedSheet(
+      "chairm",
+      [
+        {
+          key: "spreads",
+          label: "Spreads",
+          build: function () {
+            return chairSpreadsSection(summary);
+          },
+        },
+        {
+          key: "result",
+          label: "Ergebnis",
+          build: function () {
+            var d = el("div");
+            d.innerHTML = finalResultHTML(summary);
+            return d;
+          },
+        },
+        {
+          key: "ballot",
+          label: "Ballot",
+          build: function () {
+            var d = el("div");
+            var scrollHost = el("div");
+            scrollHost.style.overflowX = "auto";
+            var ballot = fullBallotTable(summary, true);
+            ballot.classList.add("schnelltable", "schnellgrid");
+            scrollHost.appendChild(ballot);
+            d.appendChild(scrollHost);
+            var ot = el("button", "btn ghost", "Zu OpenTab wechseln");
+            ot.type = "button";
+            ot.addEventListener("click", function () {
+              showView("opentabm");
+              render();
+            });
+            d.appendChild(ot);
+            return d;
+          },
+        },
+        { key: "jury", label: "Jury", build: chairJurySection },
+      ],
+      null,
+      renderChair,
+    ),
+  );
 }
 
 // Desktop layout for any judge above isDesktopWidth(); only the Dashboard view is chair-only,
@@ -3909,23 +3972,25 @@ function dashFreigebenButton() {
   dob.title = spreadOpen
     ? "Wings verlieren wieder den Zugriff auf das Dashboard"
     : "Wings erhalten Lesezugriff auf das Dashboard (Spreads und Ballot)";
-  dob.addEventListener("click", function () {
-    var next = !spreadOpen;
-    fetch(
-      "/api/rooms/" +
-        ME.code +
-        "/spread_open?open=" +
-        next +
-        "&token=" +
-        encodeURIComponent(ME.token),
-      { method: "POST" },
-    ).then(function () {
-      spreadOpen = next;
-      updateChairTab();
-      render();
-    });
-  });
+  dob.addEventListener("click", toggleSpreadOpen);
   return dob;
+}
+// Chair-only: releases or locks the spreads for wings (desktop Freigeben tab and the mobile Spreads tab)
+function toggleSpreadOpen() {
+  var next = !spreadOpen;
+  fetch(
+    "/api/rooms/" +
+      ME.code +
+      "/spread_open?open=" +
+      next +
+      "&token=" +
+      encodeURIComponent(ME.token),
+    { method: "POST" },
+  ).then(function () {
+    spreadOpen = next;
+    updateChairTab();
+    render();
+  });
 }
 
 // Builds a desktop view as folder-tabbed sections, remembering the open tab per view;
@@ -6178,7 +6243,7 @@ function renderNotes() {
   root.appendChild(wrap);
 }
 
-// Mobile "Namen" tab: name inputs in speaking order
+// Mobile "Namen" tab: the desktop room layout (facing teams, Fraktionsfrei below) without the Jury card
 function renderNamen() {
   var list = document.getElementById("namenList");
   if (!list) return;
@@ -6186,11 +6251,7 @@ function renderNamen() {
   if (title && ME) title.textContent = "Raum " + ME.code;
   if (dashEditGuard(list)) return;
   list.innerHTML = "";
-  activeSpeakerIndices().forEach(function (s) {
-    var seat = namenSeat(s, SPEAKERS[s].label);
-    setTeamAccent(seat.querySelector(".slbl"), teamOf(s));
-    list.appendChild(seat);
-  });
+  list.appendChild(namenStage());
 }
 
 // One seat: a label and a name input, tab order following speaking order
@@ -6209,23 +6270,8 @@ function namenSeat(s, label) {
   return seat;
 }
 
-// Desktop "Namen" view laid out like the room: facing team tables, Fraktionsfrei and Jury below
-function renderNamenRoom() {
-  var root = document.getElementById("v-namenroom");
-  if (!root) return;
-  if (dashEditGuard(root)) return;
-  root.innerHTML = "";
-
-  var wrap = el("div", "roomview");
-  wrap.appendChild(el("h1", "roomtitle", "Raum " + ME.code));
-  wrap.appendChild(
-    el(
-      "p",
-      "sub",
-      "Namen sind optional, werden nur lokal gespeichert und nicht synchronisiert.",
-    ),
-  );
-
+// Room layout shared by desktop and mobile Namen: Regierung and Opposition facing, Fraktionsfrei below
+function namenStage() {
   var stage = el("div", "roomstage");
   var gov = el("div", "namenside gov team-gov");
   gov.appendChild(el("div", "namensidehead", "Regierung"));
@@ -6264,7 +6310,27 @@ function renderNamenRoom() {
     free.appendChild(freeCountBtn);
   }
   stage.appendChild(free);
+  return stage;
+}
 
+// Desktop "Namen" view laid out like the room: facing team tables, Fraktionsfrei and Jury below
+function renderNamenRoom() {
+  var root = document.getElementById("v-namenroom");
+  if (!root) return;
+  if (dashEditGuard(root)) return;
+  root.innerHTML = "";
+
+  var wrap = el("div", "roomview");
+  wrap.appendChild(el("h1", "roomtitle", "Raum " + ME.code));
+  wrap.appendChild(
+    el(
+      "p",
+      "sub",
+      "Namen sind optional, werden nur lokal gespeichert und nicht synchronisiert.",
+    ),
+  );
+
+  var stage = namenStage();
   var jury = el("div", "roomtable jury");
   jury.appendChild(el("div", "tname", "Jury"));
   Object.keys(peers).forEach(function (id) {
@@ -6335,40 +6401,40 @@ function renderNamenRoom() {
   root.appendChild(wrap);
 }
 
-// Desktop name card: namenSeat restyled as a team-banded card; Enter jumps to the next speech
+// Name card: namenSeat restyled as a team-banded card; Enter jumps to the next speech within the same stage
 function namenCard(s, label) {
   var card = namenSeat(s, label);
   card.classList.add("namecard");
   setTeamAccent(card, teamOf(s));
   card.setAttribute("data-s", s);
   var input = card.querySelector("input");
+  // Phone keyboards show "next" instead of a return key
+  input.enterKeyHint = "next";
   input.addEventListener("focus", function () {
-    namenFocus(s);
+    namenFocus(card.closest(".roomstage"), s);
   });
   input.addEventListener("blur", function () {
-    namenFocus(-1);
+    namenFocus(card.closest(".roomstage"), -1);
   });
   input.addEventListener("keydown", function (e) {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    var next = namenCardInput(nextActiveSpeaker(s));
+    var stage = card.closest(".roomstage");
+    var next =
+      stage &&
+      stage.querySelector(
+        '.namecard[data-s="' + nextActiveSpeaker(s) + '"] input',
+      );
     if (next) next.focus();
     else input.blur();
   });
   return card;
 }
-function namenCardInput(s) {
-  return document.querySelector(
-    '#v-namenroom .namecard[data-s="' + s + '"] input',
-  );
-}
-// Marks the focused card and the next speech with an arrow between them (-1 clears)
-function namenFocus(s) {
-  var root = document.getElementById("v-namenroom");
-  var stage = root.querySelector(".roomstage");
+// Marks the focused card and the next speech in stage with an arrow between them (-1 clears)
+function namenFocus(stage, s) {
   if (!stage) return;
   var n = s < 0 ? -1 : nextActiveSpeaker(s);
-  [].forEach.call(root.querySelectorAll(".namecard"), function (c) {
+  [].forEach.call(stage.querySelectorAll(".namecard"), function (c) {
     var k = +c.getAttribute("data-s");
     c.classList.toggle("is-focus", k === s);
     c.classList.toggle("is-next", k === n);
@@ -7454,30 +7520,12 @@ function copyRoomLink(btn, url) {
     function () {},
   );
 }
-document.getElementById("btnCopy").addEventListener("click", function () {
-  copyRoomLink(this, document.getElementById("shareUrl").value);
-});
 function resetBlattColWidths() {
   try {
     localStorage.removeItem("blattColWidths");
   } catch (e) {}
   render();
 }
-document.getElementById("btnSpreadOpen").addEventListener("click", function () {
-  var next = !spreadOpen;
-  fetch(
-    "/api/rooms/" +
-      ME.code +
-      "/spread_open?open=" +
-      next +
-      "&token=" +
-      encodeURIComponent(ME.token),
-    { method: "POST" },
-  ).then(function () {
-    spreadOpen = next;
-    render();
-  });
-});
 
 function showView(v) {
   view = v;
@@ -7704,25 +7752,6 @@ window.addEventListener("popstate", function () {
     showLobby();
   }
 });
-document
-  .getElementById("chairRoomToggle")
-  .addEventListener("click", function () {
-    chairRoomOpen = !chairRoomOpen;
-    render();
-  });
-document.getElementById("btnBallot").addEventListener("click", function () {
-  ballotOpen = !ballotOpen;
-  render();
-});
-document
-  .getElementById("btnOfflineJudges")
-  .addEventListener("click", function () {
-    offlineJudgesOpen = !offlineJudgesOpen;
-    render();
-  });
-document
-  .getElementById("btnFreeSpeakers")
-  .addEventListener("click", openFreeSpeakersModal);
 document.getElementById("undoBtn").addEventListener("click", function () {
   var h = hist.pop();
   if (!h) return;
