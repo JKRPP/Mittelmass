@@ -1482,15 +1482,80 @@ body.althints [data-hint]::after {
   padding: 2px 0;
   cursor: pointer;
 }
-/* Settings view (renderSettings): rows reuse .gradeinputrow */
-.settingswrap {
-  max-width: 640px;
+/* Info tab (buildInfoSection): the shortcut column is capped so Über stays near it, not at the far edge */
+.infocols {
+  display: grid;
+  grid-template-columns: minmax(0, 620px) minmax(0, 300px);
+  gap: 0 56px;
+  align-items: start;
 }
-.settingswrap .btn {
-  width: auto;
-  margin: 0;
-  padding: 6px 14px;
+.infocredit {
   font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.infocredit p,
+.infocredit ul {
+  margin: 0 0 10px;
+}
+.infocredit ul {
+  padding-left: 18px;
+}
+.infocredit .settingslinks {
+  margin-top: 14px;
+}
+/* Allgemein tab: bare clickable icons showing the current setting, caption underneath */
+.settingsgrid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 120px);
+  justify-content: center;
+  gap: 14px;
+  align-items: start;
+}
+.settingsicon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  background: none;
+  border: none;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.settingsicon .tabicon {
+  width: 56px;
+  height: 56px;
+  transition: transform 0.1s;
+}
+.settingsicon:hover .tabicon {
+  transform: scale(1.08);
+}
+.settingsicon:active .tabicon {
+  transform: scale(0.95);
+}
+.settingscaption {
+  font-size: 12px;
+  color: var(--ink-3);
+  text-align: center;
+}
+/* Export view's Notizen buttons: larger .settingsicon; drawn with an 8px pen on 400px, so thinner strokes */
+.exportoptions {
+  display: flex;
+  justify-content: center;
+  gap: 72px;
+  margin-top: 16px;
+}
+.exportoption .tabicon {
+  width: 200px;
+  height: 200px;
+  stroke-width: 0.41;
+}
+.exportoption .settingscaption {
+  font-size: 14px;
+  color: var(--ink);
 }
 .settingslinks {
   display: flex;
@@ -2769,15 +2834,11 @@ select {
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
-.featurerow {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-}
-.featurename {
-  color: var(--ink) !important;
-  font-size: 13px !important;
-  font-weight: 500;
+/* Each Info column's heading sits at the top, with no divider above it */
+.shortcutsub:first-child {
+  margin-top: 0 !important;
+  padding-top: 0;
+  border-top: none;
 }
 .modalactions {
   display: flex;
@@ -2799,30 +2860,6 @@ select {
   border: 1px solid var(--line-2);
   border-radius: var(--radius);
   margin: 4px 0 10px;
-}
-.gradeinputrow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 0;
-  border-top: 1px solid var(--line);
-}
-.gradeinputrow:first-of-type {
-  border-top: none;
-}
-.gradeinputlbl {
-  font-size: 13px;
-  color: var(--ink-3);
-}
-.gradeinputopts {
-  display: flex;
-  gap: 6px;
-}
-.gradeinputopts .btn.on {
-  color: var(--warn);
-  border-color: var(--warn);
-  font-weight: 500;
 }
 
 /* Printable feedback sheet (buildPrintSheet), shown only when printing */

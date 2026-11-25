@@ -1980,39 +1980,6 @@ function toggleBellVoice() {
   applyBellVoiceLabel();
   testBell();
 }
-// Settings row: label plus one button per choice, the current one marked .on; choices: [{label, value}]
-function choiceRow(label, choices, current, onPick) {
-  var row = el("div", "gradeinputrow");
-  row.appendChild(el("div", "gradeinputlbl", label));
-  var opts = el("div", "gradeinputopts");
-  choices.forEach(function (c) {
-    var btn = el("button", "btn ghost", c.label);
-    btn.type = "button";
-    btn.tabIndex = -1;
-    btn.classList.toggle("on", c.value === current);
-    btn.addEventListener("click", function () {
-      onPick(c.value);
-    });
-    opts.appendChild(btn);
-  });
-  row.appendChild(opts);
-  return row;
-}
-function gradeInputModeRow(label, kind) {
-  return choiceRow(
-    label,
-    [
-      { label: "Punkte", value: false },
-      { label: "Noten", value: true },
-    ],
-    gradeInputMode(kind),
-    function (on) {
-      setGradeInputMode(kind, on);
-      render();
-    },
-  );
-}
-
 // Resumes a session when a judge reconnects
 function resume() {
   if (!ME) return;
@@ -3383,7 +3350,6 @@ function effectiveDashboardView() {
     (!ME.is_chair || !Object.keys(offlineJudges).length)
   )
     return "schnell";
-  if (dashboardView === "opentab" && !ME.is_chair) return "schnell";
   if (
     dashboardView === "matrix" ||
     dashboardView === "sheet" ||
@@ -3494,12 +3460,6 @@ function renderDashChrome() {
       );
     },
   );
-  [].forEach.call(
-    document.querySelectorAll('#dashNav button[data-dv="opentab"]'),
-    function (b) {
-      b.classList.toggle("hide", !ME.is_chair);
-    },
-  );
 
   // Show each visible tab's Alt+number shortcut in its tooltip; data-tip keeps the original title
   var visibleTabs = [].filter.call(
@@ -3557,7 +3517,7 @@ function visibleJudgeCount() {
   return online + offline;
 }
 
-// Room panel below the Raum tab: room and link, the jury (chairs only, as .jrow rows), and leaving.
+// Room panel below the Raum tab: room code and link, the jury (chairs only, as .jrow rows), and leaving
 // Fixed to the body rather than inside .bar, so it isn't clipped and stays put while the bar is rebuilt
 function ensureRoomPanel() {
   var p = document.getElementById("roomPanel");
@@ -3578,13 +3538,7 @@ function renderRoomPanel() {
   var room = el("div", "roomsec");
   room.appendChild(el("div", "roomlbl", "Raum"));
   var line = el("div", "roomline");
-  line.appendChild(
-    el(
-      "span",
-      null,
-      ME.code + " · " + ME.name + (ME.is_chair ? " (Chair)" : ""),
-    ),
-  );
+  line.appendChild(el("span", null, ME.code));
   var copy = el("button", "btn ghost roombtn", "Link kopieren");
   copy.type = "button";
   copy.tabIndex = -1;
@@ -3603,10 +3557,11 @@ function renderRoomPanel() {
       el(
         "div",
         "roomlbl",
-        "Jury · " +
-          n +
-          (n === 1 ? " Judge" : " Judges") +
-          (total > n ? ", " + (total - n) + " Trainee" + (total - n === 1 ? "" : "s") : ""),
+        n +
+          (n === 1 ? " Jurierende:r" : " Jurierende") +
+          (total > n
+            ? ", " + (total - n) + " Trainee" + (total - n === 1 ? "" : "s")
+            : ""),
       ),
     );
     appendJuryRows(jury);
@@ -3753,7 +3708,6 @@ document.getElementById("dashNav").addEventListener("click", function (e) {
   if (!b) return;
   if (b.dataset.dv === "dashboard" && !ME.is_chair && !spreadOpen) return;
   if (b.dataset.dv === "offline" && !ME.is_chair) return;
-  if (b.dataset.dv === "opentab" && !ME.is_chair) return;
   setDashboardView(b.dataset.dv);
   render();
 });
@@ -3880,8 +3834,7 @@ document.addEventListener("keydown", function (e) {
   }
 });
 
-// Alt+, / Alt+. step to the previous/next speech on Blatt, keeping the same kind of field focused;
-// on views with folder tabs (dashTabbedSheet) they step through those tabs instead
+// Alt+, / Alt+. step to the previous/next speech on Blatt (same field kind focused), else through the view's folder tabs
 document.addEventListener("keydown", function (e) {
   if (!ME || !isDesktopWidth()) return;
   if (!e.altKey || (e.key !== "," && e.key !== ".")) return;
@@ -4059,6 +4012,8 @@ function dashDashboardAside(cur) {
     exportBtn.type = "button";
     exportBtn.tabIndex = -1;
     exportBtn.addEventListener("click", function () {
+      // Skip past the Notizen tab straight to the OpenTab part
+      dashSectionByView.opentab = otState.ballot ? "ballot" : "connect";
       setDashboardView("opentab");
       render();
     });
@@ -4365,48 +4320,30 @@ function dashTeamBallotTable(summary, t, grp) {
 
 // Desktop keyboard shortcut cheat sheet
 var SHORTCUTS = [
-  ["Bild ↑ / Bild ↓", "Nächsten / vorherigen Tab auswählen"],
-  ["Alt + 1 – 5", "Tabs direkt anzeigen"],
+  ["Bild ↑ / Bild ↓", "Vorherigen / nächsten Tab auswählen"],
+  ["Alt + 1 – 9", "Zu Tab springen"],
+  ["Alt halten", "Shortcuts anzeigen"],
+  ["Alt + , / Alt + .", "Vorherige / nächste Rede / Unterseite auswählen"],
   [
-    "Alt + , / Alt + .",
-    "Vorherige / nächste Rede (Einzelreden) bzw. Unterseite (Dashboard, Offline-Jurierende, OpenTab)",
+    "Alt + I",
+    "Von Einzelrede zu den Interaktionen der Gegenseite (Teampunkte) und zurück springen",
   ],
-  ["Alt + I", "Wechsel von Einzelrede zu Interaktionen der Gegenseite"],
   ["Alt + T", "Timer öffnen/schließen"],
+  ["Tab", "Zum nächsten Textfeld springen"],
+  ["Enter", "Punkte übernehmen und zum nächsten Feld springen"],
+  ["Esc", "Popup schließen"],
+  ["?", "Diese Übersicht öffnen"],
 ];
-// Features without a visible label, listed for people who know OPD but not this tool
-var MORE_FEATURES = [
-  [
-    "Eingabemodus: Noten/Punkte",
-    "Im Menü (oben Rechts) kannst du den Eingabe Modus für Redepunkte und Teampunkte getrennt von Punkten (9,12,15 etc.) auf Noten (3+, 1-, 1+ etc.) umschalten. Bereits eingegebene Werte werden automatisch umgerechnet.",
-  ],
-  [
-    "Abzüge",
-    "Chairs können durch die Knöpfe bei Einzelreden oder das Anklicken der 'Abz.' Spalte im 'Komplette Wertung' Tab zwischen Keinen, Kleinen (-3) und Großen (-15) Abzügen hin- und herschalten.",
-  ],
-  [
-    "Aus Wertung nehmen",
-    "Der Knopf 'aus Wertung nehmen' in Einzelreden / Teamkategorien lässt eure Punkte nicht mit in die Finalwertung einfließen.",
-  ],
-  [
-    "Zu Trainee",
-    "Chairs können auf dem Namen-Tab Wings zu Trainees machen. Sie können dann Punkte wie alle Jurierenden vergeben, fließen aber nicht in den Durchschnitt ein.",
-  ],
-  [
-    "Dashboard freigeben",
-    "Der Button 'Dashboard Freigeben' erlaubt es Chairs, Wings und Trainees die Ansicht der Abweichungen freizugeben",
-  ],
-  [
-    "Anzahl FFRs",
-    "Chairs können über 'Anzahl FFRs ändern' mehr freie Reden einstellen (min. 3, max. 10)",
-  ],
-  [
-    "Link kopieren",
-    "Klick auf den Raum-Tab oben rechts: Einladungslink für diesen Raum in die Zwischenablage kopieren",
-  ],
-];
-function buildShortcutsSection() {
-  var wrap = el("div", "settingswrap");
+// Settings view's Info tab: shortcuts and legal links side by side
+function buildInfoSection() {
+  var wrap = el("div", "infocols");
+  function column(title, body) {
+    var col = el("div", "infocol");
+    col.appendChild(el("h2", "shortcutsub", title));
+    col.appendChild(body);
+    wrap.appendChild(col);
+  }
+
   var list = el("div", "shortcutlist");
   SHORTCUTS.forEach(function (sc) {
     var row = el("div", "shortcutrow");
@@ -4414,35 +4351,85 @@ function buildShortcutsSection() {
     row.appendChild(el("span", null, sc[1]));
     list.appendChild(row);
   });
-  wrap.appendChild(list);
+  column("Tastenkürzel", list);
 
-  wrap.appendChild(el("h2", "shortcutsub", "Weitere Funktionen"));
-  var more = el("div", "shortcutlist");
-  MORE_FEATURES.forEach(function (f) {
-    var mrow = el("div", "shortcutrow featurerow");
-    mrow.appendChild(el("span", "featurename", f[0]));
-    mrow.appendChild(el("span", null, f[1]));
-    more.appendChild(mrow);
+  function newTabLink(label, href) {
+    var a = el("a", null, label);
+    a.href = href;
+    a.target = "_blank";
+    a.rel = "noopener";
+    return a;
+  }
+  var about = el("div", "infocredit");
+  about.appendChild(
+    el("p", null, "Mittelmaß 2.0 ist freie Software unter MIT-Lizenz."),
+  );
+  about.appendChild(el("p", null, "Entwickelt von:"));
+  var devs = el("ul");
+  ["Jonathan Krapp"].forEach(function (name) {
+    devs.appendChild(el("li", null, name));
   });
-  wrap.appendChild(more);
+  about.appendChild(devs);
+  var basis = el("p");
+  basis.appendChild(document.createTextNode("Auf Basis des "));
+  basis.appendChild(
+    newTabLink(
+      "OPD-Regelwerks der OPD-Regelkommission der Streitkultur e.V.",
+      "https://www.streitkultur.net/debattieren/opd-service/",
+    ),
+  );
+  about.appendChild(basis);
+  var links = el("div", "settingslinks");
+  [
+    ["Impressum", "/impressum"],
+    ["Lizenz", "/license"],
+    ["GitHub", "https://github.com/JKRPP/Mittelmass"],
+  ].forEach(function (l) {
+    links.appendChild(newTabLink(l[0], l[1]));
+  });
+  about.appendChild(links);
+  column("Über", about);
   return wrap;
 }
 
-// Desktop settings view (the mobile ⋮ menu keeps its own items); one sub-tab per topic
-function settingsButtonRow(label, buttons) {
-  var row = el("div", "gradeinputrow");
-  row.appendChild(el("div", "gradeinputlbl", label));
-  var opts = el("div", "gradeinputopts");
-  buttons.forEach(function (b) {
-    var btn = el("button", "btn ghost", b[0]);
-    btn.type = "button";
-    btn.tabIndex = -1;
-    btn.addEventListener("click", b[1]);
-    opts.appendChild(btn);
-  });
-  row.appendChild(opts);
-  return row;
+// Clickable icon of the settings grid; icons come from #iconTemplates [data-icon=name], else tabIcon's placeholder
+function settingsIconButton(iconName, caption, onClick) {
+  var btn = el("button", "settingsicon");
+  btn.type = "button";
+  btn.tabIndex = -1;
+  btn.title = caption;
+  btn.setAttribute("aria-label", caption);
+  btn.appendChild(tabIcon(iconName));
+  btn.appendChild(el("span", "settingscaption", caption));
+  btn.addEventListener("click", onClick);
+  return btn;
 }
+// Cycling icon: shows the current choice's icon, a click picks the next one; choices: [{label, value, icon}]
+function settingsCycleIcon(label, choices, current, onPick) {
+  var idx = 0;
+  choices.forEach(function (c, i) {
+    if (c.value === current) idx = i;
+  });
+  var cur = choices[idx];
+  return settingsIconButton(cur.icon, label + ": " + cur.label, function () {
+    onPick(choices[(idx + 1) % choices.length].value);
+  });
+}
+function gradeInputModeIcon(label, kind) {
+  return settingsCycleIcon(
+    label,
+    [
+      { label: "Punkte", value: false, icon: "set-punkte" },
+      { label: "Noten", value: true, icon: "set-noten" },
+    ],
+    gradeInputMode(kind),
+    function (on) {
+      setGradeInputMode(kind, on);
+      render();
+    },
+  );
+}
+// Desktop settings view (the mobile ⋮ menu keeps its own items); one sub-tab per topic
 function renderSettings() {
   var root = document.getElementById("v-settings");
   if (!root) return;
@@ -4452,16 +4439,16 @@ function renderSettings() {
       "settings",
       [
         {
-          key: "anzeige",
-          label: "Anzeige",
+          key: "allgemein",
+          label: "Einstellungen",
           build: function () {
-            var wrap = el("div", "settingswrap");
-            wrap.appendChild(
-              choiceRow(
+            var grid = el("div", "settingsgrid");
+            grid.appendChild(
+              settingsCycleIcon(
                 "Design",
                 [
-                  { label: "Hell", value: "light" },
-                  { label: "Dunkel", value: "dark" },
+                  { label: "Hell", value: "light", icon: "set-theme-light" },
+                  { label: "Dunkel", value: "dark", icon: "set-theme-dark" },
                 ],
                 LS.get("opd.theme", "light"),
                 function (t) {
@@ -4470,36 +4457,18 @@ function renderSettings() {
                 },
               ),
             );
-            wrap.appendChild(
-              settingsButtonRow("Einzelreden", [
-                ["Spaltenbreiten zurücksetzen", resetBlattColWidths],
-                ["Notizen exportieren", openPrintNotesModal],
-              ]),
-            );
-            return wrap;
-          },
-        },
-        {
-          key: "eingabe",
-          label: "Eingabe",
-          build: function () {
-            var wrap = el("div", "settingswrap");
-            wrap.appendChild(gradeInputModeRow("Redepunkte", "speaker"));
-            wrap.appendChild(gradeInputModeRow("Teampunkte", "team"));
-            return wrap;
-          },
-        },
-        {
-          key: "timer",
-          label: "Timer",
-          build: function () {
-            var wrap = el("div", "settingswrap");
-            wrap.appendChild(
-              choiceRow(
-                "Timeranzeige",
+            grid.appendChild(gradeInputModeIcon("Redepunkte", "speaker"));
+            grid.appendChild(gradeInputModeIcon("Teampunkte", "team"));
+            grid.appendChild(
+              settingsCycleIcon(
+                "Timer",
                 [
-                  { label: "hochzählen", value: true },
-                  { label: "herunterzählen", value: false },
+                  { label: "hochzählen", value: true, icon: "set-timer-up" },
+                  {
+                    label: "herunterzählen",
+                    value: false,
+                    icon: "set-timer-down",
+                  },
                 ],
                 timerCountUp(),
                 function (up) {
@@ -4508,14 +4477,18 @@ function renderSettings() {
                 },
               ),
             );
-            wrap.appendChild(
-              choiceRow(
+            grid.appendChild(
+              settingsCycleIcon(
                 "Zeitsignal",
                 Object.keys(BELL_VOICES).map(function (k) {
-                  return { label: BELL_VOICES[k].label, value: k };
+                  return {
+                    label: BELL_VOICES[k].label,
+                    value: k,
+                    icon: "set-bell-" + k,
+                  };
                 }),
                 bellVoice(),
-                // Rings on every pick, even the current voice, so the two can be compared
+                // Rings on every pick so the new voice is heard right away
                 function (v) {
                   LS.set("opd.bellVoice", v);
                   applyBellVoiceLabel();
@@ -4524,31 +4497,32 @@ function renderSettings() {
                 },
               ),
             );
-            return wrap;
+            // One-shot action, no state to show
+            grid.appendChild(
+              settingsIconButton(
+                "set-colwidths",
+                "Spaltenbreiten zurücksetzen",
+                resetBlattColWidths,
+              ),
+            );
+            grid.appendChild(
+              // Confirms first, since it sits in a row of harmless toggles
+              settingsIconButton("set-leave", "Raum verlassen", function () {
+                openConfirmModal({
+                  title: "Raum verlassen?",
+                  text: "Deine Eingaben bleiben gespeichert. Du kannst dem Raum über die Startseite wieder beitreten.",
+                  confirmLabel: "Raum verlassen",
+                  onConfirm: leaveRoom,
+                });
+              }),
+            );
+            return grid;
           },
-        },
-        {
-          key: "keys",
-          label: "Tastenkürzel",
-          build: buildShortcutsSection,
         },
         {
           key: "info",
-          label: "Über",
-          build: function () {
-            var wrap = el("div", "settingswrap settingslinks");
-            [
-              ["Impressum", "/impressum"],
-              ["Lizenz", "/license"],
-            ].forEach(function (l) {
-              var a = el("a", null, l[0]);
-              a.href = l[1];
-              a.target = "_blank";
-              a.rel = "noopener";
-              wrap.appendChild(a);
-            });
-            return wrap;
-          },
+          label: "Info",
+          build: buildInfoSection,
         },
       ],
       null,
@@ -4565,14 +4539,14 @@ function openSettings(section) {
 document.getElementById("settingsTab").addEventListener("click", function () {
   openSettings();
 });
-// "?" opens the shortcuts page of the settings view
+// "?" opens the Info page (shortcuts first) of the settings view
 document.addEventListener("keydown", function (e) {
   if (!ME || !isDesktopWidth()) return;
   if (e.key !== "?") return;
   var ae = document.activeElement;
   if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA")) return;
   e.preventDefault();
-  openSettings("keys");
+  openSettings("info");
 });
 
 // Chair-only: number of active free-speaker slots; lowering never deletes scores
@@ -4773,13 +4747,17 @@ function dashEinzelTable(summary) {
   function line(label, cellFor, sep) {
     var tr = el("tr", sep ? "dasheinzelsep" : null);
     var lbl = el("td", "l");
-    lbl.appendChild(typeof label === "string" ? document.createTextNode(label) : label);
+    lbl.appendChild(
+      typeof label === "string" ? document.createTextNode(label) : label,
+    );
     tr.appendChild(lbl);
     cols.forEach(function (c) {
       var td = el("td", c.panel ? "dashpanelcol" : null);
       var content = cellFor(c);
       td.appendChild(
-        typeof content === "string" ? document.createTextNode(content) : content,
+        typeof content === "string"
+          ? document.createTextNode(content)
+          : content,
       );
       tr.appendChild(td);
     });
@@ -5849,41 +5827,55 @@ function renderBlatt() {
   }
 }
 
-// Printable sheet with all scores and notes for team feedback, usually saved as PDF
-
-// Lets the judge choose whether their own points appear on the printout
-function openPrintNotesModal() {
-  openModal("printNotesModal", function (box) {
-    box.appendChild(el("h2", null, "Notizen exportieren"));
-    box.appendChild(
-      el(
-        "p",
-        "note",
-        "Eigene Punkte anzeigen, oder nur den Durchschnitt aller Jurierenden?",
-      ),
-    );
-    var actions = el("div", "modalactions");
-    var withOwnBtn = el("button", "btn", "Mit eigenen Punkten");
-    withOwnBtn.type = "button";
-    withOwnBtn.addEventListener("click", function () {
-      closeModal("printNotesModal");
-      buildPrintSheet(false);
+// Export view's Notizen tab: the judge picks which points appear next to the notes on the printout
+function buildNotesExportSection() {
+  var wrap = el("div", "otform");
+  var row = el("div", "exportoptions");
+  [
+    // [icon, caption, showOwn, showAvg]
+    ["export-withpoints", "Mit eigenen Punkten", true, true],
+    ["export-average", "Nur Durchschnitt", false, true],
+    ["export-onlyown", "Nur eigene Punkte", true, false],
+  ].forEach(function (o) {
+    var btn = settingsIconButton(o[0], o[1], function () {
+      buildPrintSheet(o[2], o[3]);
       window.print();
     });
-    var avgOnlyBtn = el("button", "btn ghost", "Nur Durchschnitt");
-    avgOnlyBtn.type = "button";
-    avgOnlyBtn.addEventListener("click", function () {
-      closeModal("printNotesModal");
-      buildPrintSheet(true);
-      window.print();
-    });
-    actions.appendChild(withOwnBtn);
-    actions.appendChild(avgOnlyBtn);
-    box.appendChild(actions);
+    btn.classList.add("exportoption");
+    row.appendChild(btn);
   });
+  wrap.appendChild(row);
+  return wrap;
 }
 
-function buildPrintSheet(hideOwn) {
+// Printout card's score table, own points and/or the average; cats: [{label, v}], avgVals: each included judge's total
+function printScoreTable(cats, own, avgVals, showOwn, showAvg) {
+  var table = el("table", "printscores");
+  // Without own points there are no category rows, so the header would head an empty column
+  if (showOwn) {
+    var head = el("tr");
+    head.appendChild(el("th", "l", "Kategorie"));
+    head.appendChild(el("th", null, "Meine Punkte"));
+    table.appendChild(head);
+  }
+  function row(cls, label, v) {
+    var tr = el("tr", cls);
+    tr.appendChild(el("td", "l", label));
+    tr.appendChild(el("td", null, v === null ? "–" : String(v)));
+    table.appendChild(tr);
+  }
+  if (showOwn) {
+    cats.forEach(function (c) {
+      row(null, c.label, c.v);
+    });
+    row("tot", "Gesamt", own);
+  }
+  if (showAvg) row("tot", "Ø Gesamt (alle Jurierenden)", avgRound(avgVals));
+  return table;
+}
+
+// Printable sheet with all notes for team feedback, usually saved as PDF; showOwn/showAvg pick which points appear
+function buildPrintSheet(showOwn, showAvg) {
   var root = document.getElementById("printSheet");
   root.innerHTML = "";
   var summary = computeChairSummary(false);
@@ -5896,19 +5888,6 @@ function buildPrintSheet(hideOwn) {
     if (deductionLevel(s)) heading += " (Abzug: −" + deductionPoints(s) + ")";
     card.appendChild(el("h2", "printspeakerlbl", heading));
 
-    var scoreTable = el("table", "printscores");
-    var head = el("tr");
-    head.appendChild(el("th", "l", "Kategorie"));
-    if (!hideOwn) head.appendChild(el("th", null, "Meine Punkte"));
-    scoreTable.appendChild(head);
-    if (!hideOwn)
-      CRITERIA.forEach(function (c, ci) {
-        var tr = el("tr");
-        tr.appendChild(el("td", "l", c.label));
-        var v = sget(s, ci);
-        tr.appendChild(el("td", null, v === null ? "–" : String(v)));
-        scoreTable.appendChild(tr);
-      });
     var totVals = summary.ids
       .filter(function (id) {
         return summary.includedFor(id, "s" + s);
@@ -5919,18 +5898,17 @@ function buildPrintSheet(hideOwn) {
       .filter(function (v) {
         return v !== null;
       });
-    if (!hideOwn) {
-      var totTr = el("tr", "tot");
-      totTr.appendChild(el("td", "l", "Gesamt"));
-      totTr.appendChild(el("td", null, String(personPunkte(s))));
-      scoreTable.appendChild(totTr);
-    }
-    var finalTr = el("tr", "tot");
-    finalTr.appendChild(el("td", "l", "Ø Gesamt (alle Jurierenden)"));
-    var final = avgRound(totVals);
-    finalTr.appendChild(el("td", null, final === null ? "–" : String(final)));
-    scoreTable.appendChild(finalTr);
-    card.appendChild(scoreTable);
+    card.appendChild(
+      printScoreTable(
+        CRITERIA.map(function (c, ci) {
+          return { label: c.label, v: sget(s, ci) };
+        }),
+        personPunkte(s),
+        totVals,
+        showOwn,
+        showAvg,
+      ),
+    );
 
     BLATT_GROUPS.forEach(function (group) {
       var note = getNote(s, group.key);
@@ -5948,19 +5926,6 @@ function buildPrintSheet(hideOwn) {
     var card = el("div", "printspeaker");
     card.appendChild(el("h2", "printspeakerlbl", "Teampunkte " + tm));
 
-    var scoreTable = el("table", "printscores");
-    var head = el("tr");
-    head.appendChild(el("th", "l", "Kategorie"));
-    if (!hideOwn) head.appendChild(el("th", null, "Meine Punkte"));
-    scoreTable.appendChild(head);
-    if (!hideOwn)
-      TEAMCATS.forEach(function (cat, ci) {
-        var tr = el("tr");
-        tr.appendChild(el("td", "l", cat.label));
-        var v = tget(t, ci);
-        tr.appendChild(el("td", null, v === null ? "–" : String(v)));
-        scoreTable.appendChild(tr);
-      });
     var totVals = summary.ids
       .filter(function (id) {
         return summary.includedFor(id, "t" + t) && summary.teamEntered(id, t);
@@ -5968,18 +5933,17 @@ function buildPrintSheet(hideOwn) {
       .map(function (id) {
         return summary.remoteTeamTotal(id, t);
       });
-    if (!hideOwn) {
-      var totTr = el("tr", "tot");
-      totTr.appendChild(el("td", "l", "Gesamt"));
-      totTr.appendChild(el("td", null, String(teamPunkte(t))));
-      scoreTable.appendChild(totTr);
-    }
-    var finalTr = el("tr", "tot");
-    finalTr.appendChild(el("td", "l", "Ø Gesamt (alle Jurierenden)"));
-    var final = avgRound(totVals);
-    finalTr.appendChild(el("td", null, final === null ? "–" : String(final)));
-    scoreTable.appendChild(finalTr);
-    card.appendChild(scoreTable);
+    card.appendChild(
+      printScoreTable(
+        TEAMCATS.map(function (cat, ci) {
+          return { label: cat.label, v: tget(t, ci) };
+        }),
+        teamPunkte(t),
+        totVals,
+        showOwn,
+        showAvg,
+      ),
+    );
 
     TEAMCATS.forEach(function (cat) {
       var note = getTeamNote(t, cat.key);
@@ -6613,11 +6577,7 @@ function otDoRefresh(root) {
   if (!otState.ballot) return;
   var saved = otLoadTokens()[otState.tournamentId];
   if (!saved) {
-    otHandleStaleToken(
-          otState.tournamentId,
-          otState.debateId,
-          otState.apiBase,
-        );
+    otHandleStaleToken(otState.tournamentId, otState.debateId, otState.apiBase);
     renderOpenTab(root.id);
     otStatusMsg(
       root,
@@ -6675,11 +6635,7 @@ function otDoSubmit(root) {
   }
   var saved = otLoadTokens()[otState.tournamentId];
   if (!saved) {
-    otHandleStaleToken(
-          otState.tournamentId,
-          otState.debateId,
-          otState.apiBase,
-        );
+    otHandleStaleToken(otState.tournamentId, otState.debateId, otState.apiBase);
     renderOpenTab(root.id);
     otStatusMsg(
       root,
@@ -6721,14 +6677,14 @@ function otDoSubmit(root) {
       otStatusMsg(root, err.message || String(err), true);
     });
 }
-// OpenTab view (chair-only): imports names and submits each judge's computed totals as their ballot
+// Export view: notes printout for every judge, then chair-only OpenTab name import and ballot submission
 function renderOpenTab(rootId) {
   var root = document.getElementById(rootId || "v-opentab");
   if (!root) return;
   if (dashEditGuard(root)) return;
   root.innerHTML = "";
 
-  // Desktop shows sections as folder tabs, mobile as stacked cards
+  // Desktop shows sections as folder tabs, mobile as stacked cards (chair-only, OpenTab part only)
   var mobile = root.id === "v-opentabm";
   function finish(sections, aside, asideLabel) {
     if (mobile) {
@@ -6743,10 +6699,17 @@ function renderOpenTab(rootId) {
     root.appendChild(
       dashTabbedSheet(
         "opentab",
-        sections,
+        [
+          {
+            key: "notizen",
+            label: "Als .pdf exportieren",
+            build: buildNotesExportSection,
+          },
+        ].concat(sections),
         aside
-          ? function () {
-              return aside;
+          ? function (cur) {
+              // The OpenTab connection bar has nothing to do with the notes printout
+              return cur === "notizen" ? null : aside;
             }
           : null,
         function () {
@@ -6757,15 +6720,7 @@ function renderOpenTab(rootId) {
   }
 
   if (!ME.is_chair) {
-    finish([
-      {
-        key: "info",
-        label: "OpenTab",
-        build: function () {
-          return el("p", null, "Nur der Chair kann OpenTab verbinden.");
-        },
-      },
-    ]);
+    finish([]);
     return;
   }
 
