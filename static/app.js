@@ -5291,8 +5291,23 @@ function commitOfflineScoreField(inp, max, offlineId, target, refresh) {
   setOfflineScore(offlineId, target, n);
   refresh();
 }
+// Offline table's Tab/Enter order, "judge" (down each column) or "speech" (across each row); browser-local
+function offlineEntryOrder() {
+  return LS.get("opd.offlineOrder", "judge") === "speech" ? "speech" : "judge";
+}
+// Enter moves to the score field with the next tabIndex, so Enter and Tab share the chosen order
+function focusNextByTabIndex(inp) {
+  var root = inp.closest("table");
+  if (!root) return;
+  var next = null;
+  [].forEach.call(root.querySelectorAll("input.schnellinput"), function (o) {
+    if (o.tabIndex > inp.tabIndex && (!next || o.tabIndex < next.tabIndex))
+      next = o;
+  });
+  if (next) next.focus();
+}
 function offlineScoreInput(offlineId, target, max, tabIdx) {
-  var inp = schnellNumberInput();
+  var inp = schnellNumberInput({ onEnter: focusNextByTabIndex });
   inp.tabIndex = tabIdx;
   function refresh() {
     var v = (offlineScores[offlineId] || {})[target];
@@ -5341,8 +5356,12 @@ function buildOfflineJuryTable(container) {
   }
 
   var speakers = activeSpeakerIndices();
-  // Rows per judge column (name, speeches, teams), the stride for column-major tab order
+  // Rows per judge column (name, speeches, teams); row 0 is the name, tabFor numbers cells in the chosen order
   var rowsPerCol = 1 + speakers.length + TEAMS.length;
+  var byJudge = offlineEntryOrder() === "judge";
+  function tabFor(row, col) {
+    return byJudge ? col * rowsPerCol + row + 1 : row * ids.length + col + 1;
+  }
 
   var table = el("table", "schnelltable offlinejurytable");
 
@@ -5354,7 +5373,7 @@ function buildOfflineJuryTable(container) {
     nameInp.type = "text";
     nameInp.placeholder = "Name";
     nameInp.value = (offlineJudges[id] || {}).name || "";
-    nameInp.tabIndex = col * rowsPerCol + 1;
+    nameInp.tabIndex = tabFor(0, col);
     nameInp.addEventListener("change", function () {
       renameOfflineJudge(id, nameInp.value.trim());
     });
@@ -5376,12 +5395,7 @@ function buildOfflineJuryTable(container) {
     ids.forEach(function (id, col) {
       var td = el("td");
       td.appendChild(
-        offlineScoreInput(
-          id,
-          "s" + s,
-          offlineSpeakerMax(),
-          col * rowsPerCol + 1 + r + 1,
-        ),
+        offlineScoreInput(id, "s" + s, offlineSpeakerMax(), tabFor(1 + r, col)),
       );
       tr.appendChild(td);
     });
@@ -5398,12 +5412,7 @@ function buildOfflineJuryTable(container) {
       var td = el("td");
       var r = speakers.length + t;
       td.appendChild(
-        offlineScoreInput(
-          id,
-          "t" + t,
-          offlineTeamMax(),
-          col * rowsPerCol + 1 + r + 1,
-        ),
+        offlineScoreInput(id, "t" + t, offlineTeamMax(), tabFor(1 + r, col)),
       );
       tr.appendChild(td);
     });
@@ -5438,6 +5447,27 @@ function buildOfflineJuryTable(container) {
 
   container.appendChild(table);
 }
+// Tab-strip toggle for offlineEntryOrder in the Freigeben button's look; the label names the current order
+function offlineOrderToggle() {
+  var wrap = el("div");
+  var byJudge = offlineEntryOrder() === "judge";
+  var b = el(
+    "button",
+    "dashfrei",
+    byJudge ? "Judge nach Judge" : "Rede nach Rede",
+  );
+  b.type = "button";
+  b.tabIndex = -1;
+  b.title = byJudge
+    ? "Tab/Enter gehen erst alle Reden eines Judges durch; klicken für Rede nach Rede"
+    : "Tab/Enter gehen erst alle Judges einer Rede durch; klicken für Judge nach Judge";
+  b.addEventListener("click", function () {
+    LS.set("opd.offlineOrder", byJudge ? "speech" : "judge");
+    renderOfflineJudges();
+  });
+  wrap.appendChild(b);
+  return wrap;
+}
 function renderOfflineJudges() {
   var root = document.getElementById("v-offline");
   if (!root) return;
@@ -5457,7 +5487,7 @@ function renderOfflineJudges() {
           },
         },
       ],
-      null,
+      offlineOrderToggle,
       renderOfflineJudges,
     ),
   );
@@ -6248,36 +6278,37 @@ function renderNamenRoom() {
     ),
   );
 
-  var stage = el("div", "roomstage");
-  var facing = el("div", "facingrow");
-  var gov = el("div", "roomtable team-gov");
-  gov.appendChild(el("div", "tname", "Regierung"));
-  gov.appendChild(namenSeat(0, "Eröffnungsrede"));
-  gov.appendChild(namenSeat(2, "Ergänzungsrede"));
-  gov.appendChild(namenSeat(15, "Schlussrede"));
-  facing.appendChild(gov);
-  var opp = el("div", "roomtable team-opp");
-  opp.appendChild(el("div", "tname", "Opposition"));
-  opp.appendChild(namenSeat(1, "Eröffnungsrede"));
-  opp.appendChild(namenSeat(3, "Ergänzungsrede"));
-  opp.appendChild(namenSeat(14, "Schlussrede"));
-  facing.appendChild(opp);
-  stage.appendChild(facing);
+  wrap.appendChild(el("div", "namenhint"));
 
-  var lower = el("div", "lowerrow");
-  var free = el("div", "roomtable team-free");
-  free.appendChild(el("div", "tname", "Fraktionsfrei"));
+  var stage = el("div", "roomstage");
+  var gov = el("div", "namenside gov team-gov");
+  gov.appendChild(el("div", "namensidehead", "Regierung"));
+  gov.appendChild(namenCard(0, "Eröffnungsrede"));
+  gov.appendChild(namenCard(2, "Ergänzungsrede"));
+  gov.appendChild(namenCard(15, "Schlussrede"));
+  stage.appendChild(gov);
+  var opp = el("div", "namenside opp team-opp");
+  opp.appendChild(el("div", "namensidehead", "Opposition"));
+  opp.appendChild(namenCard(1, "Eröffnungsrede"));
+  opp.appendChild(namenCard(3, "Ergänzungsrede"));
+  opp.appendChild(namenCard(14, "Schlussrede"));
+  stage.appendChild(opp);
+
+  var free = el("div", "namenside free team-free");
+  free.appendChild(el("div", "namensidehead", "Fraktionsfrei"));
+  var freeRow = el("div", "namenfreerow");
   var freeIdx = activeSpeakerIndices().filter(function (s) {
     return teamOf(s) === null;
   });
   if (freeIdx.length === 0) {
     free.appendChild(
-      el("div", "slbl", "Keine fraktionsfreien Reden in dieser Runde"),
+      el("div", "namenempty", "Keine fraktionsfreien Reden in dieser Runde"),
     );
   } else {
     freeIdx.forEach(function (s, i) {
-      free.appendChild(namenSeat(s, i + 1 + ". Rede"));
+      freeRow.appendChild(namenCard(s, i + 1 + ". Rede"));
     });
+    free.appendChild(freeRow);
   }
   if (ME.is_chair) {
     var freeCountBtn = el("button", "juryab freectrl", "Anzahl FFRs ändern");
@@ -6286,7 +6317,7 @@ function renderNamenRoom() {
     freeCountBtn.addEventListener("click", openFreeSpeakersModal);
     free.appendChild(freeCountBtn);
   }
-  lower.appendChild(free);
+  stage.appendChild(free);
 
   var jury = el("div", "roomtable jury");
   jury.appendChild(el("div", "tname", "Jury"));
@@ -6352,11 +6383,139 @@ function renderNamenRoom() {
     addOfflineBtn.addEventListener("click", addOfflineJudgeAndOpenPanel);
     jury.appendChild(addOfflineBtn);
   }
-  lower.appendChild(jury);
-  stage.appendChild(lower);
+  stage.appendChild(jury);
 
   wrap.appendChild(stage);
   root.appendChild(wrap);
+}
+
+// Desktop name card: namenSeat restyled as a team-banded card; Enter jumps to the next speech
+function namenCard(s, label) {
+  var card = namenSeat(s, label);
+  card.classList.add("namecard");
+  setTeamAccent(card, teamOf(s));
+  card.setAttribute("data-s", s);
+  var input = card.querySelector("input");
+  input.addEventListener("focus", function () {
+    namenFocus(s);
+  });
+  input.addEventListener("blur", function () {
+    namenFocus(-1);
+  });
+  input.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    var next = namenCardInput(nextActiveSpeaker(s));
+    if (next) next.focus();
+    else input.blur();
+  });
+  return card;
+}
+function namenCardInput(s) {
+  return document.querySelector(
+    '#v-namenroom .namecard[data-s="' + s + '"] input',
+  );
+}
+// Marks the focused card and the next speech, with a "Danach" hint and an arrow between them (-1 clears)
+function namenFocus(s) {
+  var root = document.getElementById("v-namenroom");
+  var stage = root.querySelector(".roomstage");
+  var hint = root.querySelector(".namenhint");
+  if (!stage || !hint) return;
+  var n = s < 0 ? -1 : nextActiveSpeaker(s);
+  [].forEach.call(root.querySelectorAll(".namecard"), function (c) {
+    var k = +c.getAttribute("data-s");
+    c.classList.toggle("is-focus", k === s);
+    c.classList.toggle("is-next", k === n);
+  });
+  var old = stage.querySelector(".namenarrow");
+  if (old) stage.removeChild(old);
+  hint.textContent = "";
+  if (s < 0) return;
+  var nextCard = n < 0 ? null : stage.querySelector('.namecard[data-s="' + n + '"]');
+  if (!nextCard) {
+    hint.textContent = "Letzte Rede der Runde";
+    return;
+  }
+  var team = teamOf(n);
+  hint.appendChild(document.createTextNode("Danach: "));
+  hint.appendChild(
+    el(
+      "b",
+      null,
+      (team === null ? "Fraktionsfrei" : TEAMS[team]) +
+        ", " +
+        nextCard.querySelector(".slbl").textContent,
+    ),
+  );
+  hint.appendChild(document.createTextNode(" · Enter springt weiter"));
+  stage.appendChild(
+    namenArrow(stage, stage.querySelector('.namecard[data-s="' + s + '"]'), nextCard),
+  );
+}
+// Curved SVG arrow between the edges of two cards inside stage
+function namenArrow(stage, from, to) {
+  var NS = "http://www.w3.org/2000/svg";
+  var box = stage.getBoundingClientRect();
+  function rect(c) {
+    var r = c.getBoundingClientRect();
+    return {
+      x: r.left - box.left + r.width / 2,
+      y: r.top - box.top + r.height / 2,
+      w: r.width / 2,
+      h: r.height / 2,
+    };
+  }
+  // Point where the line from the card centre towards q leaves the card, plus a small gap
+  function edge(p, q) {
+    var dx = q.x - p.x,
+      dy = q.y - p.y;
+    var k = Math.min(
+      p.w / Math.max(Math.abs(dx), 1e-6),
+      p.h / Math.max(Math.abs(dy), 1e-6),
+      1,
+    );
+    var len = Math.sqrt(dx * dx + dy * dy) || 1;
+    return { x: p.x + dx * k + (dx / len) * 6, y: p.y + dy * k + (dy / len) * 6 };
+  }
+  var a = rect(from),
+    b = rect(to);
+  var dx = b.x - a.x,
+    dy = b.y - a.y,
+    d = Math.sqrt(dx * dx + dy * dy) || 1,
+    bend = Math.min(30, d * 0.14);
+  var c = {
+    x: (a.x + b.x) / 2 - (dy / d) * bend,
+    y: (a.y + b.y) / 2 + (dx / d) * bend,
+  };
+  var p0 = edge(a, c),
+    p1 = edge(b, c);
+  var svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("class", "namenarrow");
+  svg.setAttribute("aria-hidden", "true");
+  var line = document.createElementNS(NS, "path");
+  line.setAttribute(
+    "d",
+    "M" + p0.x + "," + p0.y + " Q" + c.x + "," + c.y + " " + p1.x + "," + p1.y,
+  );
+  svg.appendChild(line);
+  // Arrowhead along the curve's end tangent (control point to end point)
+  var tx = p1.x - c.x,
+    ty = p1.y - c.y,
+    tl = Math.sqrt(tx * tx + ty * ty) || 1;
+  tx /= tl;
+  ty /= tl;
+  var head = document.createElementNS(NS, "path");
+  head.setAttribute(
+    "d",
+    "M" + p1.x + "," + p1.y +
+      " L" + (p1.x - tx * 9 - ty * 4.5) + "," + (p1.y - ty * 9 + tx * 4.5) +
+      " L" + (p1.x - tx * 9 + ty * 4.5) + "," + (p1.y - ty * 9 - tx * 4.5) +
+      " Z",
+  );
+  head.setAttribute("class", "namenarrowhead");
+  svg.appendChild(head);
+  return svg;
 }
 
 // Maps OpenTab's ballot.speeches[] onto SPEAKERS indices; returns {s: speech}

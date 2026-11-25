@@ -554,6 +554,8 @@ body {
 .blatthead.team-gov,
 .notescol.team-gov,
 .roomtable.team-gov,
+.namecard.team-gov,
+.namenside.team-gov,
 .dashnav.team-gov {
   --team-accent: var(--team-gov);
   --team-on: #ffffff;
@@ -564,6 +566,8 @@ body {
 .blatthead.team-opp,
 .notescol.team-opp,
 .roomtable.team-opp,
+.namecard.team-opp,
+.namenside.team-opp,
 .dashnav.team-opp {
   --team-accent: var(--team-opp);
   --team-on: #ffffff;
@@ -572,6 +576,8 @@ body {
 #v-team .card.team-free,
 .blatthead.team-free,
 .roomtable.team-free,
+.namecard.team-free,
+.namenside.team-free,
 .dashnav.team-free {
   --team-accent: var(--team-free);
   --team-on: #ffffff;
@@ -2600,16 +2606,129 @@ body.blattresizing .blattcol {
   text-align: center;
   margin-bottom: 20px;
 }
+/* Room plan: teams facing each other, Fraktionsfrei and Jury below; positioned for the focus arrow */
 .roomstage {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: "gov opp" "free free" "jury jury";
+  column-gap: 110px;
+  row-gap: 30px;
+  max-width: 780px;
+  margin: 0 auto;
+}
+.namenside {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
+  min-width: 0;
 }
-.facingrow,
-.lowerrow {
+.namenside.gov {
+  grid-area: gov;
+}
+.namenside.opp {
+  grid-area: opp;
+}
+.namenside.free {
+  grid-area: free;
+  align-items: center;
+}
+.roomstage > .jury {
+  grid-area: jury;
+  justify-self: center;
+  width: 100%;
+  max-width: 440px;
+}
+.namensidehead {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--team-accent);
+}
+.namenside.gov .namensidehead {
+  text-align: right;
+}
+.namenfreerow {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
-  gap: 10px;
+  gap: 14px;
+  width: 100%;
+}
+.namenfreerow .namecard {
+  width: 220px;
+}
+.namenempty {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.namenside.free .freectrl {
+  margin-top: 0;
+}
+/* Name card: solid team band with the speech label over a frameless input */
+.namecard {
+  background: var(--card);
+  border: 1px solid var(--line);
+  transition: box-shadow 0.15s;
+}
+.seat.namecard + .seat.namecard {
+  margin-top: 0;
+}
+.seat.namecard .slbl {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  background: var(--team-accent);
+  color: var(--team-on);
+}
+.namecard input[type="text"] {
+  border: 0;
+  background: transparent;
+  padding: 10px 12px;
+}
+.namecard input[type="text"]:focus {
+  outline: 0;
+}
+.namecard.is-focus {
+  box-shadow: inset 3px 0 0 var(--team-accent);
+}
+.namenside.gov .namecard .slbl,
+.namenside.gov .namecard input[type="text"] {
+  text-align: right;
+}
+.namenside.gov .namecard.is-focus {
+  box-shadow: inset -3px 0 0 var(--team-accent);
+}
+.namenhint {
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-3);
+  min-height: 1.5em;
+  margin: -8px 0 14px;
+}
+.namenhint b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.namenarrow {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.namenarrow path {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.namenarrow .namenarrowhead {
+  fill: var(--ink);
+  stroke: none;
 }
 .roomtable {
   width: 240px;
