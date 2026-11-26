@@ -297,6 +297,10 @@ body {
 #app.dashboard-mode .timerwidget:hover {
   color: var(--ink);
 }
+/* A running timer covers the bar's bottom rule and joins the view below, like a pressed tab (as on mobile) */
+#app.dashboard-mode .timerwidget:not(.idle) {
+  margin-bottom: -1px;
+}
 #app.dashboard-mode .timerwidget .tabicon {
   display: block;
   flex: 0 0 auto;
@@ -556,6 +560,15 @@ body {
   font-size: 17px;
   font-weight: 700;
   letter-spacing: -0.01em;
+}
+/* Mobile Reden header: title and the speaker's name stacked between the ‹ › buttons */
+.hdmid {
+  flex: 1;
+  min-width: 0;
+}
+.spkperson {
+  font-size: 13px;
+  opacity: 0.85;
 }
 #v-sheet .card .hd,
 #v-team .card .hd {
@@ -1015,29 +1028,6 @@ td.l.best {
   color: var(--best);
 }
 
-.jrow {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 9px 0;
-  border-bottom: 1px solid var(--line);
-}
-.jrow .n {
-  flex: 1;
-  font-size: 14px;
-}
-.jrow .p {
-  font-size: 12px;
-  color: var(--ink-3);
-}
-.jrow .x {
-  border: 0;
-  background: transparent;
-  color: var(--ink-3);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
 .sprow {
   padding: 9px 0;
   border-bottom: 1px solid var(--line);
@@ -1514,15 +1504,41 @@ body.althints [data-hint]::after {
   padding: 4px 10px;
   font-size: 12px;
 }
-.roompanel .jrow {
-  padding: 6px 0;
-  border-bottom-color: var(--line-2);
+/* The code takes the free space so "Link kopieren" and "QR-Code" sit together on the right */
+.roomlinecode {
+  flex: 1;
 }
-.roompanel .jrow .n {
+.roomline .roombtn + .roombtn {
+  margin-left: -4px;
+}
+/* Room QR popup: a large scannable code with the link under it */
+.roomqrbox {
+  text-align: center;
+}
+.roomqr {
+  display: block;
+  width: min(320px, 72vw);
+  height: auto;
+  margin: 8px auto 10px;
+}
+.roomqrurl {
+  margin: 0;
   font-size: 13px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
 }
-.roompanel .jrow:last-child {
-  border-bottom: 0;
+/* Read-only jury table in both room menus (roomJurySection): cells get padding back, compact type */
+.roompanel .schnellgrid th,
+.menupanel .schnellgrid th {
+  padding: 5px 6px;
+  font-size: 11.5px;
+}
+.roompanel .schnellgrid td.l,
+.menupanel .schnellgrid td.l,
+.roompanel .schnellgrid td:not(.l),
+.menupanel .schnellgrid td:not(.l) {
+  padding: 5px 6px;
+  font-size: 12.5px;
 }
 .roomfoot {
   display: flex;
@@ -1596,6 +1612,25 @@ body.althints [data-hint]::after {
   font-size: 12px;
   color: var(--ink-3);
   text-align: center;
+}
+/* Desktop settings: larger icons in two centred rows (4 + 3); width fits four 150px items and their gaps */
+#v-settings .settingsgrid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 28px 24px;
+  max-width: calc(4 * 150px + 3 * 24px);
+  margin: 0 auto;
+}
+#v-settings .settingsicon {
+  width: 150px;
+}
+#v-settings .settingsicon .tabicon {
+  width: 84px;
+  height: 84px;
+}
+#v-settings .settingscaption {
+  font-size: 13px;
 }
 /* Export view's Notizen buttons: larger .settingsicon; drawn with an 8px pen on 400px, so thinner strokes */
 .exportoptions {
@@ -1756,8 +1791,23 @@ input.offlinejudgename:focus-visible {
 .offlinejudgedel:hover {
   color: var(--danger);
 }
-.schnelltable th.offlinejudgeaddcell {
-  padding-left: 14px;
+/* Full-height add column beside the offline judges: dashed like the add button, the whole cell is the target */
+.schnellgrid th.offlinejudgeaddcol {
+  width: 120px;
+  padding: 0 12px;
+  border: 1px dashed var(--line-2);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 400;
+  text-align: center;
+  vertical-align: middle;
+  white-space: normal;
+  cursor: pointer;
+}
+.schnellgrid th.offlinejudgeaddcol:hover {
+  background: color-mix(in srgb, var(--ink) 5%, var(--paper));
+  color: var(--ink);
 }
 .offlinejudgeadd {
   border: 1px dashed var(--line-2);
@@ -1769,7 +1819,7 @@ input.offlinejudgename:focus-visible {
   cursor: pointer;
   white-space: nowrap;
 }
-.schnelltable-speaker th:not(.l):not(.schnellspacer) {
+.schnelltable-speaker th:not(.l) {
   overflow-wrap: break-word;
   white-space: normal;
 }
@@ -1924,6 +1974,18 @@ input.offlinejudgename:focus-visible {
 #v-dashboard .ballottable tr.rowbest:hover > td {
   background: color-mix(in srgb, var(--ink) 10%, var(--best-bg));
 }
+/* Same row hover as the Ballot for Komplette Wertung and the offline-judge table (input cells are transparent, so the tint shows) */
+#v-schnell .schnellgrid tr:hover > td,
+#v-offline .offlinejurytable tr:hover > td {
+  background: color-mix(in srgb, var(--ink) 8%, var(--card));
+}
+#v-schnell .schnellgrid tr.deducted:hover > td,
+#v-offline .offlinejurytable tr.deducted:hover > td {
+  background: color-mix(in srgb, var(--ink) 10%, var(--danger-bg));
+}
+#v-offline .offlinejurytable tr.tsep:hover > td {
+  background: none;
+}
 
 /* Deductions, shared by Übersicht/Schnelleingabe rows and the ballot tables */
 tr.deducted td {
@@ -2012,18 +2074,29 @@ tr.deducted td.l {
 .dashtabbody {
   padding-top: 18px;
 }
-/* Wertung table: team group headers, team-coloured names and the nested Wertungsvergleich */
-.dashwtable tr.dashwgrp > td {
-  padding: 16px 10px 4px;
-  border: 0;
-  font-size: 10px;
-  letter-spacing: 0.05em;
+/* Dashboard tables in the schnellgrid look: cells get their padding back (the grid zeroes it for input cells) */
+#v-dashboard .schnellgrid th {
+  padding: 6px 10px;
+}
+#v-dashboard .schnellgrid td:not(.l) {
+  padding: 6px 10px;
+}
+/* Ballot separators stay thin full-width rules in every grid ballot */
+#v-dashboard .schnellgrid tr.tsep > td,
+#v-chair .schnellgrid tr.tsep > td {
+  padding: 0;
+  border-left: 0;
+  border-right: 0;
+}
+/* Wertung table: team group bands, team-coloured names and the nested Wertungsvergleich */
+#v-dashboard .dashwtable tr.dashwgrp > td {
+  padding: 5px 10px;
+  background: color-mix(in srgb, var(--ink) 5%, var(--paper));
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   text-align: left;
-}
-.dashwtable tr.dashwgrp:first-child > td,
-.dashwtable tr:first-child + tr.dashwgrp > td {
-  padding-top: 6px;
 }
 .dashwtable tr.dashwgrp.team-gov > td,
 .dashwrow.team-gov .dashwname {
@@ -2038,18 +2111,10 @@ tr.deducted td.l {
   color: var(--team-free);
 }
 #v-dashboard .dashwtable tr.dashwgrp:hover > td {
-  background: none;
+  background: color-mix(in srgb, var(--ink) 5%, var(--paper));
 }
 .dashwrow {
   cursor: pointer;
-}
-.dashwrow > td {
-  padding-top: 6px;
-  padding-bottom: 6px;
-  border-top: 1px solid var(--line-2);
-}
-.dashwrow > td.l {
-  padding-left: 4px;
 }
 .dashcaret {
   display: inline-block;
@@ -2075,13 +2140,9 @@ tr.deducted td.l {
 .dashwtable th.dashhot {
   color: var(--ink-3);
 }
-/* The Spread column mirrors Auffällig's spacing so the rule sits between them */
-.dashwtable tr:first-child > th:nth-last-child(2),
-.dashwrow > td:nth-last-child(2) {
-  padding-right: 16px;
-}
-.dashwtable tr.dashwexp > td {
-  padding: 4px 0 16px 28px;
+/* Opened row's Wertungsvergleich, indented under the row's caret */
+#v-dashboard .dashwtable tr.dashwexp > td {
+  padding: 8px 10px 14px 28px;
   text-align: left;
   background: color-mix(in srgb, var(--ink) 3%, var(--card));
 }
@@ -2093,27 +2154,13 @@ tr.deducted td.l {
   min-width: 60%;
 }
 
-/* Einzelergebnisse: one column per judge plus the panel average, grouped by heavier rules */
-.dasheinzel th {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--ink);
-  padding: 4px 10px 6px;
-}
-.dasheinzel td {
-  padding: 5px 10px;
-  border-top: 1px solid var(--line-2);
-}
+/* Einzelergebnisse: one column per judge plus the shaded panel average, groups split by a heavier rule */
 .dasheinzel td.l {
   font-size: 13px;
   color: var(--ink-2);
-  white-space: nowrap;
 }
 .dasheinzel tr.dasheinzelsep > td {
   border-top: 2px solid var(--line-2);
-}
-.dasheinzel .dashpanelcol {
-  background: color-mix(in srgb, var(--ink) 4%, var(--paper));
 }
 #v-dashboard .dasheinzel tr:hover > td.dashpanelcol {
   background: color-mix(in srgb, var(--ink) 10%, var(--paper));
@@ -2274,17 +2321,8 @@ tr.deducted td.l {
   font-size: 10.5px;
   font-weight: 400;
 }
-.schnellgrid th.schnellspacer,
-.schnellgrid th.offlinejudgeaddcell {
-  background: transparent;
-}
 .schnellgrid td {
   border: 1px solid var(--line-2);
-}
-.schnellgrid td.schnellspacer,
-.schnellgrid tr.deducted td.schnellspacer {
-  border: 0;
-  background: transparent;
 }
 /* Fields fill their cell; the id selector outranks the compact #v-schnell padding */
 .schnellgrid td:not(.l),
@@ -2402,25 +2440,6 @@ tr.deducted td.l {
   margin-top: 12px;
   overflow-x: auto;
 }
-/* Mobile Ballot in the schnellgrid look: Ø as the shaded, ruled last column; separator rows stay thin rules */
-#v-chair .ballottable tr:not(.tsep) > :last-child {
-  background: color-mix(in srgb, var(--ink) 6%, var(--card));
-  border-left: 1px solid var(--line);
-}
-#v-chair .ballottable th:last-child {
-  background: color-mix(in srgb, var(--ink) 10%, var(--paper));
-}
-#v-chair .ballottable tr.rowbest > td {
-  background: var(--best-bg);
-}
-#v-chair .ballottable tr.deducted > td:last-child {
-  background: color-mix(in srgb, var(--danger) 14%, var(--danger-bg));
-}
-#v-chair .ballottable tr.tsep td {
-  padding: 0;
-  border-left: 0;
-  border-right: 0;
-}
 /* Same first-column share in both tables so Rede and Team line up; long names wrap instead of widening it */
 #matrix .schnellgrid th.l {
   width: 30%;
@@ -2436,6 +2455,7 @@ tr.deducted td.l {
 /* Team marking in desktop entry tables: team-coloured names, no side rail */
 #matrix td.team-gov,
 #v-chair td.team-gov,
+#v-dashboard td.team-gov,
 #v-schnell td.team-gov,
 #v-schnell th.team-gov,
 .offlinejurytable td.team-gov,
@@ -2445,6 +2465,7 @@ tr.deducted td.l {
 }
 #matrix td.team-opp,
 #v-chair td.team-opp,
+#v-dashboard td.team-opp,
 #v-schnell td.team-opp,
 #v-schnell th.team-opp,
 .offlinejurytable td.team-opp,
@@ -2454,6 +2475,7 @@ tr.deducted td.l {
 }
 #matrix td.team-free,
 #v-chair td.team-free,
+#v-dashboard td.team-free,
 #v-schnell td.team-free,
 #v-schnell th.team-free,
 .offlinejurytable td.team-free,
@@ -2497,8 +2519,14 @@ tr.deducted td.l {
   font-size: 19px;
   font-weight: 500;
 }
-.blattswaphint {
+/* Speaker's name in the Einzelreden header's second row */
+.blattperson {
+  font-size: 13px;
+}
+.blattperson + .blattswaphint {
   margin-left: 14px;
+}
+.blattswaphint {
   font-size: 11px;
   color: var(--ink-3);
 }
@@ -2849,7 +2877,11 @@ body.blattresizing .blattcol {
 }
 .roomview > .sub {
   text-align: center;
-  margin-bottom: 20px;
+  margin: 28px 0 0;
+}
+/* The note moved to the bottom, so the title itself keeps the stage at a distance */
+.roomview > .roomtitle {
+  margin-bottom: 28px;
 }
 /* Room plan: teams facing each other, Fraktionsfrei and Jury below; positioned for the focus arrow */
 .roomstage {
@@ -2878,11 +2910,24 @@ body.blattresizing .blattcol {
   grid-area: free;
   align-items: center;
 }
+/* Desktop: Jury as a third column beside the speakers, spanning the team and Fraktionsfrei rows */
+#v-namenroom .roomstage {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 260px;
+  grid-template-areas: "gov opp jury" "free free jury";
+  /* Same 14px as between the FFR cards (.namenfreerow) */
+  column-gap: 14px;
+  max-width: 1000px;
+}
+/* Tops up the 14px column gap so the Jury card keeps 48px from Opposition */
+#v-namenroom .roomstage > .jury {
+  margin-left: 34px;
+}
+/* Starts level with the first name cards: skips the side heading (13px at line-height 1.5) and the side's 14px gap */
 .roomstage > .jury {
   grid-area: jury;
-  justify-self: center;
+  align-self: start;
   width: 100%;
-  max-width: 440px;
+  margin-top: calc(13px * 1.5 + 14px);
 }
 .namensidehead {
   font-size: 13px;
@@ -3192,42 +3237,36 @@ select {
   font-size: 18px;
   font-weight: 500;
 }
-.shortcutlist {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+/* Tastenkürzel table: key caps in a fixed-width first column, descriptions wrap in the second */
+.shortcuttable td.l {
+  vertical-align: middle;
 }
-.shortcutrow {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.shortcuttable td.l:first-child {
+  width: 1%;
 }
-.shortcutrow kbd {
-  flex: 0 0 auto;
+.shortcuttable td.l + td.l {
+  white-space: normal;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.shortcuttable kbd {
+  display: inline-block;
   min-width: 90px;
   text-align: center;
   padding: 3px 8px;
   border: 1px solid var(--line-2);
   border-bottom-width: 2px;
   border-radius: 4px;
-  background: var(--bg-2, var(--card));
+  background: var(--card);
   font-family: inherit;
   font-size: 12px;
 }
-.shortcutrow span {
-  color: var(--ink-3);
-  font-size: 13px;
-}
+/* Info page headings; a later section (Links) is set apart by space only, no rule */
 .shortcutsub {
-  margin: 18px 0 8px !important;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
+  margin: 24px 0 8px !important;
 }
-/* Each Info column's heading sits at the top, with no divider above it */
 .shortcutsub:first-child {
   margin-top: 0 !important;
-  padding-top: 0;
-  border-top: none;
 }
 .modalactions {
   display: flex;

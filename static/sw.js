@@ -1,7 +1,8 @@
-var CACHE = "mittelmass-v2";
+var CACHE = "mittelmass-v3";
 var SHELL = [
   "/static/index.html",
   "/static/app.js",
+  "/static/vendor/qrcode.js",
   "/static/style.css",
   "/static/manifest.json",
   "/static/favicon.png",

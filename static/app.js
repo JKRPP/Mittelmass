@@ -2304,15 +2304,12 @@ function pickSpeaker(v) {
   render();
 }
 function renderSheet() {
-  document.getElementById("spkName").textContent = speakerLabel(cs);
+  // Speech as the title, the speaker's name on its own line below
+  document.getElementById("spkName").textContent = SPEAKERS[cs].label;
+  var person = document.getElementById("spkPerson");
+  person.textContent = getName(cs);
+  person.classList.toggle("hide", !getName(cs));
   setTeamAccent(document.querySelector("#v-sheet .card"), teamOf(cs));
-  var z = zwischensumme(cs);
-  document.getElementById("spkSub").textContent =
-    "Rede " +
-    activeOrdinal(cs) +
-    " von " +
-    activeSpeakerCount() +
-    (z !== null ? " - Zwischensumme " + z : "");
   document.getElementById("prev").disabled = prevActiveSpeaker(cs) === -1;
   document.getElementById("next").disabled = nextActiveSpeaker(cs) === -1;
 
@@ -2395,7 +2392,6 @@ function nudgeTeam(i, d) {
 function renderTeam() {
   document.getElementById("tmName").textContent = TEAMS[ct];
   setTeamAccent(document.querySelector("#v-team .card"), ct);
-  document.getElementById("tmSub").textContent = "Team " + (ct + 1) + " von 2";
   document.getElementById("tprev").disabled = ct === 0;
   document.getElementById("tnext").disabled = ct === 1;
 
@@ -2953,17 +2949,17 @@ function ballotSepRow(ncols) {
   return tr;
 }
 
-// short: phone-width speech labels (mobile Chair's Ballot tab); team classes only colour names inside the mobile views
+// Ballot in the schnellgrid look (desktop dashboard and mobile Chair); short: phone-width speech labels
 function fullBallotTable(summary, short) {
   var chairFirst = chairFirstIds(summary.ids);
   var ncols = chairFirst.length + 2;
-  var table = el("table", "ballottable");
+  var table = el("table", "ballottable schnelltable schnellgrid");
   var head = el("tr");
   head.appendChild(el("th", "l", "Redner:in"));
   chairFirst.forEach(function (id) {
     head.appendChild(el("th", null, summary.nameOf(id)));
   });
-  head.appendChild(el("th", null, "Ø"));
+  head.appendChild(el("th", "schnellsum schnellgstart", "Ø"));
   table.appendChild(head);
 
   // Row metadata, so best speech and best team can be marked once every row exists
@@ -2990,7 +2986,11 @@ function fullBallotTable(summary, short) {
       return v !== null;
     });
     var avg = avgRound(scored);
-    var avgTd = el("td", "tot", avg === null ? "-" : String(avg));
+    var avgTd = el(
+      "td",
+      "tot schnellsum schnellgstart",
+      avg === null ? "-" : String(avg),
+    );
     tr.appendChild(avgTd);
     table.appendChild(tr);
     speakerMeta.push({ vals: vals, avg: avg, tds: tds, avgTd: avgTd, tr: tr });
@@ -3011,7 +3011,13 @@ function fullBallotTable(summary, short) {
       if (entered && summary.includedFor(id, "t" + t)) vals.push(v);
     });
     var avg = avgRound(vals);
-    tr.appendChild(el("td", "tot", avg === null ? "-" : String(avg)));
+    tr.appendChild(
+      el(
+        "td",
+        "tot schnellsum schnellgstart",
+        avg === null ? "-" : String(avg),
+      ),
+    );
     table.appendChild(tr);
   });
 
@@ -3049,7 +3055,7 @@ function fullBallotTable(summary, short) {
     var avg = row.grand === null ? null : Math.round(row.grand * 100) / 100;
     var avgTd = el(
       "td",
-      "tot",
+      "tot schnellsum schnellgstart",
       avg === null ? "-" : String(avg) + (row.partial ? " *" : ""),
     );
     if (row.partial)
@@ -3144,8 +3150,8 @@ function chairSpreadsSection(summary) {
       "button",
       "btn ghost chairrelease" + (spreadOpen ? " on" : ""),
       spreadOpen
-        ? "Dashboard für Wings sperren"
-        : "Dashboard für Wings freigeben",
+        ? "Dashboard für Wings freigegeben"
+        : "Dashboard für Wings gesperrt",
     );
     rel.type = "button";
     rel.addEventListener("click", toggleSpreadOpen);
@@ -3201,8 +3207,8 @@ function chairSpreadsSection(summary) {
   }
   return wrap;
 }
-// One jury table row: online dot + name, Chair/Wing/Trainee, filled count, and the chair's Wing/Trainee switch
-function chairJuryRow(spec) {
+// One jury table row: online dot + name, Chair/Wing/Trainee, filled count, and (with actions) the Wing/Trainee switch
+function chairJuryRow(spec, actions) {
   var tr = el("tr");
   var name = el("td", "l");
   name.appendChild(el("span", "dot " + (spec.online ? "on" : "off")));
@@ -3223,6 +3229,7 @@ function chairJuryRow(spec) {
       spec.filled + "/" + spec.expected,
     ),
   );
+  if (!actions) return tr;
   var act = el("td");
   if (!spec.isChair) {
     var b = el("button", "x", spec.hidden ? "Zu Wing" : "Zu Trainee");
@@ -3235,44 +3242,77 @@ function chairJuryRow(spec) {
   tr.appendChild(act);
   return tr;
 }
-function chairJurySection() {
-  var wrap = el("div");
+// Jury table (Name | Rolle | Stand), plus Aktionen for the chair's Jury tab; the room menus show it read-only
+function juryTable(actions) {
+  var ids = Object.keys(peers);
+  var offlineIds = Object.keys(offlineJudges);
+  if (!ids.length && !offlineIds.length)
+    return el("p", "note", "Noch keine Jurierenden.");
   var table = el("table", "schnelltable schnellgrid chairjury");
   var head = el("tr");
   head.appendChild(el("th", "l", "Name"));
-  head.appendChild(el("th", null, "Status"));
+  head.appendChild(el("th", null, "Rolle"));
   head.appendChild(el("th", "schnellsum schnellgstart", "Stand"));
-  head.appendChild(el("th", null, "Aktionen"));
+  if (actions) head.appendChild(el("th", null, "Aktionen"));
   table.appendChild(head);
-  Object.keys(peers).forEach(function (id) {
+  ids.forEach(function (id) {
     var j = peers[id];
     table.appendChild(
-      chairJuryRow({
-        id: id,
-        name: j.name,
-        online: j.online,
-        isChair: j.is_chair,
-        hidden: j.hidden,
-        filled: j.filled,
-        expected: expectedCellCount(),
-      }),
+      chairJuryRow(
+        {
+          id: id,
+          name: j.name,
+          online: j.online,
+          isChair: j.is_chair,
+          hidden: j.hidden,
+          filled: j.filled,
+          expected: expectedCellCount(),
+        },
+        actions,
+      ),
     );
   });
-  Object.keys(offlineJudges).forEach(function (id) {
+  offlineIds.forEach(function (id) {
     var j = offlineJudges[id];
     table.appendChild(
-      chairJuryRow({
-        id: OFFLINE_ID_PREFIX + id,
-        name: j.name,
-        online: false,
-        offline: true,
-        hidden: j.hidden,
-        filled: offlineFilledCount(id),
-        expected: offlineExpectedCellCount(),
-      }),
+      chairJuryRow(
+        {
+          id: OFFLINE_ID_PREFIX + id,
+          name: j.name,
+          online: false,
+          offline: true,
+          hidden: j.hidden,
+          filled: offlineFilledCount(id),
+          expected: offlineExpectedCellCount(),
+        },
+        actions,
+      ),
     );
   });
-  wrap.appendChild(table);
+  return table;
+}
+// Room-menu heading for the jury: counted judges, then trainees if any
+function juryCountLabel() {
+  var n = visibleJudgeCount();
+  var total = Object.keys(peers).length + Object.keys(offlineJudges).length;
+  return (
+    n +
+    (n === 1 ? " Jurierende:r" : " Jurierende") +
+    (total > n
+      ? ", " + (total - n) + " Trainee" + (total - n === 1 ? "" : "s")
+      : "")
+  );
+}
+// Chair-only jury block of both room menus (desktop room panel and mobile Raum menu)
+function roomJurySection() {
+  var jury = el("div", "roomsec");
+  jury.appendChild(el("div", "roomlbl", juryCountLabel()));
+  jury.appendChild(juryTable(false));
+  return jury;
+}
+function chairJurySection() {
+  var wrap = el("div");
+  wrap.appendChild(juryTable(true));
 
   var ojb = el(
     "button",
@@ -3334,9 +3374,7 @@ function renderChair() {
             var d = el("div");
             var scrollHost = el("div");
             scrollHost.style.overflowX = "auto";
-            var ballot = fullBallotTable(summary, true);
-            ballot.classList.add("schnelltable", "schnellgrid");
-            scrollHost.appendChild(ballot);
+            scrollHost.appendChild(fullBallotTable(summary, true));
             d.appendChild(scrollHost);
             var ot = el("button", "btn ghost", "Zu OpenTab wechseln");
             ot.type = "button";
@@ -3550,7 +3588,7 @@ function visibleJudgeCount() {
   return online + offline;
 }
 
-// Room panel below the Raum tab: room code and link, the jury (chairs only, as .jrow rows), and leaving
+// Room panel below the Raum tab: room code and link, the jury (chairs only, as a read-only table), and leaving
 // Fixed to the body rather than inside .bar, so it isn't clipped and stays put while the bar is rebuilt
 function ensureRoomPanel() {
   var p = document.getElementById("roomPanel");
@@ -3570,36 +3608,10 @@ function renderRoomPanel() {
 
   var room = el("div", "roomsec");
   room.appendChild(el("div", "roomlbl", "Raum"));
-  var line = el("div", "roomline");
-  line.appendChild(el("span", null, ME.code));
-  var copy = el("button", "btn ghost roombtn", "Link kopieren");
-  copy.type = "button";
-  copy.tabIndex = -1;
-  copy.addEventListener("click", function () {
-    copyRoomLink(copy, location.origin + "/r/" + ME.code);
-  });
-  line.appendChild(copy);
-  room.appendChild(line);
+  room.appendChild(roomLinkLine());
   p.appendChild(room);
 
-  if (ME.is_chair) {
-    var jury = el("div", "roomsec");
-    var n = visibleJudgeCount();
-    var total = Object.keys(peers).length + Object.keys(offlineJudges).length;
-    jury.appendChild(
-      el(
-        "div",
-        "roomlbl",
-        n +
-          (n === 1 ? " Jurierende:r" : " Jurierende") +
-          (total > n
-            ? ", " + (total - n) + " Trainee" + (total - n === 1 ? "" : "s")
-            : ""),
-      ),
-    );
-    appendJuryRows(jury);
-    p.appendChild(jury);
-  }
+  if (ME.is_chair) p.appendChild(roomJurySection());
 
   var foot = el("div", "roomfoot");
   var leave = el("button", "roomleave", "Raum verlassen");
@@ -3619,46 +3631,6 @@ function renderRoomPanel() {
     p.style.top = r.bottom + "px";
     p.style.left = Math.max(8, r.right - p.offsetWidth) + "px";
   }
-}
-function appendJuryRows(p) {
-  var ids = Object.keys(peers);
-  var offlineIds = Object.keys(offlineJudges);
-  if (!ids.length && !offlineIds.length) {
-    p.appendChild(el("p", "note", "Noch keine Jurierenden."));
-    return;
-  }
-  ids.forEach(function (id) {
-    var j = peers[id];
-    var row = el("div", "jrow");
-    row.appendChild(el("span", "dot " + (j.online ? "on" : "off")));
-    row.appendChild(
-      el(
-        "span",
-        "n",
-        j.name +
-          (j.is_chair ? " - Chair" : "") +
-          (j.hidden ? " - Trainee" : ""),
-      ),
-    );
-    row.appendChild(el("span", "p", j.filled + " / " + expectedCellCount()));
-    p.appendChild(row);
-  });
-  offlineIds.forEach(function (id) {
-    var j = offlineJudges[id];
-    var row = el("div", "jrow");
-    row.appendChild(el("span", "dot off"));
-    row.appendChild(
-      el("span", "n", j.name + " - Offline" + (j.hidden ? " - Trainee" : "")),
-    );
-    row.appendChild(
-      el(
-        "span",
-        "p",
-        offlineFilledCount(id) + " / " + offlineExpectedCellCount(),
-      ),
-    );
-    p.appendChild(row);
-  });
 }
 function closeRoomPanel() {
   var p = document.getElementById("roomPanel");
@@ -4081,14 +4053,14 @@ function dashHotCats(spreadSummary, keys, full) {
 function dashWertungTable(summary, spreadSummary) {
   var chairFirst = chairFirstIds(summary.ids);
   var ncols = chairFirst.length + 4;
-  var table = el("table", "ballottable dashwtable");
+  var table = el("table", "ballottable schnelltable schnellgrid dashwtable");
   var head = el("tr");
   head.appendChild(el("th", "l", "Rede / Teamkategorie"));
   chairFirst.forEach(function (id) {
     head.appendChild(el("th", null, summary.nameOf(id)));
   });
-  head.appendChild(el("th", null, "Ø"));
-  head.appendChild(el("th", null, "Spread"));
+  head.appendChild(el("th", "schnellsum schnellgstart", "Ø"));
+  head.appendChild(el("th", "schnellsum", "Spread"));
   head.appendChild(el("th", "l dashhot", "Auffällig"));
   table.appendChild(head);
 
@@ -4111,7 +4083,7 @@ function dashWertungTable(summary, spreadSummary) {
       var c = spec.cellFor(id);
       tr.appendChild(el("td", c.cls || null, c.text));
     });
-    tr.appendChild(el("td", "tot", spec.avg));
+    tr.appendChild(el("td", "tot schnellsum schnellgstart", spec.avg));
     tr.appendChild(dashSpreadCell(spec.spread));
     var hotTd = el("td", "l dashhot", dashHotCats(spreadSummary, spec.hotKeys));
     if (hotTd.textContent)
@@ -4207,10 +4179,11 @@ function dashWertungTable(summary, spreadSummary) {
   return table;
 }
 
+// Shaded like the Ø column before it (schnellgrid summary block)
 function dashSpreadCell(spread) {
   return el(
     "td",
-    "tot" + (spread !== null && spread >= 5 ? " spreadhot" : ""),
+    "tot schnellsum" + (spread !== null && spread >= 5 ? " spreadhot" : ""),
     spread === null ? "-" : "±" + spread,
   );
 }
@@ -4228,7 +4201,7 @@ function dashComparisonTable(summary, spec) {
       ? offlineJudges[offlineRealId(id)].hidden
       : peers[id].hidden;
   }
-  var table = el("table", "ballottable");
+  var table = el("table", "ballottable schnelltable schnellgrid");
   var head = el("tr");
   head.appendChild(el("th", "l", spec.rowHead));
   chairFirst.forEach(function (id) {
@@ -4236,8 +4209,8 @@ function dashComparisonTable(summary, spec) {
       el("th", isHiddenId(id) ? "trainee" : null, summary.nameOf(id)),
     );
   });
-  head.appendChild(el("th", null, "Ø"));
-  head.appendChild(el("th", null, "Spread"));
+  head.appendChild(el("th", "schnellsum schnellgstart", "Ø"));
+  head.appendChild(el("th", "schnellsum", "Spread"));
   table.appendChild(head);
 
   function counts(id) {
@@ -4266,7 +4239,13 @@ function dashComparisonTable(summary, spec) {
       if (counts(id) && v !== undefined) vals.push(v);
     });
     var avg = avgRound(vals);
-    tr.appendChild(el("td", "tot", avg === null ? "-" : String(avg)));
+    tr.appendChild(
+      el(
+        "td",
+        "tot schnellsum schnellgstart",
+        avg === null ? "-" : String(avg),
+      ),
+    );
     tr.appendChild(dashSpreadCell(cell ? cell.spread : null));
     table.appendChild(tr);
   });
@@ -4286,7 +4265,13 @@ function dashComparisonTable(summary, spec) {
     if (counts(id) && v !== null) totVals.push(v);
   });
   var totAvg = avgRound(totVals);
-  totTr.appendChild(el("td", "tot", totAvg === null ? "-" : String(totAvg)));
+  totTr.appendChild(
+    el(
+      "td",
+      "tot schnellsum schnellgstart",
+      totAvg === null ? "-" : String(totAvg),
+    ),
+  );
   totTr.appendChild(dashSpreadCell(spec.totalSpread));
 
   // Optional row between the criteria and the total (the speaker table's Abzug line)
@@ -4321,8 +4306,10 @@ function dashBallotTable(summary, s) {
       var dedFiller = el("td", null, "");
       dedFiller.setAttribute("colspan", String(ncols));
       dedTr.appendChild(dedFiller);
-      dedTr.appendChild(el("td", "tot", "−" + deductionPoints(s)));
-      dedTr.appendChild(el("td", null, ""));
+      dedTr.appendChild(
+        el("td", "tot schnellsum schnellgstart", "−" + deductionPoints(s)),
+      );
+      dedTr.appendChild(el("td", "schnellsum", ""));
       return dedTr;
     },
   });
@@ -4381,13 +4368,22 @@ function buildInfoSection() {
     wrap.appendChild(col);
   }
 
-  var list = el("div", "shortcutlist");
+  // Static and read-only, so built as an HTML string in the schnellgrid look
+  var h = [
+    '<table class="schnelltable schnellgrid shortcuttable"><tr><th class="l">Taste</th><th class="l">Funktion</th></tr>',
+  ];
   SHORTCUTS.forEach(function (sc) {
-    var row = el("div", "shortcutrow");
-    row.appendChild(el("kbd", null, sc[0]));
-    row.appendChild(el("span", null, sc[1]));
-    list.appendChild(row);
+    h.push(
+      '<tr><td class="l"><kbd>' +
+        esc(sc[0]) +
+        '</kbd></td><td class="l">' +
+        esc(sc[1]) +
+        "</td></tr>",
+    );
   });
+  h.push("</table>");
+  var list = el("div");
+  list.innerHTML = h.join("");
   column("Tastenkürzel", list);
 
   function newTabLink(label, href) {
@@ -4416,6 +4412,8 @@ function buildInfoSection() {
     ),
   );
   about.appendChild(basis);
+  // Same heading style as the column titles; not first in its column, so it gets the divider above
+  about.appendChild(el("h2", "shortcutsub", "Links"));
   var links = el("div", "settingslinks");
   [
     ["Impressum", "/impressum"],
@@ -4766,11 +4764,13 @@ function dashEinzelTable(summary) {
     }),
   });
 
-  var table = el("table", "ballottable dasheinzel");
+  var table = el("table", "ballottable schnelltable schnellgrid dasheinzel");
+  // The panel column is the table's summary block, shaded and ruled like Ø elsewhere
+  var PANEL_CLS = "dashpanelcol schnellsum schnellgstart";
   var head = el("tr");
   head.appendChild(el("th", "l"));
   cols.forEach(function (c) {
-    head.appendChild(el("th", c.panel ? "dashpanelcol" : null, c.name));
+    head.appendChild(el("th", c.panel ? PANEL_CLS : null, c.name));
   });
   table.appendChild(head);
 
@@ -4786,7 +4786,7 @@ function dashEinzelTable(summary) {
     );
     tr.appendChild(lbl);
     cols.forEach(function (c) {
-      var td = el("td", c.panel ? "dashpanelcol" : null);
+      var td = el("td", c.panel ? PANEL_CLS : null);
       var content = cellFor(c);
       td.appendChild(
         typeof content === "string"
@@ -5399,9 +5399,15 @@ function buildOfflineJuryTable(container) {
     th.appendChild(band);
     head.appendChild(th);
   });
-  // The add column stays right of the last judge so the table never has to stretch
-  var addTh = el("th", "offlinejudgeaddcell");
-  addTh.appendChild(addBtn());
+  // Full-height add column right of the last judge: one cell spanning every row (head, speeches, separator, teams)
+  var addTh = el("th", "offlinejudgeaddcol", "+ Offline-Juror:in");
+  addTh.rowSpan = 1 + speakers.length + 1 + TEAMS.length;
+  addTh.setAttribute("role", "button");
+  addTh.tabIndex = -1;
+  addTh.title = "Weitere Offline-Juror:in hinzufügen";
+  addTh.addEventListener("click", function () {
+    addOfflineJudge("");
+  });
   head.appendChild(addTh);
   table.appendChild(head);
 
@@ -5418,11 +5424,11 @@ function buildOfflineJuryTable(container) {
       );
       tr.appendChild(td);
     });
-    tr.appendChild(el("td", "schnellspacer"));
     table.appendChild(tr);
   });
 
-  table.appendChild(ballotSepRow(ids.length + 2));
+  // Label and judge columns only; the add column's cell already spans this row
+  table.appendChild(ballotSepRow(ids.length + 1));
 
   TEAMS.forEach(function (tm, t) {
     var tr = el("tr");
@@ -5435,7 +5441,6 @@ function buildOfflineJuryTable(container) {
       );
       tr.appendChild(td);
     });
-    tr.appendChild(el("td", "schnellspacer"));
     table.appendChild(tr);
   });
 
@@ -5743,12 +5748,10 @@ function renderBlatt() {
   head.appendChild(prev);
 
   var mid = el("div", "blattheadmid");
-  mid.appendChild(el("h1", "blatttitle", speakerLabel(cs)));
-  var sub = el(
-    "div",
-    "sub",
-    "Rede " + activeOrdinal(cs) + " von " + activeSpeakerCount(),
-  );
+  mid.appendChild(el("h1", "blatttitle", SPEAKERS[cs].label));
+  // Second row: the speaker's name, then the Alt + I hint (shown while Alt is held)
+  var sub = el("div", "sub");
+  if (getName(cs)) sub.appendChild(el("span", "blattperson", getName(cs)));
   sub.appendChild(
     el(
       "span",
@@ -6313,7 +6316,7 @@ function namenStage() {
   return stage;
 }
 
-// Desktop "Namen" view laid out like the room: facing team tables, Fraktionsfrei and Jury below
+// Desktop "Namen" view laid out like the room: facing teams with Fraktionsfrei below, Jury to the right, note at the bottom
 function renderNamenRoom() {
   var root = document.getElementById("v-namenroom");
   if (!root) return;
@@ -6322,13 +6325,6 @@ function renderNamenRoom() {
 
   var wrap = el("div", "roomview");
   wrap.appendChild(el("h1", "roomtitle", "Raum " + ME.code));
-  wrap.appendChild(
-    el(
-      "p",
-      "sub",
-      "Namen sind optional, werden nur lokal gespeichert und nicht synchronisiert.",
-    ),
-  );
 
   var stage = namenStage();
   var jury = el("div", "roomtable jury");
@@ -6398,6 +6394,13 @@ function renderNamenRoom() {
   stage.appendChild(jury);
 
   wrap.appendChild(stage);
+  wrap.appendChild(
+    el(
+      "p",
+      "sub",
+      "Namen sind optional, werden nur lokal gespeichert und nicht synchronisiert.",
+    ),
+  );
   root.appendChild(wrap);
 }
 
@@ -7508,6 +7511,74 @@ function copyText(text) {
     else reject(new Error("copy failed"));
   });
 }
+function roomUrl() {
+  return location.origin + "/r/" + ME.code;
+}
+// QR code as an SVG of one path (one square per dark module) with the standard 4-module quiet zone;
+// always black on white, since scanners need a light background in either theme
+function roomQrSvg(text) {
+  var NS = "http://www.w3.org/2000/svg";
+  var qr = qrcode(0, "M");
+  qr.addData(text);
+  qr.make();
+  var n = qr.getModuleCount();
+  var quiet = 4;
+  var size = n + 2 * quiet;
+  var d = [];
+  for (var r = 0; r < n; r++) {
+    for (var c = 0; c < n; c++) {
+      if (qr.isDark(r, c))
+        d.push("M" + (c + quiet) + " " + (r + quiet) + "h1v1h-1z");
+    }
+  }
+  var svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("class", "roomqr");
+  svg.setAttribute("viewBox", "0 0 " + size + " " + size);
+  svg.setAttribute("shape-rendering", "crispEdges");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "QR-Code für " + text);
+  var bg = document.createElementNS(NS, "rect");
+  bg.setAttribute("width", String(size));
+  bg.setAttribute("height", String(size));
+  bg.setAttribute("fill", "#ffffff");
+  svg.appendChild(bg);
+  var p = document.createElementNS(NS, "path");
+  p.setAttribute("d", d.join(""));
+  p.setAttribute("fill", "#000000");
+  svg.appendChild(p);
+  return svg;
+}
+// Large QR code of the room link, to show on a phone or projector so others can join by scanning
+function openRoomQrModal() {
+  closeMenu();
+  closeRoomPanel();
+  var url = roomUrl();
+  openModal("roomQrModal", function (box) {
+    box.classList.add("roomqrbox");
+    box.appendChild(el("h2", null, "Raum " + ME.code));
+    box.appendChild(roomQrSvg(url));
+    box.appendChild(el("p", "roomqrurl", url));
+    box.appendChild(modalCloseRow("roomQrModal", "Schließen"));
+  });
+}
+// Room code with its "Link kopieren" and "QR-Code" buttons, shared by the mobile Raum menu and the desktop room panel
+function roomLinkLine() {
+  var line = el("div", "roomline");
+  line.appendChild(el("span", "roomlinecode", ME.code));
+  var copy = el("button", "btn ghost roombtn", "Link kopieren");
+  copy.type = "button";
+  copy.tabIndex = -1;
+  copy.addEventListener("click", function () {
+    copyRoomLink(copy, roomUrl());
+  });
+  line.appendChild(copy);
+  var qrBtn = el("button", "btn ghost roombtn", "QR-Code");
+  qrBtn.type = "button";
+  qrBtn.tabIndex = -1;
+  qrBtn.addEventListener("click", openRoomQrModal);
+  line.appendChild(qrBtn);
+  return line;
+}
 function copyRoomLink(btn, url) {
   var label = btn.textContent;
   copyText(url).then(
@@ -7674,16 +7745,9 @@ function renderMenuBody() {
 
   var room = el("div", "roomsec");
   room.appendChild(el("div", "roomlbl", "Raumcode"));
-  var line = el("div", "roomline");
-  line.appendChild(el("span", null, ME.code));
-  var copy = el("button", "btn ghost roombtn", "Link kopieren");
-  copy.type = "button";
-  copy.addEventListener("click", function () {
-    copyRoomLink(copy, location.origin + "/r/" + ME.code);
-  });
-  line.appendChild(copy);
-  room.appendChild(line);
+  room.appendChild(roomLinkLine());
   body.appendChild(room);
+  if (ME.is_chair) body.appendChild(roomJurySection());
 
   // Picks rebuild the grid in place so each icon shows its new state while the menu stays open
   var sec = el("div", "roomsec");
