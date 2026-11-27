@@ -1895,8 +1895,9 @@ function resetRoomState() {
   // Reset server-owned room settings so the next room doesn't briefly show this one's
   spreadOpen = false;
   freeSpeakerCount = 3;
-  // Reset per-room view state (expanded spreads, dashboard selection)
+  // Reset per-room view state (expanded spreads, picked rows, dashboard selection)
   openSpread = {};
+  pickedRow = {};
   dashboardSelected = { kind: "speaker", s: 0 };
   dashIncludeTrainees = false;
   lastFocusByView = {};
@@ -2546,7 +2547,56 @@ function renderMatrix() {
   });
   h.push("</table>");
   document.getElementById("matrix").innerHTML = h.join("");
+  applyPickedRow(document.getElementById("v-matrix"));
 }
+
+// Tap-to-highlight in mobile Übersicht/Chair, kept as table class + first-cell text across rebuilds; per view "main" and "sub" (breakdown) slots
+var pickedRow = {};
+function inBreakdown(tr) {
+  return !!tr.closest(".chairspreaddetail");
+}
+// A breakdown row's key is prefixed with its spread row's key, so "Spr" is marked in one breakdown only
+function pickRowKey(tr) {
+  var table = tr.closest("table");
+  var first = tr.cells[0];
+  if (!table || !first) return null;
+  var key = table.className + "|" + first.textContent;
+  if (!inBreakdown(tr)) return key;
+  var owner = tr.closest(".chairspreaddetail").previousElementSibling;
+  return (owner ? pickRowKey(owner) : "") + ">" + key;
+}
+// Body rows only: no header rows, separators or the breakdown's holder row; nested tables only inside a spread breakdown
+function pickableRow(tr) {
+  if (!tr || !tr.querySelector("td")) return false;
+  if (tr.classList.contains("tsep") || tr.classList.contains("chairspreaddetail"))
+    return false;
+  var table = tr.closest("table");
+  if (!table) return false;
+  return !table.parentElement.closest("table") || inBreakdown(tr);
+}
+function applyPickedRow(root) {
+  if (!root) return;
+  var picks = pickedRow[root.id] || {};
+  [].forEach.call(root.querySelectorAll("tr"), function (tr) {
+    var ok = pickableRow(tr);
+    var key = ok && picks[inBreakdown(tr) ? "sub" : "main"];
+    tr.classList.toggle("rowpick", !!key && pickRowKey(tr) === key);
+  });
+}
+["v-matrix", "v-chair"].forEach(function (id) {
+  var root = document.getElementById(id);
+  // Bubbles after a row's own handler, which may already have re-rendered; the key still reads from the detached row
+  root.addEventListener("click", function (e) {
+    if (e.target.closest("button, input, a")) return;
+    var tr = e.target.closest("tr");
+    if (!pickableRow(tr)) return;
+    var picks = pickedRow[id] || (pickedRow[id] = {});
+    var slot = inBreakdown(tr) ? "sub" : "main";
+    var key = pickRowKey(tr);
+    picks[slot] = picks[slot] === key ? null : key;
+    applyPickedRow(root);
+  });
+});
 
 // Chair
 var openSpread = {};
@@ -3346,6 +3396,7 @@ function renderChair() {
   root.innerHTML = "";
   if (!ME.is_chair) {
     root.appendChild(chairSpreadsSection(summary));
+    applyPickedRow(root);
     return;
   }
   root.appendChild(
@@ -3393,6 +3444,7 @@ function renderChair() {
       renderChair,
     ),
   );
+  applyPickedRow(root);
 }
 
 // Desktop layout for any judge above isDesktopWidth(); only the Dashboard view is chair-only,
@@ -7185,8 +7237,7 @@ function urlCode() {
   var m = location.pathname.match(/^\/r\/([A-Za-z0-9]{4})$/);
   return m ? m[1].toUpperCase() : null;
 }
-// Most-recent-first index of past rooms (code, name, filled count, timestamp)
-// Recent rooms (opd.recent): created is when this device first joined (older entries fall back to ts)
+// Most-recent-first index of past rooms (opd.recent); created is when this device first joined (older entries fall back to ts)
 function recordRecentRoom(code, name, isChair) {
   var list = LS.get("opd.recent", []) || [];
   var prev = list.filter(function (r) {
@@ -7574,8 +7625,7 @@ function copyText(text) {
 function roomUrl() {
   return location.origin + "/r/" + ME.code;
 }
-// QR code as an SVG of one path (one square per dark module) with the standard 4-module quiet zone;
-// always black on white, since scanners need a light background in either theme
+// QR code as one SVG path with the standard 4-module quiet zone; always black on white, since scanners need a light background
 function roomQrSvg(text) {
   var NS = "http://www.w3.org/2000/svg";
   var qr = qrcode(0, "M");

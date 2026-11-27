@@ -366,8 +366,7 @@ body {
   white-space: nowrap;
   flex: 0 0 auto;
 }
-/* Mobile top bar mirrors the desktop header: a tinted strip with the timer and menu as folder tabs on its bottom rule */
-/* The border-image paints tint and rule out to the screen edges without widening the layout (outset is ink overflow) */
+/* Mobile top bar like the desktop header: tinted strip, timer and menu as folder tabs; border-image runs it to the screen edges */
 #app:not(.dashboard-mode) .bar {
   align-items: flex-end;
   gap: 6px;
@@ -2476,8 +2475,7 @@ tr.deducted td.l {
   color: var(--warn);
   background: color-mix(in srgb, var(--warn) 14%, var(--warn-bg));
 }
-/* The criteria breakdown fills its row edge to edge; only its outer columns keep some inner padding */
-/* Outranks the #v-chair .schnellgrid td:not(.l) padding; no own border, the breakdown's cell borders frame it */
+/* Criteria breakdown fills its row edge to edge (outranks the #v-chair td padding); its own cell borders frame it */
 #v-chair .schnellgrid tr.chairspreaddetail > td {
   padding: 0;
   border: 0;
@@ -2550,6 +2548,20 @@ tr.deducted td.l {
 .offlinejurytable th.team-free,
 .otspeechtable td.team-free {
   color: var(--team-free);
+}
+/* Tapped row in the mobile Übersicht and Chair tables (applyPickedRow): a darker tint plus an edge mark; red rows keep their red */
+#v-matrix tr.rowpick > td,
+#v-chair tr.rowpick > td {
+  background: color-mix(in srgb, var(--ink) 14%, var(--card));
+}
+#v-matrix tr.rowpick.deducted > td,
+#v-chair tr.rowpick.deducted > td,
+#v-chair tr.rowpick.hot > td {
+  background: color-mix(in srgb, var(--ink) 12%, var(--warn-bg));
+}
+#v-matrix tr.rowpick > td:first-child,
+#v-chair tr.rowpick > td:first-child {
+  box-shadow: inset 3px 0 0 var(--ink);
 }
 /* Best speech/team stays green over its team colour in the mobile Ergebnis */
 #v-chair td.best {
