@@ -816,6 +816,7 @@ function write(target, criterion, points) {
     seq: seq,
   };
   saveLocal();
+  touchRecentRoom();
   scheduleFlush(150);
 }
 
@@ -7185,21 +7186,39 @@ function urlCode() {
   return m ? m[1].toUpperCase() : null;
 }
 // Most-recent-first index of past rooms (code, name, filled count, timestamp)
+// Recent rooms (opd.recent): created is when this device first joined (older entries fall back to ts)
 function recordRecentRoom(code, name, isChair) {
   var list = LS.get("opd.recent", []) || [];
+  var prev = list.filter(function (r) {
+    return r.code === code;
+  })[0];
   list = list.filter(function (r) {
     return r.code !== code;
   });
+  var now = Date.now();
   list.unshift({
     code: code,
     name: name,
     is_chair: isChair,
     filled: Object.keys(mine).length,
     judges: Object.keys(peers).length,
-    ts: Date.now(),
+    ts: now,
+    created: prev ? prev.created || prev.ts : now,
   });
   LS.set("opd.recent", list.slice(0, 8));
 }
+// Called on every own score write, so the table's Punkte eingetragen stays current even if the tab is just closed
+function touchRecentRoom() {
+  if (!ME) return;
+  var list = LS.get("opd.recent", []) || [];
+  var r = list.filter(function (x) {
+    return x.code === ME.code;
+  })[0];
+  if (!r) return;
+  r.filled = Object.keys(mine).length;
+  LS.set("opd.recent", list);
+}
+// Lobby table of recent rooms in the schnellgrid look; a click (or Enter) on a row rejoins that room
 function renderRecentRooms() {
   var wrap = document.getElementById("lobbyRecent");
   var list = document.getElementById("lobbyRecentList");
@@ -7208,35 +7227,60 @@ function renderRecentRooms() {
     return r.code !== here;
   });
   wrap.classList.toggle("hide", rooms.length === 0);
+  // Lets the desktop lobby widen the shared "Raum beitreten" block only when the table is there
+  document
+    .getElementById("v-lobby")
+    .classList.toggle("hasrecent", rooms.length > 0);
   list.innerHTML = "";
+  if (!rooms.length) return;
+  var table = el("table", "schnelltable schnellgrid recenttable");
+  var head = el("tr");
+  [
+    ["l", "Code"],
+    ["l", "Name"],
+    [null, "Rolle"],
+    [null, "Punkte"],
+    [null, "Judges"],
+    [null, "Erstellt"],
+  ].forEach(function (h) {
+    head.appendChild(el("th", h[0], h[1]));
+  });
+  table.appendChild(head);
   rooms.forEach(function (r) {
-    var btn = el("button", "recentroom");
-    btn.type = "button";
-    btn.appendChild(el("span", "code", r.code));
-    var who = el("div", "info");
-    who.appendChild(el("div", "who", r.name));
-    who.appendChild(el("div", "who", r.is_chair ? "Chair" : "Wing"));
-    btn.appendChild(who);
-    var meta = el("div", "info");
-    meta.appendChild(
-      el(
-        "div",
-        "meta",
-        (r.filled || 0) +
-          " Punkte eingetragen" +
-          (r.judges ? " - " + r.judges + " Judges" : ""),
-      ),
+    var tr = el("tr", "recentrow");
+    tr.tabIndex = 0;
+    tr.title = "Raum " + r.code + " wieder öffnen";
+    tr.appendChild(el("td", "l recentcode", r.code));
+    tr.appendChild(el("td", "l", r.name));
+    tr.appendChild(el("td", null, r.is_chair ? "Chair" : "Wing"));
+    tr.appendChild(el("td", null, String(r.filled || 0)));
+    tr.appendChild(
+      el("td", r.judges ? null : "mt", r.judges ? String(r.judges) : "-"),
     );
-    meta.appendChild(
-      el("div", "meta", new Date(r.ts).toLocaleDateString("de-DE")),
+    tr.appendChild(
+      el("td", null, new Date(r.created || r.ts).toLocaleDateString("de-DE")),
     );
-    btn.appendChild(meta);
-    btn.addEventListener("click", function () {
+    tr.addEventListener("click", function () {
       rejoinRecentRoom(r.code);
     });
-    list.appendChild(btn);
+    tr.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") rejoinRecentRoom(r.code);
+    });
+    table.appendChild(tr);
   });
+  list.appendChild(table);
 }
+// Mobile lobby tabs: Neuer Raum (entry card) or Vorherige Räume (recent table); desktop CSS shows both side by side
+document.getElementById("lobbyTabs").addEventListener("click", function (e) {
+  var b = e.target.closest("button[data-lt]");
+  if (!b) return;
+  [].forEach.call(this.querySelectorAll("button[data-lt]"), function (x) {
+    x.setAttribute("aria-pressed", String(x === b));
+  });
+  document
+    .getElementById("v-lobby")
+    .classList.toggle("lt-recent", b.dataset.lt === "recent");
+});
 function rejoinRecentRoom(code) {
   var sess = LS.get("opd.session." + code, null);
   if (!sess || !sess.token) {
@@ -7256,6 +7300,8 @@ function showLobby() {
   document.getElementById("dock").classList.add("hide");
   // render() no longer runs once ME is null, so drop the desktop class here or it stretches the lobby card
   document.getElementById("app").classList.remove("dashboard-mode");
+  // Lets the desktop lobby widen past the phone column to fit the recent-rooms table
+  document.getElementById("app").classList.add("lobby-mode");
   if (code) {
     document.getElementById("lobbyCode").textContent = code;
     document.getElementById("lobbyJoin").classList.remove("hide");
@@ -7287,6 +7333,7 @@ function startSession(s) {
   if (!remote[ME.judge_id]) remote[ME.judge_id] = {};
   Object.assign(remote[ME.judge_id], mine);
   document.getElementById("v-lobby").classList.add("hide");
+  document.getElementById("app").classList.remove("lobby-mode");
   document.getElementById("main").classList.remove("hide");
   document.getElementById("dock").classList.remove("hide");
   updateChairTab();
@@ -7476,8 +7523,21 @@ function doJoin(code) {
 document.getElementById("btnJoin").addEventListener("click", function () {
   doJoin(urlCode());
 });
+// With no code, offer to create a room instead; creating goes through btnCreate, which checks the name itself
 document.getElementById("btnJoinCode").addEventListener("click", function () {
-  doJoin(document.getElementById("rc").value.trim().toUpperCase());
+  var code = document.getElementById("rc").value.trim().toUpperCase();
+  if (!code) {
+    lobbyErr("");
+    openConfirmModal({
+      text: "Kein Raumcode eingegeben. Möchtest du einen neuen Raum erstellen?",
+      confirmLabel: "Neuen Raum erstellen",
+      onConfirm: function () {
+        document.getElementById("btnCreate").click();
+      },
+    });
+    return;
+  }
+  doJoin(code);
 });
 document.getElementById("rc").addEventListener("input", function () {
   this.value = this.value.toUpperCase();

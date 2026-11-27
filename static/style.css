@@ -131,9 +131,19 @@ body {
   max-width: 440px;
   margin: 0 auto;
 }
+/* Full-height column so the legal footer sits at the bottom of the screen (.hide still wins via !important) */
 #v-lobby {
   padding: 10px 12px 14px;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+/* Doubled class beats the later .legalrow margin, so the auto margin pushes the footer down */
+.legalrow.lobbyfoot {
+  margin-top: auto;
+  padding-top: 24px;
 }
 #main.hide {
   display: none;
@@ -774,47 +784,102 @@ hr.sep {
 .dockpad > hr.sep {
   border-top-color: var(--line-2);
 }
-.recentroom {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  text-align: left;
-  font: inherit;
-  padding: 10px 4px;
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  background: transparent;
-  color: var(--ink);
-  cursor: pointer;
-}
-.recentroom:last-child {
-  border-bottom: 0;
-}
-.recentroom .code {
-  flex: 0 0 auto;
-  font-size: 22px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-}
-.recentroom .info {
-  flex: 1;
+/* Lobby recent rooms: a grid table below the card on mobile, beside it on desktop */
+.lobbyrecent {
+  margin-top: 14px;
   min-width: 0;
 }
-.recentroom .info + .info {
-  flex: 0 1 auto;
-  text-align: right;
+/* Small grey label like "Dein Name" rather than a heading; the shared "Raum beitreten" heading sits above both */
+.lobbyrecentlbl {
+  margin: 0 0 6px;
 }
-.recentroom .who {
-  color: var(--ink);
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.lobbyhead {
+  margin: 0;
+}
+/* Mobile lobby: with recent rooms, folder tabs replace the heading and show one pane (lt-recent picks the table) */
+#v-lobby:not(.hasrecent) .lobbytabs {
+  display: none;
+}
+@media (max-width: 1023.98px) {
+  #v-lobby.hasrecent .lobbyhead,
+  #v-lobby.hasrecent .lobbyrecentlbl {
+    display: none;
+  }
+  /* Only while the tabs show (hasrecent), so an emptied list can never hide the entry card */
+  #v-lobby.hasrecent.lt-recent .lobbycard,
+  #v-lobby.hasrecent:not(.lt-recent) .lobbyrecent {
+    display: none;
+  }
+  #v-lobby.hasrecent .lobbyrecent {
+    margin-top: 12px;
+  }
+}
+.lobbyrecentscroll {
+  overflow-x: auto;
+}
+/* Doubled class outranks the later .schnellgrid td:not(.l) padding reset meant for input cells */
+.schnellgrid.recenttable th,
+.schnellgrid.recenttable td:not(.l),
+.schnellgrid.recenttable td.l {
+  padding: 6px 8px;
   white-space: nowrap;
 }
-.recentroom .meta {
-  color: var(--ink-3);
-  font-size: 11px;
+.recenttable td {
+  font-size: 13px;
+}
+.recenttable .recentcode {
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.recentrow {
+  cursor: pointer;
+}
+.recentrow:hover > td {
+  background: color-mix(in srgb, var(--ink) 8%, var(--card));
+}
+.recentrow:focus-visible {
+  outline: 2px solid var(--live);
+  outline-offset: -2px;
+}
+@media (min-width: 1024px) {
+  #app.lobby-mode {
+    max-width: 1180px;
+  }
+  /* Title and figure on top, then the shared block (card alone stays centred), the footer at the bottom */
+  #app.lobby-mode #v-lobby {
+    align-items: center;
+    gap: 24px;
+    padding-top: 28px;
+  }
+  #app.lobby-mode .lobbyhero {
+    align-self: stretch;
+  }
+  /* The shared block is card-wide alone, full width once the table is beside the card */
+  #app.lobby-mode .lobbymain {
+    width: 420px;
+  }
+  #app.lobby-mode #v-lobby.hasrecent .lobbymain {
+    width: 100%;
+  }
+  #app.lobby-mode .lobbytabs {
+    display: none;
+  }
+  #app.lobby-mode .lobbyrow {
+    display: flex;
+    align-items: flex-start;
+    gap: 32px;
+  }
+  #app.lobby-mode .lobbycard {
+    flex: 0 0 420px;
+  }
+  #app.lobby-mode .lobbyrecent {
+    flex: 1 1 0;
+    margin-top: 0;
+  }
+  /* Level with "Dein Name": the card's 10px top padding plus that label's 10px top margin */
+  #app.lobby-mode .lobbyrecentlbl {
+    margin-top: 20px;
+  }
 }
 .sum {
   display: flex;
@@ -2365,19 +2430,22 @@ tr.deducted td.l {
   overflow: visible;
   padding: 0;
 }
-/* Rule drawn by border-image so it runs to the screen edges like the top bar's; tabs stand on it, the pressed one covers it */
-#v-chair .dashtabs {
+/* Phone-scale folder tabs (mobile Chair view and mobile lobby); the rule is drawn by border-image so it runs to the screen edges */
+#v-chair .dashtabs,
+#v-lobby .dashtabs {
   margin: 0;
   padding: 0 0 1px;
   border-bottom: 0;
   border-image: linear-gradient(to top, var(--line) 1px, transparent 1px) fill
     0 / 0 / 0 100vw;
 }
-#v-chair .dashtabs > button {
+#v-chair .dashtabs > button,
+#v-lobby .dashtabs > button {
   font-size: 12px;
   padding: 5px 10px;
 }
-#v-chair .dashtabs > button[aria-pressed="true"] {
+#v-chair .dashtabs > button[aria-pressed="true"],
+#v-lobby .dashtabs > button[aria-pressed="true"] {
   padding-bottom: 6px;
 }
 #v-chair .dashtabbody {

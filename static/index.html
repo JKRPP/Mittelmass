@@ -16,7 +16,8 @@
     <div class="wrap" id="app">
       <!-- Lobby -->
       <section id="v-lobby">
-        <div class="card">
+        <!-- Title and figure centred above the entry card and recent-rooms table -->
+        <div class="lobbyhero">
           <h1 id="lobbyTitle">Mittelmaß 2.0</h1>
           <svg class="signguy" viewBox="20 10 180 260" aria-hidden="true">
             <g id="layer1">
@@ -120,6 +121,21 @@
               />
             </g>
           </svg>
+        </div>
+        <!-- Shared heading over the entry card and the recent-rooms table (side by side on desktop) -->
+        <div class="lobbymain">
+        <h2 class="lobbyhead">Raum beitreten</h2>
+        <!-- Mobile only, and only with recent rooms: one pane at a time instead of stacking them -->
+        <div class="dashtabs lobbytabs" id="lobbyTabs">
+          <button type="button" data-lt="new" aria-pressed="true">
+            Neuer Raum
+          </button>
+          <button type="button" data-lt="recent" aria-pressed="false">
+            Vorherige Räume
+          </button>
+        </div>
+        <div class="lobbyrow">
+        <div class="card lobbycard">
           <div id="lobbyJoin" class="hide">
             <p class="note" style="margin-top: 0">
               Du trittst Raum <b id="lobbyCode"></b> bei.
@@ -151,18 +167,10 @@
               placeholder="z. B. K7QM"
               style="letter-spacing: 0.14em"
             />
-            <hr class="sep" />
             <button class="btn" id="btnJoinCode">Beitreten</button>
             <button class="btn ghost" id="btnCreate">
               Neuen Raum erstellen
             </button>
-          </div>
-          <div id="lobbyRecent" class="hide">
-            <hr class="sep" />
-            <div class="sub" style="margin-bottom: 6px">
-              Zuletzt beigetreten
-            </div>
-            <div id="lobbyRecentList"></div>
           </div>
           <button class="btn hide" id="btnJoin">Beitreten</button>
           <button class="btn ghost hide" id="btnInstall">
@@ -173,26 +181,34 @@
             bzw. "App installieren".
           </p>
           <div class="err" id="lobbyErr"></div>
-          <div class="legalrow">
-            <a
-              class="legallink"
-              href="/impressum"
-              target="_blank"
-              rel="noopener"
-              >Impressum</a
-            >
-            <a class="legallink" href="/license" target="_blank" rel="noopener"
-              >MIT - Lizenz</a
-            >
-            <a
-              class="legallink"
-              href="https://github.com/JKRPP/Mittelmass"
-              target="_blank"
-              rel="noopener"
-              >GitHub</a
-            >
-          </div>
         </div>
+        <!-- Recent rooms as a table; beside the card on desktop (lobby-mode), below it on mobile -->
+        <div id="lobbyRecent" class="lobbyrecent hide">
+          <div class="sub lobbyrecentlbl">Zuletzt beigetreten</div>
+          <div id="lobbyRecentList" class="lobbyrecentscroll"></div>
+        </div>
+        </div>
+        </div>
+        <!-- Legal links centred at the bottom of the screen (pushed down by the lobby's full-height column) -->
+        <footer class="legalrow lobbyfoot">
+          <a
+            class="legallink"
+            href="/impressum"
+            target="_blank"
+            rel="noopener"
+            >Impressum</a
+          >
+          <a class="legallink" href="/license" target="_blank" rel="noopener"
+            >MIT - Lizenz</a
+          >
+          <a
+            class="legallink"
+            href="https://github.com/JKRPP/Mittelmass"
+            target="_blank"
+            rel="noopener"
+            >GitHub</a
+          >
+        </footer>
       </section>
 
       <!-- Main view -->
